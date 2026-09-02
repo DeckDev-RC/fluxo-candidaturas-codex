@@ -1,0 +1,34 @@
+name: PowerShell validation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  syntax:
+    name: PowerShell syntax
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Parse PowerShell files
+        shell: pwsh
+        run: |
+          $failed = $false
+          $files = Get-ChildItem -Path . -Recurse -Filter *.ps1 -File
+          foreach ($file in $files) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) {
+              $failed = $true
+              Write-Error ("{0}: {1}" -f $file.FullName, (($errors | ForEach-Object { $_.Message }) -join '; '))
+            }
+          }
+          if ($failed) { exit 1 }
+          Write-Host ("Parsed {0} PowerShell files successfully." -f $files.Count)
