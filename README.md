@@ -115,3 +115,9 @@ Fluxo/
 ## Compartilhamento
 
 Não compartilhe `.env`, `perfil/candidato.md`, currículo real, fila, campanha, checkpoint, evidências, mensagens nem histórico. `scripts/exportar-compartilhavel.ps1` monta em `dist/` um ZIP sanitizado com apenas instruções, modelos, configuração pública e scripts.
+
+## Status e validação
+
+- **Status:** versão distribuível `v1.0.0`.
+- **Validação:** o workflow de validação PowerShell analisa a sintaxe sem executar automações externas e está verde.
+- **Segurança:** credenciais, currículos reais, filas e evidências permanecem locais; o pacote compartilhável é sanitizado antes da distribuição.
