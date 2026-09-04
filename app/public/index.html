@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#101411" />
+    <title>Fluxo — candidaturas</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Fluxo início">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span>Fluxo</span>
+      </a>
+      <div class="topbar-context"><span class="status-dot" aria-hidden="true"></span> Fluxo de candidaturas · local</div>
+      <button id="refresh" class="refresh-button" type="button">Atualizar <span>↻</span></button>
+    </header>
+
+    <main class="shell">
+      <section class="intro" aria-labelledby="page-title">
+        <div>
+          <p class="eyebrow">painel operacional</p>
+          <h1 id="page-title">Estado da operação</h1>
+          <p class="lede">Uma leitura local do preflight, da campanha e do ponto de retomada.</p>
+        </div>
+        <div class="freshness" id="freshness">Lendo o Fluxo…</div>
+      </section>
+
+      <section class="status-line" aria-label="Estado da instalação">
+        <div class="status-label"><span class="status-dot" id="installation-dot"></span><strong id="installation-status">Carregando</strong></div>
+        <span id="preflight-summary" class="muted">Verificando preflight</span>
+      </section>
+
+      <section class="overview-section" aria-labelledby="overview-title">
+        <div class="section-heading"><p class="eyebrow">visão geral</p><h2 id="overview-title">Campanha</h2></div>
+        <div class="metrics-row" id="campaign-metrics" aria-live="polite"></div>
+      </section>
+
+      <div class="content-grid">
+        <section class="data-section" aria-labelledby="queue-title">
+          <div class="section-heading inline"><div><p class="eyebrow">prioridade e aderência</p><h2 id="queue-title">Fila</h2></div><span class="count" id="queue-count">0 vagas</span></div>
+          <div class="data-list" id="queue-list"></div>
+        </section>
+
+        <section class="data-section" aria-labelledby="applications-title">
+          <div class="section-heading inline"><div><p class="eyebrow">histórico confirmado</p><h2 id="applications-title">Candidaturas</h2></div><span class="count" id="application-count">0 registros</span></div>
+          <div class="data-list" id="applications-list"></div>
+        </section>
+      </div>
+
+      <section class="checkpoint-section" aria-labelledby="checkpoint-title">
+        <div class="section-heading"><p class="eyebrow">retomada</p><h2 id="checkpoint-title">Checkpoint</h2></div>
+        <div id="checkpoint-content" class="checkpoint-content"></div>
+      </section>
+    </main>
+
+    <footer class="footer"><span>Fluxo · leitura local</span><span id="footer-version">estado sem sincronização externa</span></footer>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

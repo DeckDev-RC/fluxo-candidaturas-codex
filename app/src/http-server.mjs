@@ -1,5 +1,14 @@
 import { createServer as createHttpServer } from 'node:http';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { readFluxoState } from './state-reader.mjs';
+
+const PUBLIC_DIR = new URL('../public/', import.meta.url);
+const STATIC_FILES = new Map([
+  ['/', ['index.html', 'text/html; charset=utf-8']],
+  ['/app.js', ['app.js', 'text/javascript; charset=utf-8']],
+  ['/styles.css', ['styles.css', 'text/css; charset=utf-8']]
+]);
 
 const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
@@ -27,6 +36,23 @@ export function createServer({ rootDir }) {
       } catch {
         sendJson(response, 500, {
           error: { code: 'state_read_failed', message: 'Não foi possível ler o estado local do Fluxo.' }
+        });
+      }
+      return;
+    }
+
+    const staticFile = STATIC_FILES.get(path);
+    if (staticFile) {
+      try {
+        const body = await readFile(new URL(staticFile[0], PUBLIC_DIR));
+        response.writeHead(200, {
+          'content-type': staticFile[1],
+          'cache-control': 'no-store'
+        });
+        response.end(body);
+      } catch {
+        sendJson(response, 500, {
+          error: { code: 'asset_read_failed', message: 'Não foi possível carregar a interface local.' }
         });
       }
       return;
