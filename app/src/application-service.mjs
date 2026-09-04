@@ -1,7 +1,8 @@
 import { runAllowedScript } from './script-adapter.mjs';
+import { acquireFluxoLock, wrapMutations } from './lock.mjs';
 
-export function createApplicationService({ rootDir = '', scriptRunner = (name, args) => runAllowedScript(name, args, { rootDir }) }) {
-  return {
+export function createApplicationService({ rootDir = '', scriptRunner = (name, args) => runAllowedScript(name, args, { rootDir }), mutationLock = true, lock = () => acquireFluxoLock(rootDir) }) {
+  const service = {
     async recordConfirmedApplication({ item, confirmation, evidencePath = '', resume = '', applicationId = '', nextAction = 'Aguardar retorno', notes = '' }) {
       if (confirmation?.confirmed !== true) throw domainError('submission_not_confirmed', 'A plataforma não confirmou o recebimento.');
       if (!String(evidencePath).trim()) throw domainError('evidence_required', 'Evidência de confirmação é obrigatória.');
@@ -25,6 +26,7 @@ export function createApplicationService({ rootDir = '', scriptRunner = (name, a
       return { record: parseRecord(commandResult.stdout), commandResult };
     }
   };
+  return wrapMutations(service, ['recordConfirmedApplication'], { rootDir, mutationLock, lock });
 }
 
 function parseRecord(stdout) {

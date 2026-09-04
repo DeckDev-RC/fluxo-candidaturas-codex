@@ -136,6 +136,9 @@ export function createStore({ rootDir, dbPath }) {
       created_at text not null
     );
   `);
+  ensureColumn(database, 'operations', 'aggregate_type', 'text');
+  ensureColumn(database, 'operations', 'aggregate_id', 'text');
+  ensureColumn(database, 'operations', 'blocked', 'integer not null default 0');
 
   return {
     async syncFromFiles() {
@@ -199,10 +202,54 @@ export function createStore({ rootDir, dbPath }) {
       return row ? JSON.parse(row.payload_json) : emptySnapshot();
     },
 
+    startOperation({ kind, aggregateType = '', aggregateId = '', input = {}, beforeHash = '' }) {
+      const id = cryptoRandomId();
+      const startedAt = new Date().toISOString();
+      database.prepare(`insert into operations (id, kind, aggregate_type, aggregate_id, input_json, status, before_hash, safe_output, started_at)
+        values (?, ?, ?, ?, ?, 'pending', ?, '', ?)`).run(id, kind, aggregateType, aggregateId, JSON.stringify(input), beforeHash, startedAt);
+      return { id, kind, aggregateType, aggregateId, status: 'pending', beforeHash, startedAt };
+    },
+
+    updateOperation(id, patch) {
+      const fields = { status: 'status', afterHash: 'after_hash', result: 'result_json', error: 'safe_output', finishedAt: 'finished_at', blocked: 'blocked' };
+      const entries = Object.entries(patch).filter(([key]) => fields[key]);
+      if (entries.length) {
+        for (const [key] of entries) {
+          const value = key === 'result' ? JSON.stringify(patch[key]) : key === 'blocked' ? (patch[key] ? 1 : 0) : patch[key] ?? null;
+          database.prepare(`update operations set ${fields[key]} = ? where id = ?`).run(value, String(id));
+        }
+      }
+      return this.getOperation(id);
+    },
+
+    getOperation(id) {
+      const row = database.prepare('select * from operations where id = ?').get(id);
+      return row ? toOperation(row) : null;
+    },
+
+    listOperations() { return database.prepare('select * from operations order by started_at desc').all().map(toOperation); },
+
+    isAggregateBlocked(aggregateType, aggregateId) {
+      return Boolean(database.prepare("select 1 from operations where aggregate_type = ? and aggregate_id = ? and blocked = 1 and status = 'needs_reconcile' limit 1").get(aggregateType, aggregateId));
+    },
+
     close() {
       database.close();
     }
   };
+}
+
+function ensureColumn(database, table, column, definition) {
+  const columns = database.prepare(`pragma table_info(${table})`).all().map((item) => item.name);
+  if (!columns.includes(column)) database.exec(`alter table ${table} add column ${column} ${definition}`);
+}
+
+function cryptoRandomId() { return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`; }
+
+function toOperation(row) {
+  let result = null;
+  try { result = row.result_json ? JSON.parse(row.result_json) : null; } catch { result = null; }
+  return { id: row.id, kind: row.kind, aggregateType: row.aggregate_type ?? '', aggregateId: row.aggregate_id ?? '', status: row.status, beforeHash: row.before_hash ?? '', afterHash: row.after_hash ?? '', result, error: row.safe_output ?? '', blocked: row.blocked === 1, startedAt: row.started_at, finishedAt: row.finished_at ?? '' };
 }
 
 async function readRevisions(rootDir) {

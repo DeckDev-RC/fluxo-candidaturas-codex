@@ -1,9 +1,10 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { runAllowedScript } from './script-adapter.mjs';
+import { acquireFluxoLock, wrapMutations } from './lock.mjs';
 
-export function createAssessmentService({ rootDir = '', scriptRunner = (name, args) => runAllowedScript(name, args, { rootDir }), readApplications = () => readJson(join(rootDir, 'candidaturas', 'candidaturas.json'), []) } = {}) {
-  return { async record({ reference, testName, provider = '', url = '', status = 'concluído', score = '', total = '', evidence = '', notes = '' } = {}) {
+export function createAssessmentService({ rootDir = '', scriptRunner = (name, args) => runAllowedScript(name, args, { rootDir }), readApplications = () => readJson(join(rootDir, 'candidaturas', 'candidaturas.json'), []), mutationLock = true, lock = () => acquireFluxoLock(rootDir) } = {}) {
+  const service = { async record({ reference, testName, provider = '', url = '', status = 'concluído', score = '', total = '', evidence = '', notes = '' } = {}) {
     if (!String(reference ?? '').trim() || !String(testName ?? '').trim()) throw domainError('invalid_assessment', 'Referência e nome do teste são obrigatórios.');
     const args = ['-Reference', reference, '-TestName', testName, '-Status', status];
     for (const [flag, value] of [['-Provider', provider], ['-Url', url], ['-Score', score], ['-Total', total], ['-Evidence', evidence], ['-Notes', notes]]) if (value) args.push(flag, String(value));
@@ -17,6 +18,7 @@ export function createAssessmentService({ rootDir = '', scriptRunner = (name, ar
     if (!Number.isInteger(duration) || duration < 0 || duration > 24 * 60 * 60) throw domainError('invalid_questionnaire', 'Duração inválida.');
     return { name: String(name), questions: questions.map((question, index) => ({ id: String(question.id ?? `q-${index + 1}`), prompt: String(question.prompt ?? ''), required: question.required !== false })), timed: duration > 0, durationSeconds: duration, timerMode: 'informativo', requiresUserInput: true, automatedSubmission: false };
   } };
+  return wrapMutations(service, ['record'], { rootDir, mutationLock, lock });
 }
 function parseJsonOrText(value) { try { return JSON.parse(String(value).trim()); } catch { return { output: String(value ?? '').trim() }; } }
 function domainError(code, message) { const error = new Error(message); error.code = code; return error; }

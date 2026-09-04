@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtemp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createApplicationService } from '../src/application-service.mjs';
 
 test('application service records only a visually confirmed submission', async () => {
@@ -65,4 +68,11 @@ test('application service rejects resume and evidence paths outside Fluxo folder
     () => service.recordConfirmedApplication({ item, confirmation: { confirmed: true }, evidencePath: 'evidencias/app.json', resume: '..\\private.pdf' }),
     (error) => error.code === 'invalid_resume_path'
   );
+});
+
+test('application service protects direct confirmed-record mutations with its lock', async () => {
+  let acquired = 0;
+  const service = createApplicationService({ rootDir: await mkdtemp(join(tmpdir(), 'fluxo-app-lock-')), lock: async () => { acquired += 1; return async () => {}; }, async scriptRunner() { return { ok: true, stdout: '{}' }; } });
+  await service.recordConfirmedApplication({ item: { platform: 'GUPY', company: 'Acme', role: 'Dev', identifierOrUrl: '1' }, confirmation: { confirmed: true }, evidencePath: 'evidencias/x.png' });
+  assert.equal(acquired, 1);
 });

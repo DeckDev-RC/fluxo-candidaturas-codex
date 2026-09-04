@@ -5,6 +5,22 @@ const preflightButton = document.querySelector('#run-preflight');
 const exportButton = document.querySelector('#export-shareable');
 const onboardingForm = document.querySelector('#onboarding-form');
 const resumeTools = document.querySelector('#resume-tools');
+const connectStreamButton = document.querySelector('#connect-run-stream');
+const queueSearchForm = document.querySelector('#queue-search');
+const queueAddForm = document.querySelector('#queue-add');
+const followUpForm = document.querySelector('#follow-up-form');
+const legacyImportForm = document.querySelector('#legacy-import-form');
+const assessmentPrepForm = document.querySelector('#assessment-prep-form');
+const assessmentResultForm = document.querySelector('#assessment-result-form');
+const assessmentPauseButton = document.querySelector('#assessment-pause');
+const applicationTools = document.querySelector('#application-tools');
+let preparedApplication;
+let submissionApproval;
+let submissionPayload;
+let assessmentTimer;
+let assessmentRemaining = 0;
+let csrfToken = '';
+let runEventSource;
 
 refreshButton.addEventListener('click', loadState);
 preflightButton.addEventListener('click', runPreflight);
@@ -13,7 +29,25 @@ onboardingForm.addEventListener('submit', saveOnboarding);
 resumeTools.addEventListener('submit', (event) => runResumeOperation(event, 'fit'));
 resumeTools.querySelector('[data-operation="select"]').addEventListener('click', () => runResumeOperation(null, 'select'));
 resumeTools.querySelector('[data-operation="extract"]').addEventListener('click', () => runResumeOperation(null, 'extract'));
-loadState();
+connectStreamButton.addEventListener('click', connectRunStream);
+queueSearchForm.addEventListener('submit', searchQueue);
+queueAddForm.addEventListener('submit', addQueueItem);
+followUpForm.addEventListener('submit', recordFollowUp);
+legacyImportForm.addEventListener('submit', importLegacy);
+assessmentPrepForm.addEventListener('submit', prepareAssessment);
+assessmentResultForm.addEventListener('submit', recordAssessment);
+assessmentPauseButton.addEventListener('click', toggleAssessmentTimer);
+applicationTools.querySelector('[data-application-action="prepare"]').addEventListener('click', prepareApplication);
+applicationTools.querySelector('[data-application-action="approve"]').addEventListener('click', requestApplicationApproval);
+applicationTools.querySelector('[data-application-action="submit"]').addEventListener('click', submitApplication);
+bootstrapSession().finally(loadState);
+
+async function bootstrapSession() {
+  const response = await fetch('/api/v1/auth/session', { cache: 'no-store' });
+  if (response.ok) csrfToken = (await response.json()).csrfToken ?? '';
+}
+
+function mutationHeaders(extra = {}) { return { ...extra, ...(csrfToken ? { 'x-fluxo-csrf': csrfToken } : {}) }; }
 
 async function loadState() {
   refreshButton.disabled = true;
@@ -37,6 +71,89 @@ async function loadState() {
     refreshButton.disabled = false;
     refreshButton.classList.remove('is-loading');
   }
+}
+
+async function searchQueue(event) {
+  event.preventDefault();
+  const query = new URLSearchParams(new FormData(queueSearchForm));
+  const response = await fetch(`/api/v1/queue/search?${query}`, { cache: 'no-store' });
+  if (response.ok) renderQueue({ items: await response.json() });
+}
+
+async function addQueueItem(event) {
+  event.preventDefault();
+  const response = await fetch('/api/v1/queue/items', { method: 'POST', headers: mutationHeaders({ 'content-type': 'application/json' }), body: JSON.stringify(Object.fromEntries(new FormData(queueAddForm))) });
+  queueAddForm.querySelector('button').textContent = response.ok ? 'Vaga adicionada' : 'Falha ao adicionar';
+  if (response.ok) await loadState();
+}
+
+async function recordFollowUp(event) {
+  event.preventDefault();
+  const input = Object.fromEntries(new FormData(followUpForm));
+  const response = await fetch(`/api/v1/applications/${encodeURIComponent(input.reference)}/events`, { method: 'POST', headers: mutationHeaders({ 'content-type': 'application/json' }), body: JSON.stringify(input) });
+  document.querySelector('#follow-up-feedback').textContent = response.ok ? 'Evento registrado.' : 'Não foi possível registrar.';
+  if (response.ok) await loadState();
+}
+
+async function importLegacy(event) {
+  event.preventDefault();
+  const response = await fetch('/api/v1/imports/legacy', { method: 'POST', headers: mutationHeaders({ 'content-type': 'application/json' }), body: JSON.stringify(Object.fromEntries(new FormData(legacyImportForm))) });
+  document.querySelector('#follow-up-feedback').textContent = response.ok ? 'Controles importados.' : 'Falha na importação.';
+  if (response.ok) await loadState();
+}
+
+async function prepareAssessment(event) {
+  event.preventDefault();
+  const input = Object.fromEntries(new FormData(assessmentPrepForm));
+  try { input.questions = JSON.parse(input.questionsJson); } catch { document.querySelector('#assessment-feedback').textContent = 'Perguntas devem ser JSON válido.'; return; }
+  delete input.questionsJson; input.durationSeconds = Number(input.durationSeconds || 0);
+  const response = await fetch('/api/v1/assessments/prepare', { method: 'POST', headers: mutationHeaders({ 'content-type': 'application/json' }), body: JSON.stringify(input) });
+  if (!response.ok) { document.querySelector('#assessment-feedback').textContent = 'Não foi possível preparar.'; return; }
+  const result = await response.json(); assessmentRemaining = result.durationSeconds ?? 0; assessmentPauseButton.disabled = assessmentRemaining <= 0; updateAssessmentTimer(); clearInterval(assessmentTimer); assessmentTimer = assessmentRemaining > 0 ? setInterval(() => { if (assessmentRemaining > 0 && !assessmentPauseButton.dataset.paused) { assessmentRemaining -= 1; updateAssessmentTimer(); } }, 1000) : null;
+  document.querySelector('#assessment-feedback').textContent = 'Questionário preparado; autoria humana exigida.';
+}
+
+function toggleAssessmentTimer() { assessmentPauseButton.dataset.paused = assessmentPauseButton.dataset.paused === 'true' ? 'false' : 'true'; assessmentPauseButton.textContent = assessmentPauseButton.dataset.paused === 'true' ? 'Retomar' : 'Pausar'; }
+function updateAssessmentTimer() { document.querySelector('#assessment-timer').textContent = assessmentRemaining ? `Tempo informativo: ${assessmentRemaining}s` : 'Sem cronômetro'; }
+
+async function recordAssessment(event) {
+  event.preventDefault();
+  const response = await fetch('/api/v1/assessments', { method: 'POST', headers: mutationHeaders({ 'content-type': 'application/json' }), body: JSON.stringify(Object.fromEntries(new FormData(assessmentResultForm))) });
+  document.querySelector('#assessment-feedback').textContent = response.ok ? 'Resultado registrado.' : 'Não foi possível registrar.';
+  if (response.ok) await loadState();
+}
+
+async function prepareApplication() {
+  const platform = applicationTools.querySelector('[name="platform"]').value;
+  const response = await fetch('/api/v1/applications/prepare', { method: 'POST', headers: mutationHeaders({ 'content-type': 'application/json' }), body: JSON.stringify({ platform }) });
+  const feedback = document.querySelector('#application-feedback');
+  if (!response.ok) { feedback.textContent = 'Não foi possível preparar a próxima vaga.'; return; }
+  preparedApplication = await response.json();
+  const run = preparedApplication.run ?? preparedApplication.data?.run;
+  feedback.textContent = `Preparada: ${run?.id ?? 'run criado'}. Revise antes da aprovação.`;
+  applicationTools.querySelector('[data-application-action="approve"]').disabled = false;
+  document.querySelector('#run-stream-id').value = run?.id ?? '';
+}
+
+async function requestApplicationApproval() {
+  const run = preparedApplication?.run ?? preparedApplication?.data?.run;
+  if (!run?.id) return;
+  submissionPayload = { queueItemId: (preparedApplication.item ?? preparedApplication.data?.item)?.id, fields: preparedApplication.snapshot ?? {} };
+  const response = await fetch(`/api/v1/applications/${encodeURIComponent(run.id)}/approval`, { method: 'POST', headers: mutationHeaders({ 'content-type': 'application/json' }), body: JSON.stringify(submissionPayload) });
+  const feedback = document.querySelector('#application-feedback');
+  if (!response.ok) { feedback.textContent = 'Não foi possível solicitar aprovação.'; return; }
+  submissionApproval = await response.json();
+  submissionApproval = submissionApproval.data ?? submissionApproval;
+  feedback.textContent = 'Aprovação criada; decida no painel de aprovações.';
+  applicationTools.querySelector('[data-application-action="submit"]').disabled = false;
+}
+
+async function submitApplication() {
+  const run = preparedApplication?.run ?? preparedApplication?.data?.run;
+  if (!run?.id || !submissionApproval?.id || submissionApproval.status !== 'approved') { document.querySelector('#application-feedback').textContent = 'Aprove a ação no painel antes de confirmar.'; return; }
+  const response = await fetch(`/api/v1/applications/${encodeURIComponent(run.id)}/submit`, { method: 'POST', headers: mutationHeaders({ 'content-type': 'application/json' }), body: JSON.stringify({ approvalId: submissionApproval.id, ...submissionPayload }) });
+  document.querySelector('#application-feedback').textContent = response.ok ? 'Envio confirmado pela plataforma.' : 'Envio bloqueado; revise aprovação e evidência.';
+  if (response.ok) { preparedApplication = null; submissionApproval = null; await loadState(); }
 }
 
 function render(state, approvals = [], profile = null, metrics = null, pending = [], assessments = [], registry = []) {
@@ -64,6 +181,18 @@ function renderOperations(metrics, pending, assessments) {
   renderCompact('#assessment-list', assessments, (item) => `${item.reference ?? '—'} · ${item.name ?? 'teste'} · ${item.status ?? 'sem resultado'}`);
 }
 
+function connectRunStream() {
+  const runId = document.querySelector('#run-stream-id').value.trim();
+  const feedback = document.querySelector('#stream-feedback');
+  if (!runId) { feedback.textContent = 'Informe um run ID.'; return; }
+  runEventSource?.close();
+  const output = document.querySelector('#run-events'); output.textContent = '';
+  runEventSource = new EventSource(`/api/v1/runs/${encodeURIComponent(runId)}/events?stream=1`);
+  runEventSource.onopen = () => { feedback.textContent = 'Streaming conectado.'; };
+  runEventSource.onerror = () => { feedback.textContent = 'Streaming interrompido; verifique o run.'; };
+  for (const type of ['agent.notification', 'agent.thread.started', 'agent.turn.completed', 'application.prepared', 'application.submission_confirmed', 'run.needs_reconcile', 'run.paused', 'run.resumed']) runEventSource.addEventListener(type, (event) => { output.textContent += `${event.type}: ${event.data}\n`; });
+}
+
 function renderCompact(selector, items, toText) {
   const container = document.querySelector(selector);
   if (!items.length) { container.textContent = 'Nenhum registro.'; return; }
@@ -76,7 +205,7 @@ async function runResumeOperation(event, operation) {
   const feedback = document.querySelector('#resume-feedback'); feedback.textContent = 'Processando…';
   const endpoint = operation === 'select' ? '/api/v1/resumes/select' : operation === 'extract' ? '/api/v1/resumes/extract' : '/api/v1/jobs/fit';
   const requestBody = operation === 'extract' ? { path: formData.sourcePath } : formData;
-  const response = await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(requestBody) });
+  const response = await fetch(endpoint, { method: 'POST', headers: mutationHeaders({ 'content-type': 'application/json' }), body: JSON.stringify(requestBody) });
   if (!response.ok) { feedback.textContent = 'Não foi possível concluir.'; return; }
   const result = await response.json();
   feedback.textContent = operation === 'select' ? `Resultado: ${result.output ?? 'currículo selecionado'}` : operation === 'extract' ? `Extraído: ${result.path ?? 'ok'}` : `Aderência: ${result.score ?? 0}% · classe ${result.classification ?? '—'}`;
@@ -94,14 +223,17 @@ async function saveOnboarding(event) {
   const data = Object.fromEntries(new FormData(onboardingForm));
   data.campaign = {
     totalGoal: Number(data.totalGoal), dailyGoal: Number(data.dailyGoal), weeklyGoal: Number(data.weeklyGoal),
+    periodStart: data.periodStart, periodEnd: data.periodEnd, exclusions: splitValues(data.exclusions), filters: { roles: splitValues(data.rolesFilter), seniority: splitValues(data.seniorityFilter) },
     platforms: String(data.platforms).split(',').map((name) => name.trim()).filter(Boolean).map((name) => ({ name, enabled: true, goal: 0 }))
   };
-  delete data.totalGoal; delete data.dailyGoal; delete data.weeklyGoal; delete data.platforms;
+  delete data.totalGoal; delete data.dailyGoal; delete data.weeklyGoal; delete data.platforms; delete data.periodStart; delete data.periodEnd; delete data.exclusions; delete data.rolesFilter; delete data.seniorityFilter;
   feedback.textContent = 'Salvando…';
-  const response = await fetch('/api/v1/onboarding', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) });
+  const response = await fetch('/api/v1/onboarding', { method: 'POST', headers: mutationHeaders({ 'content-type': 'application/json' }), body: JSON.stringify(data) });
   feedback.textContent = response.ok ? 'Configuração salva localmente.' : 'Não foi possível salvar. Revise os campos.';
-  if (response.ok) await loadState();
+  if (response.ok) { if (submissionApproval?.id === id) submissionApproval.status = decision; await loadState(); }
 }
+
+function splitValues(value) { return String(value ?? '').split(',').map((entry) => entry.trim()).filter(Boolean); }
 
 function renderApprovals(approvals) {
   const container = document.querySelector('#approval-list');
@@ -132,7 +264,7 @@ function renderApprovals(approvals) {
 
 async function decideApproval(id, decision) {
   const response = await fetch(`/api/v1/approvals/${encodeURIComponent(id)}/decision`, {
-    method: 'POST', headers: { 'content-type': 'application/json' },
+    method: 'POST', headers: mutationHeaders({ 'content-type': 'application/json' }),
     body: JSON.stringify({ decision, actorId: 'local-user' })
   });
   if (response.ok) await loadState();
@@ -142,7 +274,7 @@ async function runPreflight() {
   preflightButton.disabled = true;
   preflightButton.textContent = 'Executando…';
   try {
-    await fetch('/api/v1/preflight/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+    await fetch('/api/v1/preflight/run', { method: 'POST', headers: mutationHeaders({ 'content-type': 'application/json' }), body: '{}' });
     await loadState();
   } finally {
     preflightButton.disabled = false;
@@ -209,7 +341,7 @@ function renderQueue(queue) {
 }
 
 async function claimQueueItem(id) {
-  const response = await fetch(`/api/v1/queue/${encodeURIComponent(id)}/claim`, { method: 'POST' });
+  const response = await fetch(`/api/v1/queue/${encodeURIComponent(id)}/claim`, { method: 'POST', headers: mutationHeaders() });
   if (response.ok) await loadState();
 }
 
@@ -217,7 +349,7 @@ async function exportShareable() {
   exportButton.disabled = true;
   exportButton.textContent = 'Exportando…';
   try {
-    const response = await fetch('/api/v1/exports/shareable', { method: 'POST' });
+    const response = await fetch('/api/v1/exports/shareable', { method: 'POST', headers: mutationHeaders() });
     document.querySelector('#footer-version').textContent = response.ok ? 'pacote criado em dist/' : 'falha na exportação';
   } finally {
     exportButton.disabled = false;

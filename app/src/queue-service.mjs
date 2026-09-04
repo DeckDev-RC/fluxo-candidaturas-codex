@@ -1,17 +1,25 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { acquireFluxoLock, wrapMutations } from './lock.mjs';
 
 const CONFIRMED_STATUSES = new Set([
   'enviada', 'triagem', 'teste pendente', 'teste concluído', 'entrevista', 'proposta', 'rejeitada', 'encerrada'
 ]);
 const PRIORITY_RANK = { A: 1, B: 2, C: 3 };
 
-export function createQueueService({ rootDir, now = () => new Date() }) {
-  return {
+export function createQueueService({ rootDir, now = () => new Date(), checkpointAfterEachAction = true, maxConsecutiveFailures = null, mutationLock = true, lock = () => acquireFluxoLock(rootDir) }) {
+  const service = {
     async listQueue() {
       const queue = await readJson(join(rootDir, 'fila', 'vagas.json'), []);
       return { items: asArray(queue), counts: countByStatus(asArray(queue)) };
+    },
+
+    async search({ query = '', platform = '', status = '', minFit = 0 } = {}) {
+      const queue = asArray(await readJson(join(rootDir, 'fila', 'vagas.json'), []));
+      const needle = String(query).trim().toLocaleLowerCase();
+      const minimum = Number(minFit) || 0;
+      return queue.filter((item) => (!needle || `${item.company ?? ''} ${item.role ?? ''} ${item.identifierOrUrl ?? ''}`.toLocaleLowerCase().includes(needle)) && (!platform || item.platform === normalizePlatform(platform)) && (!status || item.status === status) && Number(item.fitScore ?? 0) >= minimum);
     },
 
     async addQueueItem(input) {
@@ -41,7 +49,7 @@ export function createQueueService({ rootDir, now = () => new Date() }) {
       const eligible = eligiblePlatforms(campaign, applications);
       const normalizedPlatform = platform ? normalizePlatform(platform) : '';
       const candidate = queue
-        .filter((item) => item.status === 'na fila' && eligible.has(item.platform) && (!id || item.id === id) && (!normalizedPlatform || item.platform === normalizedPlatform))
+        .filter((item) => item.status === 'na fila' && eligible.has(item.platform) && (!id || item.id === id) && (!normalizedPlatform || item.platform === normalizedPlatform) && !isExcluded(item, campaign.exclusions))
         .sort(compareQueueItems)[0];
 
       if (!candidate) throw domainError('queue_empty', 'Nenhuma vaga elegível na fila.');
@@ -49,7 +57,7 @@ export function createQueueService({ rootDir, now = () => new Date() }) {
       candidate.attempts = numberOrZero(candidate.attempts) + 1;
       candidate.updatedAt = now().toISOString();
       await writeJsonAtomic(queuePath, queue);
-      await writeJsonAtomic(join(rootDir, 'estado', 'checkpoint.json'), {
+      if (checkpointAfterEachAction) await writeJsonAtomic(join(rootDir, 'estado', 'checkpoint.json'), {
         updatedAt: candidate.updatedAt,
         phase: 'vaga selecionada',
         platform: candidate.platform,
@@ -70,13 +78,13 @@ export function createQueueService({ rootDir, now = () => new Date() }) {
       if (!item) throw domainError('queue_item_not_found', `Item da fila não encontrado: ${reference}`);
 
       const attempts = Math.max(1, numberOrZero(item.attempts));
-      const maximum = Math.max(1, numberOrZero(campaign.maxConsecutiveFailures) || 3);
+      const maximum = Math.max(1, numberOrZero(maxConsecutiveFailures) || numberOrZero(campaign.maxConsecutiveFailures) || 3);
       item.attempts = attempts;
       item.lastError = String(errorMessage ?? 'Falha sem descrição');
       item.updatedAt = now().toISOString();
       item.status = attempts >= maximum ? 'bloqueada' : 'na fila';
       await writeJsonAtomic(queuePath, queue);
-      await writeJsonAtomic(join(rootDir, 'estado', 'checkpoint.json'), {
+      if (checkpointAfterEachAction) await writeJsonAtomic(join(rootDir, 'estado', 'checkpoint.json'), {
         updatedAt: item.updatedAt,
         phase: 'falha',
         platform: item.platform,
@@ -89,6 +97,12 @@ export function createQueueService({ rootDir, now = () => new Date() }) {
       return { reference: item.id, attempts, maximum, status: item.status, error: item.lastError };
     }
   };
+  return wrapMutations(service, ['addQueueItem', 'claimNext', 'recordQueueFailure'], { rootDir, mutationLock, lock });
+}
+
+function isExcluded(item, exclusions = []) {
+  const text = `${item.company ?? ''} ${item.role ?? ''}`.toLocaleLowerCase();
+  return Array.isArray(exclusions) && exclusions.some((value) => String(value).trim() && text.includes(String(value).toLocaleLowerCase()));
 }
 
 function normalizeInput(input, now) {
@@ -200,6 +214,7 @@ async function readJson(path, fallback) {
 
 async function writeJsonAtomic(path, value) {
   await mkdir(join(path, '..'), { recursive: true });
+  await copyFile(path, `${path}.bak`).catch((error) => { if (error?.code !== 'ENOENT') throw error; });
   const temporaryPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
   await writeFile(temporaryPath, JSON.stringify(value, null, 2), 'utf8');
   await rename(temporaryPath, path);

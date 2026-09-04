@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createAgentAdapter } from '../src/agent-adapter.mjs';
 import { createBrowserAdapter } from '../src/browser-adapter.mjs';
 
@@ -77,4 +80,25 @@ test('browser adapter captures a confirmation artifact through the browser drive
   const adapter = createBrowserAdapter({ driver: { async screenshot(path) { paths.push(path); return { ok: true }; } } });
   assert.equal(await adapter.captureEvidence({ runId: 'run-1' }), 'evidencias/run-1-confirmacao.png');
   assert.equal(paths[0], 'evidencias/run-1-confirmacao.png');
+});
+
+test('browser adapter takes a fresh snapshot after every browser mutation', async () => {
+  let snapshots = 0;
+  const adapter = createBrowserAdapter({ driver: { async snapshot() { snapshots += 1; return { text: 'form' }; }, async fill() {} } });
+  await adapter.snapshot();
+  await adapter.fill('name', 'Pessoa Teste');
+  assert.equal(snapshots, 2);
+});
+
+test('browser adapter rejects an unverified screenshot artifact', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'fluxo-browser-evidence-')); await mkdir(join(root, 'evidencias'));
+  const adapter = createBrowserAdapter({ evidenceRoot: root, driver: { async screenshot() { return { exitCode: 0, ok: true }; } } });
+  await assert.rejects(() => adapter.captureEvidence({ runId: 'run-1' }), (error) => error.code === 'evidence_capture_missing');
+});
+
+test('browser adapter reconciles the observed page against checkpoint metadata', async () => {
+  const adapter = createBrowserAdapter({ driver: { async state() { return { url: 'https://example.test/form', page: 'form', text: 'Formulário' }; } } });
+  const result = await adapter.reconcile({ url: 'https://example.test/form', page: 'form' });
+  assert.equal(result.matches, true);
+  assert.equal(result.requiresReview, false);
 });

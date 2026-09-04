@@ -1,6 +1,9 @@
+import { access } from 'node:fs/promises';
+import { join } from 'node:path';
+
 const SENSITIVE_KEY = /(password|token|cookie|secret|mfa|authorization|credential)/i;
 
-export function createBrowserAdapter({ driver }) {
+export function createBrowserAdapter({ driver, evidenceRoot = '' }) {
   let lastSnapshot = null;
 
   return {
@@ -14,7 +17,9 @@ export function createBrowserAdapter({ driver }) {
     async fill(field, value) {
       if (!lastSnapshot) throw domainError('snapshot_required', 'Capture um snapshot antes de preencher.');
       await driver.fill(field, value);
-      lastSnapshot = null;
+      const state = await driver.snapshot();
+      if (state?.challenge) throw manualIntervention(state.challenge);
+      lastSnapshot = redact(state);
     },
 
     async verifySubmission() {
@@ -29,8 +34,17 @@ export function createBrowserAdapter({ driver }) {
       const path = `evidencias/${safeId}-confirmacao.png`;
       if (typeof driver.screenshot !== 'function') throw domainError('evidence_capture_unavailable', 'O driver não oferece captura de evidência.');
       const result = await driver.screenshot(path);
-      if (result?.ok === false) throw domainError('evidence_capture_failed', 'Não foi possível capturar a evidência.');
+      if (result?.ok === false || result?.exitCode != null && result.exitCode !== 0) throw domainError('evidence_capture_failed', 'Não foi possível capturar a evidência.');
+      if (evidenceRoot) { try { await access(join(evidenceRoot, path)); } catch { throw domainError('evidence_capture_missing', 'A captura não produziu um arquivo verificável.'); } }
       return path;
+    },
+
+    async reconcile(checkpoint = {}) {
+      const state = redact(await driver.state());
+      if (state?.challenge) throw manualIntervention(state.challenge);
+      const differences = [];
+      for (const field of ['url', 'page']) if (checkpoint[field] && (field !== 'url' || /^https?:\/\//i.test(String(checkpoint[field]))) && state[field] !== checkpoint[field]) differences.push({ field, expected: checkpoint[field], observed: state[field] ?? '' });
+      return { matches: differences.length === 0, requiresReview: differences.length > 0, differences, state };
     }
   };
 }

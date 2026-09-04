@@ -51,6 +51,18 @@ test('run service publishes appended events to active stream subscribers', async
   assert.equal(received[0].type, 'agent.progress');
 });
 
+test('run service persists agent thread and current turn identifiers', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'fluxo-agent-context-'));
+  const service = createRunService({ dbPath: join(root, 'runs.sqlite') });
+  try {
+    const run = service.startRun({ kind: 'agent' });
+    service.setAgentThread(run.id, 'thread-1');
+    service.setCurrentTurn(run.id, 'turn-1');
+    assert.equal(service.getRun(run.id).agentThreadId, 'thread-1');
+    assert.equal(service.getRun(run.id).currentTurnId, 'turn-1');
+  } finally { service.close(); }
+});
+
 test('acquireFluxoLock allows only one local mutator at a time', async () => {
   const root = await mkdtemp(join(tmpdir(), 'fluxo-harness-lock-'));
   const release = await acquireFluxoLock(root);

@@ -1,3 +1,6 @@
+import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createEvidenceService } from '../src/evidence-service.mjs';
@@ -7,10 +10,25 @@ import { createAssessmentService } from '../src/assessment-service.mjs';
 
 test('evidence service records a local evidence reference', async () => {
   const calls = [];
-  const service = createEvidenceService({ async scriptRunner(name, args) { calls.push({ name, args }); return { ok: true, stdout: 'evidencias/confirmacao.png' }; } });
+  const root = await mkdtemp(join(tmpdir(), 'fluxo-evidence-record-')); await mkdir(join(root, 'estado')); await writeFile(join(root, 'estado', 'confirmacao.png'), 'capture');
+  const service = createEvidenceService({ rootDir: root, async scriptRunner(name, args) { calls.push({ name, args }); return { ok: true, stdout: 'evidencias/confirmacao.png' }; } });
   const result = await service.record({ sourcePath: 'estado/confirmacao.png', reference: 'vaga-1', type: 'envio' });
   assert.equal(result.path, 'evidencias/confirmacao.png');
   assert.equal(calls[0].name, 'registrar-evidencia.ps1');
+});
+
+test('evidence service validates source existence and returns a SHA-256 hash', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'fluxo-evidence-hash-')); await mkdir(join(root, 'estado')); await writeFile(join(root, 'estado', 'capture.txt'), 'confirmed');
+  const service = createEvidenceService({ rootDir: root, async scriptRunner() { return { ok: true, stdout: 'evidencias/capture.txt' }; } });
+  const result = await service.record({ sourcePath: 'estado/capture.txt', reference: 'app-1' });
+  assert.match(result.sha256, /^[0-9a-f]{64}$/);
+  await assert.rejects(() => service.record({ sourcePath: 'estado/missing.txt', reference: 'app-1' }), (error) => error.code === 'evidence_source_missing');
+});
+
+test('evidence service protects direct recording with its mutation lock', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'fluxo-evidence-lock-')); await mkdir(join(root, 'estado')); await writeFile(join(root, 'estado', 'x.txt'), 'x'); let acquired = 0;
+  await createEvidenceService({ rootDir: root, lock: async () => { acquired += 1; return async () => {}; }, async scriptRunner() { return { ok: true, stdout: 'evidencias/x.txt' }; } }).record({ sourcePath: 'estado/x.txt', reference: 'x' });
+  assert.equal(acquired, 1);
 });
 
 test('assessment service records test result with score fields', async () => {

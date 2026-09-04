@@ -24,26 +24,34 @@ export async function createLocalRuntime({ rootDir }) {
   await mkdir(join(rootDir, 'estado'), { recursive: true });
   const runtimeConfig = await readRuntimeConfig(rootDir);
   const dbPath = join(rootDir, 'estado', 'harness.sqlite');
-  const queueService = createQueueService({ rootDir });
+  const queueService = createQueueService({ rootDir, checkpointAfterEachAction: runtimeConfig.checkpointAfterEachAction, maxConsecutiveFailures: runtimeConfig.maxConsecutiveFailures, mutationLock: false });
   const runService = createRunService({ dbPath, maxApplicationsPerRun: runtimeConfig.maxApplicationsPerRun });
   const approvalService = createApprovalService({ dbPath });
   const stateStore = createStore({ rootDir, dbPath });
   const browserAdapter = createBrowserAdapter({
-    driver: createPlaywrightCliDriver({ session: runtimeConfig.playwrightSession, cwd: rootDir })
+    driver: createPlaywrightCliDriver({ session: runtimeConfig.playwrightSession, cwd: rootDir }), evidenceRoot: rootDir
   });
-  const applicationService = createApplicationService({ rootDir });
+  const applicationService = createApplicationService({ rootDir, mutationLock: false });
   const resumeService = createResumeService({ rootDir });
-  const evidenceService = createEvidenceService({ rootDir });
+  const evidenceService = createEvidenceService({ rootDir, mutationLock: false });
   const assessmentService = createAssessmentService({ rootDir });
   const legacyImportService = createLegacyImportService({ rootDir });
   const pendingService = createPendingService({ rootDir });
-  const checkpointService = createCheckpointService({ rootDir });
-  const metricsService = createMetricsService({ rootDir });
+  const checkpointService = createCheckpointService({ rootDir, mutationLock: false });
+  const metricsService = createMetricsService({ rootDir, readOperations: async () => stateStore.listOperations() });
+  const browserCapture = browserAdapter.captureEvidence.bind(browserAdapter);
+  browserAdapter.captureEvidence = async (input) => {
+    const sourcePath = await browserCapture(input);
+    return evidenceService.record({ sourcePath, reference: input.item?.id ?? input.runId, type: 'envio' });
+  };
   const applicationFlow = createApplicationFlow({
     queueService,
     runService,
     approvalService,
     browserAdapter,
+    checkpointService,
+    checkpointAfterEachAction: runtimeConfig.checkpointAfterEachAction,
+    evidenceMode: runtimeConfig.evidenceMode,
     preflightReady: async () => (await readFluxoState(rootDir)).installation.ready,
     async recordApplication(input) {
       return applicationService.recordConfirmedApplication({

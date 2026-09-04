@@ -39,7 +39,7 @@ function createDefaultExecutor(session, cwd) {
     child.stdout.on('data', (chunk) => { stdout += chunk; });
     child.stderr.on('data', (chunk) => { stderr += chunk; });
     child.on('error', reject);
-    child.on('close', (exitCode) => resolve({ exitCode, stdout, stderr }));
+    child.on('close', (exitCode) => resolve({ exitCode, stdout, stderr, ok: exitCode === 0 }));
   });
 }
 

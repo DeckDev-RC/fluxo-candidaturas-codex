@@ -223,7 +223,7 @@ Leitura do preflight, painel, fila, checkpoint, aprovação, eventos e integraç
 
 ### Fase 2 — Operação integrada
 
-Onboarding visual, execução Playwright com streaming, acompanhamento, mensagens, questionários e exportação pelo app.
+Onboarding visual, execução Playwright com streaming, acompanhamento, mensagens, questionários e exportação pelo app. A implementação atual entrega esta fase em modo local/fixture, com confirmação humana e sem envio real nos testes.
 
 ### Fase 3 — Evolução
 

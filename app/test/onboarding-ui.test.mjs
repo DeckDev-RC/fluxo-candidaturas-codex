@@ -8,5 +8,7 @@ test('dashboard contains a complete local onboarding form', async () => {
     assert.match(html, new RegExp(`id=["']${id}["']`));
   }
   assert.match(html, /action="\/api\/v1\/onboarding"/);
-  for (const id of ['resume-tools', 'resume-job-description', 'resume-source-path', 'metrics-detail', 'pending-list', 'assessment-list']) assert.match(html, new RegExp(`id=["']${id}["']`));
+  const app = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  assert.match(app, /submissionApproval\.status/);
+  for (const id of ['resume-tools', 'resume-job-description', 'resume-source-path', 'metrics-detail', 'pending-list', 'assessment-list', 'run-stream-id', 'run-events', 'queue-search', 'queue-add', 'follow-up-form', 'legacy-import-form', 'assessment-prep-form', 'assessment-result-form', 'assessment-timer', 'assessment-pause', 'application-tools', 'onboarding-period-start', 'onboarding-exclusions']) assert.match(html, new RegExp(`id=["']${id}["']`));
 });

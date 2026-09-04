@@ -1,9 +1,10 @@
 import { runAllowedScript } from './script-adapter.mjs';
+import { acquireFluxoLock, wrapMutations } from './lock.mjs';
 
 const EVENT_TYPES = new Set(['status', 'verificação', 'mensagem', 'entrevista', 'teste', 'observação', 'erro']);
 
-export function createFollowUpService({ rootDir = '', scriptRunner = (name, args) => runAllowedScript(name, args, { rootDir }) }) {
-  return {
+export function createFollowUpService({ rootDir = '', scriptRunner = (name, args) => runAllowedScript(name, args, { rootDir }), mutationLock = true, lock = () => acquireFluxoLock(rootDir) }) {
+  const service = {
     async recordEvent({ reference, type, status = '', nextAction = '', deadline = '', note = '', evidence = '' }) {
       if (!EVENT_TYPES.has(type)) throw domainError('invalid_event_type', `Tipo de evento inválido: ${type}`);
       if (!String(reference ?? '').trim()) throw domainError('invalid_event', 'Reference é obrigatório.');
@@ -16,6 +17,7 @@ export function createFollowUpService({ rootDir = '', scriptRunner = (name, args
       return parseOutput(result.stdout, { status, type, reference });
     }
   };
+  return wrapMutations(service, ['recordEvent'], { rootDir, mutationLock, lock });
 }
 
 function parseOutput(stdout, fallback) {

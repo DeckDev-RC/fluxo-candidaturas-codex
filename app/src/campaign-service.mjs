@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { acquireFluxoLock, wrapMutations } from './lock.mjs';
 
-export function createCampaignService({ rootDir }) {
-  return {
+export function createCampaignService({ rootDir, mutationLock = true, lock = () => acquireFluxoLock(rootDir) }) {
+  const service = {
     async getCampaign() {
       return readJson(join(rootDir, 'campanha', 'config.json'), { platforms: [] });
     },
@@ -39,6 +40,7 @@ export function createCampaignService({ rootDir }) {
       return next;
     }
   };
+  return wrapMutations(service, ['updateCampaign'], { rootDir, mutationLock, lock });
 }
 
 async function readJson(path, fallback) {
@@ -52,6 +54,7 @@ async function readJson(path, fallback) {
 
 async function writeJsonAtomic(path, value) {
   await mkdir(join(path, '..'), { recursive: true });
+  await copyFile(path, `${path}.bak`).catch((error) => { if (error?.code !== 'ENOENT') throw error; });
   const temporaryPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
   await writeFile(temporaryPath, JSON.stringify(value, null, 2), 'utf8');
   await rename(temporaryPath, path);

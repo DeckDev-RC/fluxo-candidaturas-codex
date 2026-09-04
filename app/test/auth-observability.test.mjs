@@ -29,6 +29,6 @@ test('auth session endpoint documents the local authentication boundary', async 
   const root = await mkdtemp(join(tmpdir(), 'fluxo-auth-api-')); await mkdir(join(root, 'estado'), { recursive: true });
   const server = createServer({ rootDir: root });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  try { const response = await fetch(`http://127.0.0.1:${server.address().port}/api/v1/auth/session`); assert.deepEqual(await response.json(), { authenticated: true, mode: 'loopback' }); }
+  try { const response = await fetch(`http://127.0.0.1:${server.address().port}/api/v1/auth/session`); const session = await response.json(); assert.equal(session.authenticated, true); assert.equal(session.mode, 'loopback'); assert.match(session.csrfToken, /^[0-9a-f]{64}$/); }
   finally { await new Promise((resolve) => server.close(resolve)); }
 });

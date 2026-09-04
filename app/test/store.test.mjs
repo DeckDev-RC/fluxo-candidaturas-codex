@@ -40,6 +40,19 @@ test('store reports a changed operational JSON on the next sync', async () => {
   }
 });
 
+test('store persists operation lifecycle and aggregate blocking', async () => {
+  const { root, dbPath } = await createFixture();
+  const store = createStore({ rootDir: root, dbPath });
+  try {
+    const operation = store.startOperation({ kind: 'queue.add', aggregateType: 'queue', aggregateId: 'q1', beforeHash: 'old' });
+    assert.equal(store.getOperation(operation.id).status, 'pending');
+    store.updateOperation(operation.id, { status: 'running' });
+    store.updateOperation(operation.id, { status: 'needs_reconcile', blocked: true });
+    assert.equal(store.isAggregateBlocked('queue', 'q1'), true);
+    assert.equal(store.listOperations()[0].status, 'needs_reconcile');
+  } finally { store.close(); }
+});
+
 async function createFixture() {
   const root = await mkdtemp(join(tmpdir(), 'fluxo-harness-store-'));
   const dbPath = join(root, 'harness.sqlite');

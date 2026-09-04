@@ -31,6 +31,17 @@ test('approval API creates, lists and decides a submission approval', async () =
   }
 });
 
+test('approval API previews a changed action before decision', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'fluxo-harness-approval-preview-api-')); await mkdir(join(root, 'estado'), { recursive: true });
+  const server = createServer({ rootDir: root }); const address = await listen(server);
+  try {
+    const run = await fetchJson(address, '/api/v1/runs', 'POST', { kind: 'application' });
+    const approval = await fetchJson(address, '/api/v1/approvals', 'POST', { runId: run.id, kind: 'submission', payload: { role: 'Dev' } });
+    const preview = await fetchJson(address, `/api/v1/approvals/${approval.id}/preview`, 'POST', { role: 'Senior' });
+    assert.equal(preview.valid, false); assert.equal(preview.diff[0].field, 'payload');
+  } finally { await close(server); }
+});
+
 async function fetchJson(address, path, method = 'GET', body) {
   const response = await fetch(`http://127.0.0.1:${address.port}${path}`, {
     method,

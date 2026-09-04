@@ -1,9 +1,10 @@
 import { access, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { runAllowedScript } from './script-adapter.mjs';
+import { acquireFluxoLock, wrapMutations } from './lock.mjs';
 
-export function createMessageService({ rootDir = '', scriptRunner = (name, args) => runAllowedScript(name, args, { rootDir }) }) {
-  return {
+export function createMessageService({ rootDir = '', scriptRunner = (name, args) => runAllowedScript(name, args, { rootDir }), mutationLock = true, lock = () => acquireFluxoLock(rootDir) }) {
+  const service = {
     async createDraft({ company, role, recruiterName = '', highlights = [], callToAction = '' }) {
       if (!String(company ?? '').trim() || !String(role ?? '').trim()) throw domainError('invalid_message', 'Empresa e vaga são obrigatórias.');
       const args = ['-Company', String(company), '-Role', String(role)];
@@ -25,6 +26,7 @@ export function createMessageService({ rootDir = '', scriptRunner = (name, args)
       return { text: output, path: '' };
     }
   };
+  return wrapMutations(service, ['createDraft'], { rootDir, mutationLock, lock });
 }
 
 function domainError(code, message) {

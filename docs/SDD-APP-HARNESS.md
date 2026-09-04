@@ -339,6 +339,8 @@ Toda resposta de mutação deve conter `request_id`, `event_ids` e estado atual.
 
 O endpoint `POST /sync/reconcile` deve comparar os hashes e estados dos arquivos com a projeção SQLite, registrar divergências e nunca sobrescrever o JSON automaticamente.
 
+Implementação do App Harness: o runtime local expõe onboarding, busca/adição/claim de fila, aderência, questionários, evidências, importação legada, acompanhamento, aprovações detalhadas, runs com thread/turn do App Server, SSE em `/api/v1/runs/:id/events?stream=1`, métricas e operações persistidas em `/api/v1/operations`. O servidor de produção é iniciado apenas em loopback, exige cookie de sessão e CSRF, aplica CSP e serializa mutações com lock e backup/hash do alvo.
+
 Saídas brutas de processos são somente transitórias. O harness persiste apenas `result_json` e `safe_output` depois da sanitização; se não for possível remover um segredo com segurança, descarta a saída e registra apenas código e categoria do erro.
 
 ## 8. Ferramentas expostas ao agente

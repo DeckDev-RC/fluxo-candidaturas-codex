@@ -30,6 +30,31 @@ test('onboarding service writes profile and campaign without credentials', async
   assert.equal(profile.includes('PASSWORD'), false);
 });
 
+test('onboarding persists campaign period, exclusions and selection filters', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'fluxo-harness-onboarding-filters-'));
+  await mkdir(join(root, 'config'), { recursive: true });
+  await writeFile(join(root, 'config', 'plataformas.json'), JSON.stringify({ platforms: [{ name: 'GUPY' }] }));
+  const input = validInput();
+  input.campaign = { ...input.campaign, periodStart: '2026-09-01', periodEnd: '2026-09-30', exclusions: ['estágio'], filters: { roles: ['backend'], seniority: ['pleno'] } };
+  await createOnboardingService({ rootDir: root }).saveOnboarding(input);
+  const campaign = JSON.parse(await readFile(join(root, 'campanha', 'config.json'), 'utf8'));
+  assert.equal(campaign.periodStart, '2026-09-01');
+  assert.deepEqual(campaign.exclusions, ['estágio']);
+  assert.deepEqual(campaign.filters.roles, ['backend']);
+});
+
+test('onboarding protects direct profile writes with its mutation lock', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'fluxo-harness-onboarding-lock-')); await mkdir(join(root, 'config'), { recursive: true }); await writeFile(join(root, 'config', 'plataformas.json'), JSON.stringify({ platforms: [{ name: 'GUPY' }] })); let acquired = 0;
+  await createOnboardingService({ rootDir: root, lock: async () => { acquired += 1; return async () => {}; } }).saveOnboarding(validInput());
+  assert.equal(acquired, 1);
+});
+
+test('onboarding keeps a backup before replacing the private profile', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'fluxo-harness-onboarding-backup-')); await mkdir(join(root, 'config'), { recursive: true }); await writeFile(join(root, 'config', 'plataformas.json'), JSON.stringify({ platforms: [{ name: 'GUPY' }] })); const service = createOnboardingService({ rootDir: root });
+  await service.saveOnboarding(validInput()); await service.saveOnboarding({ ...validInput(), name: 'Outro' });
+  await (await import('node:fs/promises')).access(join(root, 'perfil', 'candidato.md.bak'));
+});
+
 function validInput() {
   return {
     name: 'Pessoa Teste', email: 'pessoa@example.test', phone: '11900000000', location: 'Goiânia/GO',

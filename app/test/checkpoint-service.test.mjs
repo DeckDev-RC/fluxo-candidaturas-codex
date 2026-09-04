@@ -1,4 +1,4 @@
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -9,7 +9,9 @@ test('checkpoint service persists and clears resumable state atomically', async 
   const root = await mkdtemp(join(tmpdir(), 'fluxo-checkpoint-'));
   const service = createCheckpointService({ rootDir: root });
   const saved = await service.save({ phase: 'fila', platform: 'GUPY', applicationKey: 'x' });
+  await service.save({ phase: 'next', platform: 'GUPY' });
   assert.equal(saved.phase, 'fila');
   assert.equal(JSON.parse(await readFile(join(root, 'estado', 'checkpoint.json'), 'utf8')).platform, 'GUPY');
+  await access(join(root, 'estado', 'checkpoint.json.bak'));
   assert.deepEqual(await service.clear(), { cleared: true });
 });

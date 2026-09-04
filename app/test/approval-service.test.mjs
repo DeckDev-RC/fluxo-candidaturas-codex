@@ -47,3 +47,15 @@ test('approval service rejects changed payload and expired approval', async () =
     service.close();
   }
 });
+
+test('approval service previews payload validity and exposes a diff', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'fluxo-approval-preview-'));
+  const service = createApprovalService({ dbPath: join(root, 'approval.sqlite') });
+  try {
+    const approval = service.requestApproval({ runId: 'run-1', kind: 'submission', payload: { role: 'Dev', resume: 'curriculo/a.txt' } });
+    const preview = service.preview(approval.id, { role: 'Changed', resume: 'curriculo/a.txt' });
+    assert.equal(preview.valid, false);
+    assert.equal(preview.diff[0].field, 'payload');
+    assert.equal(preview.expectedHash.length, 64);
+  } finally { service.close(); }
+});

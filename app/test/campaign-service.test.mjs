@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -14,6 +14,7 @@ test('campaign service reads and updates goals without credentials', async () =>
 
   assert.equal(updated.totalGoal, 3);
   assert.equal(saved.platforms[0].goal, 3);
+  await access(join(root, 'campanha', 'config.json.bak'));
   assert.equal(JSON.stringify(updated).includes('private-password'), false);
 });
 
@@ -23,6 +24,13 @@ test('campaign service rejects negative goals and unknown platforms', async () =
 
   await assert.rejects(() => service.updateCampaign({ totalGoal: -1 }), (error) => error.code === 'invalid_campaign');
   await assert.rejects(() => service.updateCampaign({ platforms: [{ name: 'UNKNOWN', enabled: true, goal: 1 }] }), (error) => error.code === 'invalid_platform');
+});
+
+test('campaign service protects direct updates with its mutation lock', async () => {
+  const root = await fixtureRoot(); let acquired = 0;
+  const service = createCampaignService({ rootDir: root, lock: async () => { acquired += 1; return async () => {}; } });
+  await service.updateCampaign({ totalGoal: 4 });
+  assert.equal(acquired, 1);
 });
 
 async function fixtureRoot() {

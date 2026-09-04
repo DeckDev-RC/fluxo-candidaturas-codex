@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { acquireFluxoLock, wrapMutations } from './lock.mjs';
 
 const REQUIRED_FIELDS = [
   'name', 'email', 'phone', 'location', 'targetRoles', 'seniority', 'technicalFocus', 'workModes',
@@ -20,8 +21,8 @@ export function validateOnboarding(input = {}) {
   return { valid: missing.length === 0, missing, errors: [] };
 }
 
-export function createOnboardingService({ rootDir }) {
-  return {
+export function createOnboardingService({ rootDir, mutationLock = true, lock = () => acquireFluxoLock(rootDir) }) {
+  const service = {
     async saveOnboarding(input) {
       const validation = validateOnboarding(input);
       if (!validation.valid) throw domainError('invalid_onboarding', `Campos ausentes: ${validation.missing.join(', ')}`);
@@ -36,13 +37,16 @@ export function createOnboardingService({ rootDir }) {
       await mkdir(join(rootDir, 'campanha'), { recursive: true });
       await mkdir(join(rootDir, 'candidaturas'), { recursive: true });
       await mkdir(join(rootDir, 'fila'), { recursive: true });
-      await writeFile(join(rootDir, 'perfil', 'candidato.md'), renderProfile(input), 'utf8');
+      const profilePath = join(rootDir, 'perfil', 'candidato.md');
+      await copyFile(profilePath, `${profilePath}.bak`).catch((error) => { if (error?.code !== 'ENOENT') throw error; });
+      await writeFile(profilePath, renderProfile(input), 'utf8');
       await writeJsonAtomic(join(rootDir, 'campanha', 'config.json'), normalizeCampaign(input.campaign));
       await ensureJson(join(rootDir, 'candidaturas', 'candidaturas.json'), []);
       await ensureJson(join(rootDir, 'fila', 'vagas.json'), []);
       return { ready: true, profilePath: 'perfil/candidato.md', campaignPath: 'campanha/config.json' };
     }
   };
+  return wrapMutations(service, ['saveOnboarding'], { rootDir, mutationLock, lock });
 }
 
 function renderProfile(input) {
@@ -55,6 +59,7 @@ function normalizeCampaign(campaign) {
     name: campaign.name || 'Campanha do onboarding', createdAt: new Date().toISOString(),
     totalGoal: Number(campaign.totalGoal), dailyGoal: Number(campaign.dailyGoal), weeklyGoal: Number(campaign.weeklyGoal),
     deadline: campaign.deadline || '', maxConsecutiveFailures: Number(campaign.maxConsecutiveFailures || 3),
+    periodStart: campaign.periodStart || '', periodEnd: campaign.periodEnd || '', exclusions: asArray(campaign.exclusions).map(String), filters: campaign.filters && typeof campaign.filters === 'object' ? campaign.filters : {},
     platforms: campaign.platforms.map((platform) => ({ name: platform.name, enabled: platform.enabled === true, goal: Number(platform.goal) }))
   };
 }

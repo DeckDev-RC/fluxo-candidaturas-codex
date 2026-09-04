@@ -65,6 +65,12 @@ test('recordQueueFailure requeues until maximum and then blocks item', async () 
   assert.equal(second.attempts, 2);
 });
 
+test('queue search filters local jobs by platform, text and fit score', async () => {
+  const root = await createQueueFixture({ campaign: { platforms: [{ name: 'GUPY', enabled: true, goal: 1 }] }, queue: [{ id: 'q1', key: 'q1', platform: 'GUPY', company: 'Acme', role: 'Backend', fitScore: 80, status: 'na fila' }, { id: 'q2', key: 'q2', platform: 'GUPY', company: 'Other', role: 'Design', fitScore: 30, status: 'na fila' }], applications: [] });
+  const result = await createQueueService({ rootDir: root }).search({ query: 'backend', minFit: 70 });
+  assert.deepEqual(result.map((item) => item.id), ['q1']);
+});
+
 async function createQueueFixture({ campaign, queue, applications }) {
   const root = await mkdtemp(join(tmpdir(), 'fluxo-harness-queue-'));
   for (const directory of ['estado', 'campanha', 'fila', 'candidaturas']) await mkdir(join(root, directory), { recursive: true });

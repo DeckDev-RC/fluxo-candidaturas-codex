@@ -17,6 +17,12 @@ test('createShareableExport runs the sanitized Fluxo distribution flow', async (
   assert.equal(result.stdout.includes('candidate-secret.pdf'), false);
 });
 
+test('shareable export accepts a direct mutation lock', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'fluxo-harness-export-lock-')); await mkdir(join(root, 'scripts'), { recursive: true }); let acquired = 0;
+  await assert.rejects(() => createShareableExport({ rootDir: root, lock: async () => { acquired += 1; return async () => {}; } }), () => true);
+  assert.equal(acquired, 1);
+});
+
 async function createDistributionFixture(root) {
   for (const directory of ['config', 'docs', 'templates', 'scripts', 'perfil', 'curriculo', 'candidaturas', 'campanha', 'fila', 'estado', 'evidencias', 'mensagens', 'dist']) {
     await mkdir(join(root, directory), { recursive: true });

@@ -19,7 +19,7 @@ npm start
 
 Abra `http://127.0.0.1:4173`.
 
-O dashboard inicia em modo somente leitura. O onboarding, preflight, claim, exportação, aprovação e execução de navegador são ações separadas e sujeitas às políticas do Fluxo. O servidor aceita somente conexões loopback, atribui `x-request-id` e mantém as mutações serializadas por `estado/harness.lock`.
+O dashboard inicia em modo somente leitura. O onboarding, preflight, claim, exportação, aprovação e execução de navegador são ações separadas e sujeitas às políticas do Fluxo. O runtime exige sessão local com cookie e CSRF, aceita somente conexões loopback, aplica CSP, atribui `x-request-id` e mantém mutações serializadas por `estado/harness.lock`.
 
 ## API local
 
@@ -27,8 +27,10 @@ O dashboard inicia em modo somente leitura. O onboarding, preflight, claim, expo
 - `GET /api/v1/state`;
 - `GET /api/v1/campaign`;
 - `GET /api/v1/queue`;
+- `GET /api/v1/queue/search`;
 - `GET /api/v1/applications`;
 - `GET /api/v1/approvals`;
+- `GET /api/v1/operations`;
 - `GET /api/v1/auth/session`, `GET /api/v1/observability`, `GET /api/v1/metrics`;
 - `GET /api/v1/pending`, `GET /api/v1/assessments`;
 - `GET /api/v1/runs/:id/events`;
@@ -43,5 +45,7 @@ O dashboard inicia em modo somente leitura. O onboarding, preflight, claim, expo
 - `POST /api/v1/queue/:id/claim`;
 - `POST /api/v1/applications/prepare`;
 - `POST /api/v1/exports/shareable`.
+
+Rotas mutáveis retornam envelope compatível com o SDD (`request_id`, `event_ids`, `state` e `data`). O endpoint de eventos aceita `?stream=1` para SSE; o App Server usa transporte JSONL local e nunca recebe shell genérico.
 
 O servidor escuta somente em `127.0.0.1`. Testes usam fixtures e não acessam plataformas reais.

@@ -29,3 +29,13 @@ export async function acquireFluxoLock(rootDir) {
     });
   };
 }
+
+export function wrapMutations(service, names, { rootDir, mutationLock = true, lock = () => acquireFluxoLock(rootDir) } = {}) {
+  if (!mutationLock || !rootDir) { service.handlesMutationLock = false; return service; }
+  for (const name of names) {
+    const operation = service[name];
+    service[name] = async (...args) => { const release = await lock(); try { return await operation.apply(service, args); } finally { await release(); } };
+  }
+  service.handlesMutationLock = true;
+  return service;
+}

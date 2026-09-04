@@ -63,6 +63,11 @@
             <label>Meta diária<input name="dailyGoal" type="number" min="0" value="0" required /></label>
             <label>Meta semanal<input name="weeklyGoal" type="number" min="0" value="0" required /></label>
             <label>Plataformas habilitadas<input name="platforms" placeholder="GUPY, INFOJOBS" required /></label>
+            <label>Início do período<input id="onboarding-period-start" name="periodStart" type="date" /></label>
+            <label>Fim do período<input name="periodEnd" type="date" /></label>
+            <label>Exclusões<input id="onboarding-exclusions" name="exclusions" placeholder="estágio, empresa" /></label>
+            <label>Cargos filtrados<input name="rolesFilter" placeholder="backend, engenharia" /></label>
+            <label>Senioridades filtradas<input name="seniorityFilter" placeholder="pleno, sênior" /></label>
           </div></fieldset>
           <div class="form-actions"><button class="primary-button" type="submit">Salvar configuração local</button><span id="onboarding-feedback" class="muted" role="status"></span></div>
         </form>
@@ -77,11 +82,14 @@
       <div class="content-grid">
         <section class="data-section" aria-labelledby="queue-title">
           <div class="section-heading inline"><div><p class="eyebrow">prioridade e aderência</p><h2 id="queue-title">Fila</h2></div><span class="count" id="queue-count">0 vagas</span></div>
+          <form id="queue-search" class="inline-form"><input name="query" placeholder="Pesquisar empresa, cargo ou ID" aria-label="Pesquisar fila" /><button class="inline-action" type="submit">Pesquisar</button></form>
+          <form id="queue-add" class="inline-form"><input name="platform" placeholder="GUPY" aria-label="Plataforma" required /><input name="company" placeholder="Empresa" aria-label="Empresa" required /><input name="role" placeholder="Cargo" aria-label="Cargo" required /><input name="identifierOrUrl" placeholder="ID ou URL" aria-label="ID ou URL" required /><button class="inline-action" type="submit">Adicionar vaga</button></form>
           <div class="data-list" id="queue-list"></div>
         </section>
 
         <section class="data-section" aria-labelledby="applications-title">
           <div class="section-heading inline"><div><p class="eyebrow">histórico confirmado</p><h2 id="applications-title">Candidaturas</h2></div><span class="count" id="application-count">0 registros</span></div>
+          <form id="application-tools" class="inline-form"><input name="platform" placeholder="Plataforma (opcional)" aria-label="Plataforma para preparar" /><button class="inline-action" data-application-action="prepare" type="button">Preparar próxima</button><button class="inline-action" data-application-action="approve" type="button" disabled>Solicitar aprovação</button><button class="inline-action" data-application-action="submit" type="button" disabled>Confirmar envio</button><span id="application-feedback" class="muted" role="status"></span></form>
           <div class="data-list" id="applications-list"></div>
         </section>
       </div>
@@ -105,6 +113,20 @@
           <div class="form-actions"><button class="inline-action" data-operation="extract" type="button">Extrair currículo</button><button class="inline-action" data-operation="fit" type="submit">Calcular aderência</button><button class="inline-action" data-operation="select" type="button">Selecionar currículo</button><span id="resume-feedback" class="muted" role="status"></span></div>
         </form>
         <div class="operations-grid"><div><p class="eyebrow">métricas</p><div id="metrics-detail" class="compact-list"></div></div><div><p class="eyebrow">pendências</p><div id="pending-list" class="compact-list"></div></div><div><p class="eyebrow">testes e questionários</p><div id="assessment-list" class="compact-list"></div></div></div>
+        <form id="assessment-prep-form" class="inline-form"><input name="name" placeholder="Nome do questionário" aria-label="Nome do questionário" required /><input name="durationSeconds" type="number" min="0" placeholder="Duração (s)" aria-label="Duração" /><textarea name="questionsJson" placeholder='[{"prompt":"Pergunta"}]' aria-label="Perguntas" required></textarea><button class="inline-action" type="submit">Preparar questionário</button><span id="assessment-timer" class="muted" role="timer">Sem cronômetro</span><button id="assessment-pause" class="inline-action" type="button" disabled>Pausar</button></form>
+        <form id="assessment-result-form" class="inline-form"><input name="reference" placeholder="ID da candidatura" aria-label="ID da candidatura" required /><input name="testName" placeholder="Nome do teste" aria-label="Nome do teste" required /><input name="score" placeholder="Pontuação" aria-label="Pontuação" /><input name="total" placeholder="Total" aria-label="Total" /><button class="inline-action" type="submit">Registrar resultado</button><span id="assessment-feedback" class="muted" role="status"></span></form>
+      </section>
+
+      <section class="stream-section" aria-labelledby="stream-title">
+        <div class="section-heading"><p class="eyebrow">execução ao vivo</p><h2 id="stream-title">Progresso do run</h2></div>
+        <div class="form-actions"><label>Run ID<input id="run-stream-id" placeholder="cole o identificador da execução" /></label><button id="connect-run-stream" class="inline-action" type="button">Conectar streaming</button><span id="stream-feedback" class="muted" role="status"></span></div>
+        <pre id="run-events" class="run-events" aria-live="polite">Nenhum evento conectado.</pre>
+      </section>
+
+      <section class="follow-up-section" aria-labelledby="follow-up-title">
+        <div class="section-heading"><p class="eyebrow">registro manual</p><h2 id="follow-up-title">Acompanhamento e importação</h2></div>
+        <form id="follow-up-form" class="inline-form"><input name="reference" placeholder="ID da candidatura" aria-label="Referência" required /><select name="type" aria-label="Tipo"><option>status</option><option>entrevista</option><option>teste</option><option>mensagem</option><option>observação</option></select><input name="note" placeholder="Nota ou próxima ação" aria-label="Nota" /><button class="inline-action" type="submit">Registrar evento</button></form>
+        <form id="legacy-import-form" class="inline-form"><input name="directory" placeholder="Diretório de controles legados" aria-label="Diretório legado" required /><button class="inline-action" type="submit">Importar controles</button><span id="follow-up-feedback" class="muted" role="status"></span></form>
       </section>
     </main>
 

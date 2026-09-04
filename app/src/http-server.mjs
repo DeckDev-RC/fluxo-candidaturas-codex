@@ -1,6 +1,7 @@
 import { createServer as createHttpServer } from 'node:http';
 import { mkdirSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import { copyFileSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readFluxoState } from './state-reader.mjs';
 import { createQueueService } from './queue-service.mjs';
@@ -25,7 +26,8 @@ import { createMetricsService } from './metrics-service.mjs';
 import { acquireFluxoLock } from './lock.mjs';
 import { isLocalRequest } from './local-auth.mjs';
 import { createObservability } from './observability.mjs';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { createSessionAuth } from './session-auth.mjs';
 
 const PUBLIC_DIR = new URL('../public/', import.meta.url);
 const STATIC_FILES = new Map([
@@ -41,7 +43,7 @@ const JSON_HEADERS = {
   'cache-control': 'no-store'
 };
 
-export function createServer({ rootDir, queueService = createQueueService({ rootDir }), exportService = { createShareableExport: () => createShareableExport({ rootDir }) }, preflightService, followUpService: injectedFollowUpService, messageService: injectedMessageService, onboardingService: injectedOnboardingService, resumeService: injectedResumeService, evidenceService: injectedEvidenceService, assessmentService: injectedAssessmentService, legacyImportService: injectedLegacyImportService, pendingService: injectedPendingService, checkpointService: injectedCheckpointService, metricsService: injectedMetricsService, agentAdapter, observability = createObservability(), stateStore, applicationFlow, runService: injectedRunService, approvalService: injectedApprovalService }) {
+export function createServer({ rootDir, queueService = createQueueService({ rootDir }), exportService = { createShareableExport: () => createShareableExport({ rootDir, mutationLock: false }) }, preflightService, followUpService: injectedFollowUpService, messageService: injectedMessageService, onboardingService: injectedOnboardingService, resumeService: injectedResumeService, evidenceService: injectedEvidenceService, assessmentService: injectedAssessmentService, legacyImportService: injectedLegacyImportService, pendingService: injectedPendingService, checkpointService: injectedCheckpointService, metricsService: injectedMetricsService, agentAdapter, observability = createObservability(), requireSession = false, stateStore, applicationFlow, runService: injectedRunService, approvalService: injectedApprovalService }) {
   mkdirSync(join(rootDir, 'estado'), { recursive: true });
   const runService = injectedRunService ?? createRunService({ dbPath: join(rootDir, 'estado', 'harness.sqlite') });
   const approvalService = injectedApprovalService ?? createApprovalService({ dbPath: join(rootDir, 'estado', 'harness.sqlite') });
@@ -62,15 +64,24 @@ export function createServer({ rootDir, queueService = createQueueService({ root
   const ownsApprovalService = !injectedApprovalService;
   const ownsStateStore = !stateStore;
   const preparedApplications = new Map();
+  const sessionAuth = createSessionAuth({ required: requireSession });
   const server = createHttpServer(async (request, response) => {
     const path = new URL(request.url ?? '/', 'http://127.0.0.1').pathname;
     const requestId = randomUUID();
     const startedAt = Date.now();
     response.setHeader('x-request-id', requestId);
+    response.setHeader('content-security-policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'self'; frame-ancestors 'none'");
+    response.setHeader('x-content-type-options', 'nosniff');
     response.once('finish', () => observability.record({ method: request.method, path, status: response.statusCode, durationMs: Date.now() - startedAt }));
     if (!isLocalRequest(request)) { sendJson(response, 403, { error: { code: 'local_auth_required', message: 'Apenas conexões locais são permitidas.' } }); return; }
+    const isPublicBootstrap = path === '/health' || path === '/' || path === '/api/v1/auth/session';
+    const authorization = sessionAuth.authorize(request, { mutation: !['GET', 'HEAD', 'OPTIONS'].includes(request.method) });
+    if (!isPublicBootstrap && !authorization.ok) { sendJson(response, authorization.status, { error: { code: authorization.code, message: authorization.message, retryable: false, actionRequired: 'authenticate', request_id: requestId } }); return; }
     let releaseMutation;
-    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method)) {
+    const isMutation = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method);
+    const queueMutationHandled = path.startsWith('/api/v1/queue/') && queueService.handlesMutationLock;
+    const serviceMutationHandled = queueMutationHandled || path === '/api/v1/campaign' && campaignService.handlesMutationLock || path === '/api/v1/onboarding' && onboardingService.handlesMutationLock || path === '/api/v1/state/checkpoint' && checkpointService.handlesMutationLock || path === '/api/v1/evidence' && evidenceService.handlesMutationLock || path.startsWith('/api/v1/assessments') && assessmentService.handlesMutationLock || path === '/api/v1/imports/legacy' && legacyImportService.handlesMutationLock || /^\/api\/v1\/applications\/[^/]+\/events$/.test(path) && followUpService.handlesMutationLock || path === '/api/v1/messages/draft' && messageService.handlesMutationLock;
+    if (isMutation && !serviceMutationHandled) {
       try {
         releaseMutation = await acquireFluxoLock(rootDir);
         let released = false;
@@ -80,6 +91,25 @@ export function createServer({ rootDir, queueService = createQueueService({ root
       } catch (error) {
         sendDomainError(response, error);
         return;
+      }
+    }
+    if (isMutation) {
+      response.__mutationEnvelope = true;
+      if (effectiveStateStore.isAggregateBlocked?.('http', path)) {
+        sendDomainError(response, Object.assign(new Error('A mutação aguarda reconciliação.'), { code: 'aggregate_blocked' }));
+        return;
+      }
+      if (effectiveStateStore.startOperation && effectiveStateStore.updateOperation) {
+        const targets = mutationTargets(rootDir, path);
+        for (const target of targets) if (existsSync(target)) copyFileSync(target, `${target}.bak`);
+        const operation = effectiveStateStore.startOperation({ kind: `${request.method} ${path}`, aggregateType: 'http', aggregateId: path, input: {}, beforeHash: hashTargets(targets) });
+        effectiveStateStore.updateOperation(operation.id, { status: 'running' });
+        response.once('finish', () => effectiveStateStore.updateOperation(operation.id, {
+          status: response.statusCode >= 500 ? 'needs_reconcile' : response.statusCode >= 400 ? 'failed' : 'succeeded',
+          afterHash: hashTargets(targets),
+          blocked: response.statusCode >= 500,
+          finishedAt: new Date().toISOString()
+        }));
       }
     }
 
@@ -92,8 +122,12 @@ export function createServer({ rootDir, queueService = createQueueService({ root
       sendJson(response, 200, observability.snapshot());
       return;
     }
+    if (request.method === 'GET' && path === '/api/v1/operations') {
+      sendJson(response, 200, effectiveStateStore.listOperations ? effectiveStateStore.listOperations() : []);
+      return;
+    }
     if (request.method === 'GET' && path === '/api/v1/auth/session') {
-      sendJson(response, 200, { authenticated: true, mode: 'loopback' });
+      sendJson(response, 200, sessionAuth.bootstrap(response));
       return;
     }
 
@@ -201,6 +235,10 @@ export function createServer({ rootDir, queueService = createQueueService({ root
       }
       return;
     }
+    if (request.method === 'GET' && path === '/api/v1/queue/search') {
+      try { sendJson(response, 200, await queueService.search(Object.fromEntries(new URL(request.url ?? '/', 'http://127.0.0.1').searchParams))); } catch (error) { sendDomainError(response, error); }
+      return;
+    }
 
     if (request.method === 'GET' && path === '/api/v1/campaign') {
       sendJson(response, 200, await campaignService.getCampaign());
@@ -264,6 +302,7 @@ export function createServer({ rootDir, queueService = createQueueService({ root
         const runId = decodeURIComponent(agentThreadMatch[1]);
         if (!runService.getRun(runId)) throw domainError('run_not_found', 'Execução não encontrada.');
         const result = await agentAdapter.startThread(await readJsonBody(request));
+        if (runService.setAgentThread && result?.thread?.id) runService.setAgentThread(runId, result.thread.id);
         const event = runService.appendEvent({ runId, type: 'agent.thread.started', payload: result });
         sendJson(response, 201, { ...result, event });
       } catch (error) { sendDomainError(response, error); }
@@ -276,6 +315,7 @@ export function createServer({ rootDir, queueService = createQueueService({ root
         if (!runService.getRun(runId)) throw domainError('run_not_found', 'Execução não encontrada.');
         const input = await readJsonBody(request);
         const result = await (agentAdapter.runTurnForRun ? agentAdapter.runTurnForRun(runId, String(input.threadId ?? ''), String(input.text ?? '')) : agentAdapter.runTurn(String(input.threadId ?? ''), String(input.text ?? '')));
+        if (runService.setCurrentTurn && result?.turn?.id) runService.setCurrentTurn(runId, result.turn.id);
         const event = runService.appendEvent({ runId, type: 'agent.turn.completed', payload: result });
         sendJson(response, 200, { result, event });
       } catch (error) { sendDomainError(response, error); }
@@ -308,7 +348,9 @@ export function createServer({ rootDir, queueService = createQueueService({ root
         return;
       }
       try {
-        const prepared = await applicationFlow.prepareNext(await readJsonBody(request));
+        const input = await readJsonBody(request);
+        if (!input.checkpoint) input.checkpoint = (await readFluxoState(rootDir)).checkpoint;
+        const prepared = await applicationFlow.prepareNext(input);
         preparedApplications.set(prepared.run.id, prepared);
         sendJson(response, 201, prepared);
       } catch (error) {
@@ -384,6 +426,12 @@ export function createServer({ rootDir, queueService = createQueueService({ root
       return;
     }
 
+    const approvalPreviewMatch = path.match(/^\/api\/v1\/approvals\/([^/]+)\/preview$/);
+    if (request.method === 'POST' && approvalPreviewMatch) {
+      try { sendJson(response, 200, approvalService.preview(decodeURIComponent(approvalPreviewMatch[1]), await readJsonBody(request))); } catch (error) { sendDomainError(response, error); }
+      return;
+    }
+
     const runActionMatch = path.match(/^\/api\/v1\/runs\/([^/]+)\/(interrupt|resume)$/);
     if (request.method === 'POST' && runActionMatch) {
       try {
@@ -435,9 +483,9 @@ export function createServer({ rootDir, queueService = createQueueService({ root
       return;
     }
 
-    const knownPath = path === '/health' || path === '/api/v1/state' || path === '/api/v1/state/preflight' || path === '/api/v1/state/checkpoint' || path === '/api/v1/profile' || path === '/api/v1/onboarding' || path === '/api/v1/resumes/extract' || path === '/api/v1/resumes/select' || path === '/api/v1/jobs/fit' || path === '/api/v1/evidence' || path === '/api/v1/assessments' || path === '/api/v1/assessments/prepare' || path === '/api/v1/imports/legacy' || path === '/api/v1/pending' || path === '/api/v1/metrics' || path === '/api/v1/runtime-config' || path === '/api/v1/applications' || path === '/api/v1/preflight/run' || path === '/api/v1/messages/draft' || path === '/api/v1/queue'
+    const knownPath = path === '/health' || path === '/api/v1/state' || path === '/api/v1/state/preflight' || path === '/api/v1/state/checkpoint' || path === '/api/v1/profile' || path === '/api/v1/onboarding' || path === '/api/v1/resumes/extract' || path === '/api/v1/resumes/select' || path === '/api/v1/jobs/fit' || path === '/api/v1/evidence' || path === '/api/v1/assessments' || path === '/api/v1/assessments/prepare' || path === '/api/v1/imports/legacy' || path === '/api/v1/pending' || path === '/api/v1/metrics' || path === '/api/v1/runtime-config' || path === '/api/v1/applications' || path === '/api/v1/preflight/run' || path === '/api/v1/messages/draft' || path === '/api/v1/queue' || path === '/api/v1/queue/search'
       || path === '/api/v1/queue/items' || path === '/api/v1/runs' || path === '/api/v1/approvals' || path === '/api/v1/exports/shareable' || path === '/api/v1/sync/reconcile' || path === '/api/v1/applications/prepare'
-      || path === '/api/v1/campaign' || path === '/api/v1/platforms' || path === '/api/v1/observability' || path === '/api/v1/auth/session' || Boolean(claimMatch) || Boolean(failureMatch) || Boolean(runMatch) || Boolean(runActionMatch) || Boolean(runEventsMatch) || Boolean(approvalMatch) || Boolean(applicationEventMatch) || Boolean(applicationRunMatch) || Boolean(agentTurnMatch) || Boolean(agentThreadMatch);
+      || path === '/api/v1/campaign' || path === '/api/v1/platforms' || path === '/api/v1/observability' || path === '/api/v1/operations' || path === '/api/v1/auth/session' || Boolean(claimMatch) || Boolean(failureMatch) || Boolean(runMatch) || Boolean(runActionMatch) || Boolean(runEventsMatch) || Boolean(approvalMatch) || Boolean(approvalPreviewMatch) || Boolean(applicationEventMatch) || Boolean(applicationRunMatch) || Boolean(agentTurnMatch) || Boolean(agentThreadMatch);
     if (knownPath) {
       sendJson(response, 405, { error: { code: 'method_not_allowed', message: 'Método não permitido.' } });
       return;
@@ -451,6 +499,7 @@ export function createServer({ rootDir, queueService = createQueueService({ root
     const staticFile = STATIC_FILES.get(path);
     if (request.method === 'GET' && staticFile) {
       try {
+        if (path === '/') sessionAuth.bootstrap(response);
         const body = await readFile(new URL(staticFile[0], PUBLIC_DIR));
         response.writeHead(200, {
           'content-type': staticFile[1],
@@ -477,14 +526,17 @@ export function createServer({ rootDir, queueService = createQueueService({ root
 
 function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, JSON_HEADERS);
-  response.end(JSON.stringify(payload));
+  const body = response.__mutationEnvelope && statusCode < 400 && payload && typeof payload === 'object' && !Array.isArray(payload)
+    ? { ...payload, request_id: response.getHeader('x-request-id'), event_ids: payload.event_ids ?? [], state: payload.state ?? payload, data: payload }
+    : payload;
+  response.end(JSON.stringify(body));
 }
 
 function sendDomainError(response, error) {
   const statusCode = error?.code === 'queue_item_not_found' || error?.code === 'run_not_found' || error?.code === 'approval_not_found' ? 404
-    : error?.code === 'fluxo_locked' || error?.code?.startsWith('queue_') || error?.code?.startsWith('approval_') || error?.code === 'run_not_resumable' ? 409 : 400;
+    : error?.code === 'fluxo_locked' || error?.code === 'aggregate_blocked' || error?.code?.startsWith('queue_') || error?.code?.startsWith('approval_') || error?.code === 'run_not_resumable' ? 409 : 400;
   sendJson(response, statusCode, {
-    error: { code: error?.code ?? 'request_failed', message: error?.message ?? 'Não foi possível concluir a operação.' }
+    error: { code: error?.code ?? 'request_failed', message: error?.message ?? 'Não foi possível concluir a operação.', retryable: statusCode >= 500 || error?.code === 'fluxo_locked', actionRequired: statusCode === 401 ? 'authenticate' : statusCode === 403 ? 'confirm' : 'review', request_id: response.getHeader('x-request-id') }
   });
 }
 
@@ -505,4 +557,19 @@ function readJsonBody(request) {
     });
     request.on('error', reject);
   });
+}
+
+function mutationTargets(rootDir, path) {
+  const relative = path === '/api/v1/onboarding' ? ['perfil/candidato.md', 'campanha/config.json']
+    : path === '/api/v1/campaign' ? ['campanha/config.json']
+      : path.startsWith('/api/v1/queue/') ? ['fila/vagas.json']
+        : path.startsWith('/api/v1/applications/') ? ['candidaturas/candidaturas.json']
+          : path === '/api/v1/state/checkpoint' ? ['estado/checkpoint.json'] : [];
+  return relative.map((item) => join(rootDir, item));
+}
+
+function hashTargets(paths) {
+  const hash = createHash('sha256'); let found = false;
+  for (const path of paths) if (existsSync(path)) { found = true; hash.update(readFileSync(path)); }
+  return found ? hash.digest('hex') : '';
 }

@@ -49,6 +49,13 @@ export function createApprovalService({ dbPath, now = () => new Date() }) {
       return toApproval(row);
     },
 
+    preview(id, payload) {
+      const row = getRow(id);
+      const actualHash = hashPayload(payload);
+      const valid = row.payload_hash === actualHash;
+      return { valid, expectedHash: row.payload_hash, actualHash, diff: valid ? [] : [{ field: 'payload', expected: row.payload_hash, actual: actualHash }] };
+    },
+
     listApprovals() {
       return database.prepare('select * from approvals order by created_at desc').all().map(toApproval);
     },
