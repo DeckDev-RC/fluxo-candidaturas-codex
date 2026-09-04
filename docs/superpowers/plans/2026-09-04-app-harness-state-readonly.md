@@ -45,7 +45,7 @@
 }
 ```
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Criar um fixture temporário com `estado/preflight.json`, `campanha/config.json`, `fila/vagas.json`, `candidaturas/candidaturas.json` e `estado/checkpoint.json`. Testar que o leitor normaliza o snapshot, calcula contagens e não inclui dados de `.env`.
 
@@ -136,23 +136,23 @@ async function createFixture({ preflight, campaign, queue, applications, checkpo
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `npm test -- --test-reporter=spec` from `Fluxo/app/`.
 
 Expected: FAIL because `../src/state-reader.mjs` and `readFluxoState` ainda não existem.
 
-- [ ] **Step 3: Write the minimal implementation**
+- [x] **Step 3: Write the minimal implementation**
 
 Implementar `readFluxoState` com leitura exclusiva dos cinco JSONs, defaults seguros, contagem de fila, contagem de candidaturas nos status confirmados de `config/plataformas.json` e redaction recursiva de chaves sensíveis.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `npm test -- --test-reporter=spec` from `Fluxo/app/`.
 
 Expected: 3 tests passing and 0 failures.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add app/package.json app/test/state-reader.test.mjs app/src/state-reader.mjs
@@ -172,7 +172,7 @@ git commit -m "feat: add normalized Fluxo state reader"
 - Produces: `GET /api/v1/state` com JSON normalizado.
 - Produces: `GET /health` com `{ "ok": true }`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Testar a API em porta efêmera com fixture temporário. Confirmar status HTTP, `content-type`, dados normalizados, ausência de segredo e rejeição de método/caminho não suportado.
 
@@ -205,23 +205,23 @@ function listen(server) {
 }
 ```
 
-- [ ] **Step 2: Run the API test to verify it fails**
+- [x] **Step 2: Run the API test to verify it fails**
 
 Run: `npm test -- --test-reporter=spec` from `Fluxo/app/`.
 
 Expected: FAIL because `http-server.mjs` ainda não exporta `createServer`.
 
-- [ ] **Step 3: Write the minimal implementation**
+- [x] **Step 3: Write the minimal implementation**
 
 Criar servidor Node HTTP que aceite somente `GET`, responda `/health` e `/api/v1/state`, use `readFluxoState`, devolva `404` para outros caminhos e faça bind padrão em `127.0.0.1`.
 
-- [ ] **Step 4: Run the API tests to verify they pass**
+- [x] **Step 4: Run the API tests to verify they pass**
 
 Run: `npm test -- --test-reporter=spec` from `Fluxo/app/`.
 
 Expected: todos os testes da Task 1 e Task 2 passando, sem warnings.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add app/package.json app/test/http-server.test.mjs app/src/http-server.mjs
@@ -235,6 +235,8 @@ git commit -m "feat: expose read-only Fluxo state API"
 - Create: `app/public/app.js`
 - Create: `app/public/styles.css`
 - Create: `app/test/static-assets.test.mjs`
+- Create: `app/test/startup.test.mjs`
+- Create: `app/src/main.mjs`
 - Modify: `app/src/http-server.mjs`
 - Modify: `app/package.json`
 
@@ -242,28 +244,29 @@ git commit -m "feat: expose read-only Fluxo state API"
 - Consumes: `GET /api/v1/state`.
 - Produces: dashboard local em `/` com resumo de instalação, campanha, fila, candidaturas e checkpoint.
 - Produces: script `npm start` para servir o app em `127.0.0.1:4173`.
+- Produces: entrypoint `app/src/main.mjs` com raiz do Fluxo configurável por `FLUXO_ROOT`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
-Testar que `/` devolve HTML e que `app.js`/`styles.css` são servidos com content type correto. O teste deve também impedir que o HTML contenha valores de `.env`.
+Testar que `npm start` aponta para `src/main.mjs`, que `/` devolve HTML e que `app.js`/`styles.css` são servidos com content type correto. O teste deve também impedir que o HTML contenha valores de `.env`.
 
-- [ ] **Step 2: Run the static asset tests to verify they fail**
+- [x] **Step 2: Run the static asset tests to verify they fail**
 
 Run: `npm test -- --test-reporter=spec` from `Fluxo/app/`.
 
 Expected: FAIL porque os assets estáticos ainda não existem ou não são roteados.
 
-- [ ] **Step 3: Write the minimal implementation**
+- [x] **Step 3: Write the minimal implementation**
 
 Servir apenas arquivos existentes em `app/public`, bloquear path traversal, montar dashboard com estado carregado por `fetch` e mostrar estado vazio/bloqueado sem inventar dados.
 
-- [ ] **Step 4: Run the full test suite to verify it passes**
+- [x] **Step 4: Run the full test suite to verify it passes**
 
 Run: `npm test -- --test-reporter=spec` from `Fluxo/app/`.
 
 Expected: todos os testes passando.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add app
@@ -272,10 +275,10 @@ git commit -m "feat: add local read-only Fluxo dashboard"
 
 ## Self-review checklist
 
-- [ ] O app não lê `.env`.
-- [ ] O app não executa PowerShell, Playwright ou App Server.
-- [ ] O app não muda JSONs existentes.
-- [ ] Os testes de cada comportamento foram vistos falhar antes do código correspondente.
-- [ ] A API está limitada a `127.0.0.1`.
-- [ ] A UI não promete candidatura enviada quando só existe `rascunho` ou `em andamento`.
-- [ ] Os testes completos passam sem warnings antes de qualquer afirmação de conclusão.
+- [x] O app não lê `.env`.
+- [x] O app não executa PowerShell, Playwright ou App Server.
+- [x] O app não muda JSONs existentes.
+- [x] Os testes de cada comportamento foram vistos falhar antes do código correspondente.
+- [x] A API está limitada a `127.0.0.1`.
+- [x] A UI não promete candidatura enviada quando só existe `rascunho` ou `em andamento`.
+- [x] Os testes completos passam sem warnings antes de qualquer afirmação de conclusão.
