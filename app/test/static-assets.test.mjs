@@ -28,11 +28,14 @@ test('static assets have their expected content types and traversal is rejected'
 
   try {
     const script = await fetch(`http://127.0.0.1:${address.port}/app.js`);
+    const preflightSummary = await fetch(`http://127.0.0.1:${address.port}/preflight-summary.js`);
     const styles = await fetch(`http://127.0.0.1:${address.port}/styles.css`);
     const traversal = await fetch(`http://127.0.0.1:${address.port}/../README.md`);
 
     assert.equal(script.status, 200);
     assert.match(script.headers.get('content-type'), /^text\/javascript/);
+    assert.equal(preflightSummary.status, 200);
+    assert.match(preflightSummary.headers.get('content-type'), /^text\/javascript/);
     assert.equal(styles.status, 200);
     assert.match(styles.headers.get('content-type'), /^text\/css/);
     assert.equal(traversal.status, 404);

@@ -1,3 +1,5 @@
+import { summarizePreflight } from './preflight-summary.js';
+
 const refreshButton = document.querySelector('#refresh');
 
 refreshButton.addEventListener('click', loadState);
@@ -94,12 +96,6 @@ function renderCheckpoint(checkpoint) {
     item.innerHTML = `<span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong>`;
     return item;
   }));
-}
-
-function summarizePreflight(preflight) {
-  const checks = Array.isArray(preflight.checks) ? preflight.checks : [];
-  const pending = checks.filter((check) => check.status === 'pending').length;
-  return pending ? `${pending} pendência(s) no preflight` : 'Sem pendências críticas registradas';
 }
 
 function statusMark(status) {

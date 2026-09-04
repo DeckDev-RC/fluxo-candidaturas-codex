@@ -282,3 +282,44 @@ git commit -m "feat: add local read-only Fluxo dashboard"
 - [x] A API está limitada a `127.0.0.1`.
 - [x] A UI não promete candidatura enviada quando só existe `rascunho` ou `em andamento`.
 - [x] Os testes completos passam sem warnings antes de qualquer afirmação de conclusão.
+
+### Task 4: Resumo correto de severidade do preflight
+
+**Files:**
+- Create: `app/test/preflight-summary.test.mjs`
+- Create: `app/public/preflight-summary.js`
+- Modify: `app/public/app.js`
+- Modify: `app/src/http-server.mjs`
+- Modify: `app/test/static-assets.test.mjs`
+
+**Interfaces:**
+- Consumes: `preflight.checks` com `level` e `status`.
+- Produces: `summarizePreflight(preflight): string`.
+- Produces: asset `/preflight-summary.js` servido pelo servidor local.
+
+- [x] **Step 1: Write the failing test**
+
+Testar que warnings pendentes não são apresentados como pendências críticas e que checks críticos pendentes são contabilizados.
+
+- [x] **Step 2: Run the test to verify it fails**
+
+Run: `npm test -- --test-reporter=spec` from `Fluxo/app/`.
+
+Expected: FAIL porque `preflight-summary.js` ainda não existe.
+
+- [x] **Step 3: Write minimal implementation**
+
+Criar a função pura, importá-la no `app.js` e servi-la pela allowlist de assets estáticos.
+
+- [x] **Step 4: Run the full suite to verify it passes**
+
+Run: `npm test -- --test-reporter=spec` from `Fluxo/app/`.
+
+Expected: todos os testes passando.
+
+- [x] **Step 5: Commit**
+
+```powershell
+git add app docs/superpowers/plans/2026-09-04-app-harness-state-readonly.md
+git commit -m "fix: distinguish critical preflight blockers"
+```
