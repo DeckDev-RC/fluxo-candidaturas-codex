@@ -38,6 +38,9 @@ test('HTTP server exposes health and rejects unsupported requests', async () => 
 
     const unsupported = await fetch(`http://127.0.0.1:${address.port}/health`, { method: 'POST' });
     assert.equal(unsupported.status, 405);
+
+    const postRoot = await fetch(`http://127.0.0.1:${address.port}/`, { method: 'POST' });
+    assert.equal(postRoot.status, 405);
   } finally {
     await close(server);
   }

@@ -1,0 +1,88 @@
+import { createHash, randomUUID } from 'node:crypto';
+import { DatabaseSync } from 'node:sqlite';
+
+export function createApprovalService({ dbPath, now = () => new Date() }) {
+  const database = new DatabaseSync(dbPath);
+  database.exec(`
+    create table if not exists approvals (
+      id text primary key,
+      run_id text not null,
+      kind text not null,
+      payload_hash text not null,
+      payload_json text not null,
+      status text not null,
+      decided_by text,
+      expires_at text not null,
+      created_at text not null,
+      decided_at text
+    );
+  `);
+
+  return {
+    requestApproval({ runId, kind, payload, ttlMs = 10 * 60 * 1000 }) {
+      const createdAt = now();
+      const approval = {
+        id: randomUUID(), runId, kind, payloadHash: hashPayload(payload), payloadJson: JSON.stringify(payload),
+        status: 'pending', expiresAt: new Date(createdAt.getTime() + ttlMs).toISOString(),
+        createdAt: createdAt.toISOString(), decidedAt: null, decidedBy: null
+      };
+      database.prepare(`insert into approvals
+        (id, run_id, kind, payload_hash, payload_json, status, expires_at, created_at)
+        values (?, ?, ?, ?, ?, ?, ?, ?)`).run(approval.id, approval.runId, approval.kind, approval.payloadHash, approval.payloadJson, approval.status, approval.expiresAt, approval.createdAt);
+      return approval;
+    },
+
+    decideApproval(id, { decision, actorId }) {
+      const row = getRow(id);
+      ensureNotExpired(row, now());
+      if (!['approved', 'rejected'].includes(decision)) throw domainError('invalid_approval_decision', 'Decisão de aprovação inválida.');
+      const decidedAt = now().toISOString();
+      database.prepare('update approvals set status = ?, decided_by = ?, decided_at = ? where id = ?').run(decision, actorId, decidedAt, id);
+      return toApproval({ ...row, status: decision, decided_by: actorId, decided_at: decidedAt });
+    },
+
+    assertApproved(id, payload) {
+      const row = getRow(id);
+      ensureNotExpired(row, now());
+      if (row.status !== 'approved') throw domainError('approval_required', 'A aprovação ainda não foi concedida.');
+      if (row.payload_hash !== hashPayload(payload)) throw domainError('approval_payload_changed', 'O conteúdo mudou depois da aprovação.');
+      return toApproval(row);
+    },
+
+    listApprovals() {
+      return database.prepare('select * from approvals order by created_at desc').all().map(toApproval);
+    },
+
+    close() {
+      database.close();
+    }
+  };
+
+  function getRow(id) {
+    const row = database.prepare('select * from approvals where id = ?').get(id);
+    if (!row) throw domainError('approval_not_found', 'Aprovação não encontrada.');
+    return row;
+  }
+}
+
+function ensureNotExpired(row, currentTime) {
+  if (Date.parse(row.expires_at) <= currentTime.getTime()) throw domainError('approval_expired', 'A aprovação expirou.');
+}
+
+function hashPayload(payload) {
+  return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+}
+
+function toApproval(row) {
+  return {
+    id: row.id, runId: row.run_id, kind: row.kind, payloadHash: row.payload_hash,
+    status: row.status, decidedBy: row.decided_by, expiresAt: row.expires_at,
+    createdAt: row.created_at, decidedAt: row.decided_at
+  };
+}
+
+function domainError(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
