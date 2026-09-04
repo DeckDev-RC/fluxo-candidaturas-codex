@@ -209,7 +209,7 @@ Principais riscos: sessão expirada, mudança de DOM, duplicidade, redirecioname
 
 ## 13. Dependências e limites conhecidos
 
-- Node.js/npm e Playwright CLI precisam estar disponíveis para o preflight.
+- Node.js 24+/npm e Playwright CLI precisam estar disponíveis para o preflight.
 - A habilidade Playwright continua sendo uma dependência do agente; o app não a substitui.
 - O usuário precisa realizar login manual, MFA, CAPTCHA e biometria quando exigidos.
 - As plataformas podem alterar interface, regras ou bloquear automação.

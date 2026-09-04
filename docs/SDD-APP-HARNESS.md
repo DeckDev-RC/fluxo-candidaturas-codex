@@ -20,7 +20,7 @@ O sistema deve separar:
 ## 2. Decisões arquiteturais
 
 - Aplicação local-first e single-user no MVP.
-- Backend Node.js/TypeScript para API, eventos e coordenação.
+- Backend Node.js 24+ para API, eventos e coordenação, usando `node:sqlite` no MVP.
 - Frontend web local para dashboard e aprovações.
 - Arquivos JSON atuais como fonte operacional no MVP; SQLite como projeção, índice e armazenamento de runs/aprovações.
 - Scripts PowerShell preservados como adaptadores de compatibilidade.
@@ -451,7 +451,7 @@ Se a tela atual divergir do checkpoint, o estado observado prevalece e a execuç
 - **Recuperação:** após encerramento inesperado, operações `running` devem voltar para `needs_reconcile` ou `failed`, nunca ser repetidas automaticamente.
 - **Integridade:** toda escrita em JSON deve ser atômica, validada e precedida de backup quando o script atual já aplicar essa proteção.
 - **Acessibilidade:** navegação por teclado, foco visível, labels associados, mensagens de erro textuais e contraste compatível com WCAG 2.1 AA.
-- **Portabilidade:** funcionar no ambiente Windows documentado pelo pacote, usando o PowerShell e `npx` disponíveis no preflight.
+- **Portabilidade:** funcionar no ambiente Windows documentado pelo pacote, usando Node.js 24+, PowerShell e `npx` disponíveis no preflight.
 - **Privacidade:** nenhuma resposta de API, evento, métrica ou log deve conter senha, token, cookie, código MFA ou conteúdo privado além do estritamente necessário.
 - **Operação offline:** leitura de painel, fila, candidaturas e checkpoint deve funcionar sem IA e sem internet; busca e navegador devem informar a indisponibilidade.
 
