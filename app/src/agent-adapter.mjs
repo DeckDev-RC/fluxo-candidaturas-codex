@@ -1,14 +1,16 @@
-export function createAgentAdapter({ transport, transportFactory }) {
+export function createAgentAdapter({ transport, transportFactory, onNotification = () => {} }) {
   let initialized = false;
   let activeTransport = transport;
+  let activeRunId = '';
 
   async function getTransport() {
-    if (!activeTransport && transportFactory) activeTransport = await transportFactory();
+    if (!activeTransport && transportFactory) activeTransport = await transportFactory({ onNotification: handleNotification });
     if (!activeTransport) throw Object.assign(new Error('Transporte do agente não configurado.'), { code: 'agent_transport_unavailable' });
     return activeTransport;
   }
 
   return {
+    handleNotification,
     async initialize(clientInfo = { name: 'fluxo-harness', version: '0.1.0' }) {
       if (initialized) return { initialized: true };
       const active = await getTransport();
@@ -31,8 +33,17 @@ export function createAgentAdapter({ transport, transportFactory }) {
       });
     },
 
+    async runTurnForRun(runId, threadId, text) {
+      activeRunId = String(runId);
+      try { return await this.runTurn(threadId, text); } finally { activeRunId = ''; }
+    },
+
     async close() {
       if (activeTransport?.close) await activeTransport.close();
     }
   };
+
+  function handleNotification(message) {
+    onNotification(message, activeRunId);
+  }
 }

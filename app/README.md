@@ -19,7 +19,7 @@ npm start
 
 Abra `http://127.0.0.1:4173`.
 
-O dashboard inicia em modo somente leitura. Preflight, claim, exportação, aprovação e execução de navegador são ações separadas e sujeitas às políticas do Fluxo.
+O dashboard inicia em modo somente leitura. O onboarding, preflight, claim, exportação, aprovação e execução de navegador são ações separadas e sujeitas às políticas do Fluxo. O servidor aceita somente conexões loopback, atribui `x-request-id` e mantém as mutações serializadas por `estado/harness.lock`.
 
 ## API local
 
@@ -29,7 +29,15 @@ O dashboard inicia em modo somente leitura. Preflight, claim, exportação, apro
 - `GET /api/v1/queue`;
 - `GET /api/v1/applications`;
 - `GET /api/v1/approvals`;
+- `GET /api/v1/auth/session`, `GET /api/v1/observability`, `GET /api/v1/metrics`;
+- `GET /api/v1/pending`, `GET /api/v1/assessments`;
 - `GET /api/v1/runs/:id/events`;
+- `POST /api/v1/onboarding`;
+- `POST /api/v1/resumes/extract`, `POST /api/v1/resumes/select`, `POST /api/v1/jobs/fit`;
+- `POST /api/v1/evidence`, `POST /api/v1/assessments`, `POST /api/v1/assessments/prepare`;
+- `POST /api/v1/imports/legacy`;
+- `POST /api/v1/state/checkpoint`, `DELETE /api/v1/state/checkpoint`;
+- `POST /api/v1/runs/:id/agent-thread`, `POST /api/v1/runs/:id/agent-turn`;
 - `POST /api/v1/preflight/run`;
 - `POST /api/v1/queue/items`;
 - `POST /api/v1/queue/:id/claim`;

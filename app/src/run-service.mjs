@@ -3,6 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 
 export function createRunService({ dbPath, maxApplicationsPerRun = 30, now = () => new Date() }) {
   const database = new DatabaseSync(dbPath);
+  const subscribers = new Map();
   database.exec(`
     create table if not exists runs (
       id text primary key,
@@ -68,11 +69,18 @@ export function createRunService({ dbPath, maxApplicationsPerRun = 30, now = () 
       database.prepare(`insert into domain_events
         (id, run_id, aggregate_type, aggregate_id, type, payload_json, actor_type, created_at, idempotency_key)
         values (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(event.id, event.runId, event.aggregateType, event.aggregateId, event.type, event.payloadJson, event.actorType, event.createdAt, event.idempotencyKey);
+      for (const listener of subscribers.get(runId) ?? []) listener(event);
       return event;
     },
 
     listEvents(runId) {
       return database.prepare('select * from domain_events where run_id = ? order by created_at asc').all(runId).map(toEvent);
+    },
+
+    subscribe(runId, listener) {
+      if (!subscribers.has(runId)) subscribers.set(runId, new Set());
+      subscribers.get(runId).add(listener);
+      return () => { const listeners = subscribers.get(runId); listeners?.delete(listener); if (listeners?.size === 0) subscribers.delete(runId); };
     },
 
     pauseRun(id, reason) {

@@ -21,7 +21,9 @@ export function createApplicationFlow({ queueService, runService, approvalServic
       approvalService.assertApproved(approvalId, payload);
       const confirmation = await browserAdapter.verifySubmission();
       if (!confirmation.confirmed) throw domainError('submission_not_confirmed', 'A plataforma não confirmou o recebimento.');
-      const application = await recordApplication({ item: prepared.item, payload, evidence: confirmation.state, confirmation });
+      const effectivePayload = { ...(payload ?? {}) };
+      if (!effectivePayload.evidencePath && browserAdapter.captureEvidence) effectivePayload.evidencePath = await browserAdapter.captureEvidence({ runId: prepared.run.id, item: prepared.item, confirmation });
+      const application = await recordApplication({ item: prepared.item, payload: effectivePayload, evidence: confirmation.state, confirmation });
       runService.appendEvent({ runId: prepared.run.id, type: 'application.submission_confirmed', payload: { applicationId: application.id, queueItemId: prepared.item.id } });
       return { application, confirmation };
     }

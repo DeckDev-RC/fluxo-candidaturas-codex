@@ -33,6 +33,41 @@
         <div class="status-actions"><span id="preflight-summary" class="muted">Verificando preflight</span><button id="run-preflight" class="inline-action" type="button">Executar preflight</button></div>
       </section>
 
+      <section id="onboarding-section" class="onboarding-section" aria-labelledby="onboarding-title">
+        <div class="section-heading"><p class="eyebrow">primeiro uso</p><h2 id="onboarding-title">Configurar perfil e campanha</h2></div>
+        <p class="muted">Os dados ficam neste computador. Credenciais de plataforma não são solicitadas aqui.</p>
+        <form id="onboarding-form" action="/api/v1/onboarding">
+          <div class="form-grid">
+            <label>Nome<input id="onboarding-name" name="name" required /></label>
+            <label>E-mail<input id="onboarding-email" name="email" type="email" required /></label>
+            <label>Telefone<input name="phone" required /></label>
+            <label>Localização<input name="location" required /></label>
+            <label>Cargos-alvo<input id="onboarding-target-roles" name="targetRoles" required placeholder="Ex.: Desenvolvedor backend" /></label>
+            <label>Senioridade<input name="seniority" required /></label>
+            <label>Foco técnico<input name="technicalFocus" required /></label>
+            <label>Modalidades<input name="workModes" required placeholder="remoto, híbrido" /></label>
+            <label>Localidades aceitas<input name="acceptedLocations" required /></label>
+            <label>Tipos de contrato<input name="contracts" required /></label>
+            <label>Remuneração mínima<input name="minimumSalary" required /></label>
+            <label>Disponibilidade<input name="availability" required /></label>
+            <label>Formação<input name="education" required /></label>
+            <label>Idiomas<input name="languages" required /></label>
+            <label>Autorização de trabalho<input name="workAuthorization" required /></label>
+            <label>Viagens<input name="travel" required /></label>
+            <label>PCD<input name="pcd" required /></label>
+          </div>
+          <label>Resumo profissional<textarea name="professionalSummary" rows="3" required></textarea></label>
+          <label>Pontos fortes<textarea name="strengths" rows="2" required></textarea></label>
+          <fieldset id="onboarding-campaign"><legend>Metas da campanha</legend><div class="form-grid">
+            <label>Meta total<input name="totalGoal" type="number" min="0" value="0" required /></label>
+            <label>Meta diária<input name="dailyGoal" type="number" min="0" value="0" required /></label>
+            <label>Meta semanal<input name="weeklyGoal" type="number" min="0" value="0" required /></label>
+            <label>Plataformas habilitadas<input name="platforms" placeholder="GUPY, INFOJOBS" required /></label>
+          </div></fieldset>
+          <div class="form-actions"><button class="primary-button" type="submit">Salvar configuração local</button><span id="onboarding-feedback" class="muted" role="status"></span></div>
+        </form>
+      </section>
+
       <section class="overview-section" aria-labelledby="overview-title">
         <div class="section-heading"><p class="eyebrow">visão geral</p><h2 id="overview-title">Campanha</h2></div>
         <div class="metrics-row" id="campaign-metrics" aria-live="polite"></div>
@@ -59,6 +94,17 @@
       <section class="approval-section" aria-labelledby="approval-title">
         <div class="section-heading inline"><div><p class="eyebrow">decisão humana</p><h2 id="approval-title">Aprovações</h2></div><span class="count">ações sensíveis</span></div>
         <div id="approval-list" class="approval-list"></div>
+      </section>
+
+      <section class="operations-section" aria-labelledby="operations-title">
+        <div class="section-heading"><p class="eyebrow">qualificação e acompanhamento</p><h2 id="operations-title">Ferramentas da operação</h2></div>
+        <form id="resume-tools" class="tool-form">
+          <label>Descrição da vaga<textarea id="resume-job-description" name="jobDescription" rows="3" required></textarea></label>
+          <label>Arquivo para extração<input id="resume-source-path" name="sourcePath" placeholder="curriculo/cv.pdf" /></label>
+          <label>Currículo extraído<input name="resumeTextPath" placeholder="curriculo/cv.txt" /></label>
+          <div class="form-actions"><button class="inline-action" data-operation="extract" type="button">Extrair currículo</button><button class="inline-action" data-operation="fit" type="submit">Calcular aderência</button><button class="inline-action" data-operation="select" type="button">Selecionar currículo</button><span id="resume-feedback" class="muted" role="status"></span></div>
+        </form>
+        <div class="operations-grid"><div><p class="eyebrow">métricas</p><div id="metrics-detail" class="compact-list"></div></div><div><p class="eyebrow">pendências</p><div id="pending-list" class="compact-list"></div></div><div><p class="eyebrow">testes e questionários</p><div id="assessment-list" class="compact-list"></div></div></div>
       </section>
     </main>
 

@@ -78,6 +78,25 @@ test('application flow refuses to prepare when preflight is not ready', async ()
   assert.equal(claimed, false);
 });
 
+test('application flow captures evidence automatically when confirmation has no path', async () => {
+  const root = await fixtureRoot();
+  const queueService = createQueueService({ rootDir: root });
+  const runService = createRunService({ dbPath: join(root, 'estado', 'harness.sqlite') });
+  const approvalService = createApprovalService({ dbPath: join(root, 'estado', 'harness.sqlite') });
+  let recorded;
+  const flow = createApplicationFlow({ queueService, runService, approvalService,
+    browserAdapter: { async snapshot() { return {}; }, async verifySubmission() { return { confirmed: true, state: { text: 'enviada' } }; }, async captureEvidence() { return 'evidencias/auto-run.png'; } },
+    async recordApplication(input) { recorded = input; return { id: 'app-1' }; }
+  });
+  try {
+    const prepared = await flow.prepareNext();
+    const approval = flow.requestSubmissionApproval(prepared.run.id, {});
+    approvalService.decideApproval(approval.id, { decision: 'approved', actorId: 'candidate' });
+    await flow.submitApproved(prepared, approval.id, {});
+    assert.equal(recorded.payload.evidencePath, 'evidencias/auto-run.png');
+  } finally { runService.close(); approvalService.close(); }
+});
+
 async function fixtureRoot() {
   const root = await mkdtemp(join(tmpdir(), 'fluxo-harness-flow-'));
   for (const directory of ['estado', 'campanha', 'fila', 'candidaturas']) await mkdir(join(root, directory), { recursive: true });

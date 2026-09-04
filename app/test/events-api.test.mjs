@@ -31,6 +31,41 @@ test('events API appends an event and streams it as SSE', async () => {
   }
 });
 
+test('agent turn API connects local App Server output to run events', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'fluxo-harness-agent-api-'));
+  await mkdir(join(root, 'estado'), { recursive: true });
+  const run = { id: 'run-1', status: 'running' };
+  const events = [];
+  const server = createServer({ rootDir: root,
+    runService: { getRun: () => run, appendEvent: (event) => { events.push(event); return event; }, listEvents: () => [], subscribe: () => () => {}, close() {} },
+    agentAdapter: { runTurn: async (threadId, text) => ({ turn: { id: 'turn-1' }, threadId, text }) }
+  });
+  const address = await listen(server);
+  try {
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/v1/runs/run-1/agent-turn`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ threadId: 'thread-1', text: 'continue' }) });
+    assert.equal(response.status, 200);
+    assert.equal(events[0].type, 'agent.turn.completed');
+    assert.match(response.headers.get('x-request-id'), /^[0-9a-f-]{36}$/);
+  } finally { await close(server); }
+});
+
+test('agent thread API starts a local App Server thread for a run', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'fluxo-harness-thread-api-'));
+  await mkdir(join(root, 'estado'), { recursive: true });
+  const events = [];
+  const server = createServer({ rootDir: root,
+    runService: { getRun: () => ({ id: 'run-1', status: 'running' }), appendEvent: (event) => { events.push(event); return event; }, listEvents: () => [], close() {} },
+    agentAdapter: { startThread: async (params) => ({ thread: { id: 'thread-1' }, params }) }
+  });
+  const address = await listen(server);
+  try {
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/v1/runs/run-1/agent-thread`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ purpose: 'campaign' }) });
+    assert.equal(response.status, 201);
+    assert.equal((await response.json()).thread.id, 'thread-1');
+    assert.equal(events[0].type, 'agent.thread.started');
+  } finally { await close(server); }
+});
+
 function listen(server) {
   return new Promise((resolve, reject) => {
     server.once('error', reject);

@@ -25,6 +25,24 @@ test('agent adapter initializes, starts a thread and streams a turn', async () =
   assert.equal(result.turn.id, 'turn-1');
 });
 
+test('agent adapter forwards streamed notifications to the harness', async () => {
+  const notifications = [];
+  const adapter = createAgentAdapter({
+    onNotification: (message) => notifications.push(message),
+    transport: { async request(method) { if (method === 'initialize') return {}; return { turn: { id: 't-1' } }; }, notify() {} }
+  });
+  adapter.handleNotification({ method: 'turn/item/stream', params: { text: 'progresso' } });
+  assert.deepEqual(notifications[0].params, { text: 'progresso' });
+});
+
+test('agent adapter attaches the active run to streamed notifications', async () => {
+  let received;
+  let adapter;
+  adapter = createAgentAdapter({ onNotification: (message, runId) => { received = { message, runId }; }, transport: { async request(method) { if (method === 'initialize') return {}; adapter.handleNotification({ method: 'turn/item/stream', params: { delta: 'x' } }); return {}; }, notify() {} } });
+  await adapter.runTurnForRun('run-1', 'thread-1', 'continue');
+  assert.equal(received.runId, 'run-1');
+});
+
 test('browser adapter requires a fresh snapshot before filling and verifies visual confirmation', async () => {
   const actions = [];
   const adapter = createBrowserAdapter({
@@ -52,4 +70,11 @@ test('browser adapter pauses on CAPTCHA or MFA', async () => {
   });
 
   await assert.rejects(() => adapter.snapshot(), (error) => error.code === 'manual_intervention_required');
+});
+
+test('browser adapter captures a confirmation artifact through the browser driver', async () => {
+  const paths = [];
+  const adapter = createBrowserAdapter({ driver: { async screenshot(path) { paths.push(path); return { ok: true }; } } });
+  assert.equal(await adapter.captureEvidence({ runId: 'run-1' }), 'evidencias/run-1-confirmacao.png');
+  assert.equal(paths[0], 'evidencias/run-1-confirmacao.png');
 });

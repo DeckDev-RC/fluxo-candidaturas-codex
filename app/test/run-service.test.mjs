@@ -40,6 +40,17 @@ test('reconcile marks interrupted running runs for manual review', async () => {
   }
 });
 
+test('run service publishes appended events to active stream subscribers', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'fluxo-run-stream-'));
+  const service = createRunService({ dbPath: join(root, 'runs.sqlite') });
+  const run = service.startRun({ kind: 'agent' });
+  const received = [];
+  const unsubscribe = service.subscribe(run.id, (event) => received.push(event));
+  service.appendEvent({ runId: run.id, type: 'agent.progress', payload: { text: 'ok' } });
+  unsubscribe(); service.close();
+  assert.equal(received[0].type, 'agent.progress');
+});
+
 test('acquireFluxoLock allows only one local mutator at a time', async () => {
   const root = await mkdtemp(join(tmpdir(), 'fluxo-harness-lock-'));
   const release = await acquireFluxoLock(root);

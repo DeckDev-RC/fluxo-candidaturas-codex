@@ -14,6 +14,18 @@ import { createFollowUpService } from './follow-up-service.mjs';
 import { createStore } from './store.mjs';
 import { readRuntimeConfig } from './runtime-config.mjs';
 import { createMessageService } from './message-service.mjs';
+import { createOnboardingService } from './onboarding-service.mjs';
+import { createResumeService } from './resume-service.mjs';
+import { createEvidenceService } from './evidence-service.mjs';
+import { createAssessmentService } from './assessment-service.mjs';
+import { createLegacyImportService } from './legacy-import-service.mjs';
+import { createPendingService } from './pending-service.mjs';
+import { createCheckpointService } from './checkpoint-service.mjs';
+import { createMetricsService } from './metrics-service.mjs';
+import { acquireFluxoLock } from './lock.mjs';
+import { isLocalRequest } from './local-auth.mjs';
+import { createObservability } from './observability.mjs';
+import { randomUUID } from 'node:crypto';
 
 const PUBLIC_DIR = new URL('../public/', import.meta.url);
 const STATIC_FILES = new Map([
@@ -29,7 +41,7 @@ const JSON_HEADERS = {
   'cache-control': 'no-store'
 };
 
-export function createServer({ rootDir, queueService = createQueueService({ rootDir }), exportService = { createShareableExport: () => createShareableExport({ rootDir }) }, preflightService, followUpService: injectedFollowUpService, messageService: injectedMessageService, stateStore, applicationFlow, runService: injectedRunService, approvalService: injectedApprovalService }) {
+export function createServer({ rootDir, queueService = createQueueService({ rootDir }), exportService = { createShareableExport: () => createShareableExport({ rootDir }) }, preflightService, followUpService: injectedFollowUpService, messageService: injectedMessageService, onboardingService: injectedOnboardingService, resumeService: injectedResumeService, evidenceService: injectedEvidenceService, assessmentService: injectedAssessmentService, legacyImportService: injectedLegacyImportService, pendingService: injectedPendingService, checkpointService: injectedCheckpointService, metricsService: injectedMetricsService, agentAdapter, observability = createObservability(), stateStore, applicationFlow, runService: injectedRunService, approvalService: injectedApprovalService }) {
   mkdirSync(join(rootDir, 'estado'), { recursive: true });
   const runService = injectedRunService ?? createRunService({ dbPath: join(rootDir, 'estado', 'harness.sqlite') });
   const approvalService = injectedApprovalService ?? createApprovalService({ dbPath: join(rootDir, 'estado', 'harness.sqlite') });
@@ -37,6 +49,14 @@ export function createServer({ rootDir, queueService = createQueueService({ root
   const effectivePreflightService = preflightService ?? { runPreflight: (options) => runPreflight({ rootDir, ...options }) };
   const followUpService = injectedFollowUpService ?? createFollowUpService({ rootDir });
   const messageService = injectedMessageService ?? createMessageService({ rootDir });
+  const onboardingService = injectedOnboardingService ?? createOnboardingService({ rootDir });
+  const resumeService = injectedResumeService ?? createResumeService({ rootDir });
+  const evidenceService = injectedEvidenceService ?? createEvidenceService({ rootDir });
+  const assessmentService = injectedAssessmentService ?? createAssessmentService({ rootDir });
+  const legacyImportService = injectedLegacyImportService ?? createLegacyImportService({ rootDir });
+  const pendingService = injectedPendingService ?? createPendingService({ rootDir });
+  const checkpointService = injectedCheckpointService ?? createCheckpointService({ rootDir });
+  const metricsService = injectedMetricsService ?? createMetricsService({ rootDir });
   const effectiveStateStore = stateStore ?? createStore({ rootDir, dbPath: join(rootDir, 'estado', 'harness.sqlite') });
   const ownsRunService = !injectedRunService;
   const ownsApprovalService = !injectedApprovalService;
@@ -44,9 +64,36 @@ export function createServer({ rootDir, queueService = createQueueService({ root
   const preparedApplications = new Map();
   const server = createHttpServer(async (request, response) => {
     const path = new URL(request.url ?? '/', 'http://127.0.0.1').pathname;
+    const requestId = randomUUID();
+    const startedAt = Date.now();
+    response.setHeader('x-request-id', requestId);
+    response.once('finish', () => observability.record({ method: request.method, path, status: response.statusCode, durationMs: Date.now() - startedAt }));
+    if (!isLocalRequest(request)) { sendJson(response, 403, { error: { code: 'local_auth_required', message: 'Apenas conexões locais são permitidas.' } }); return; }
+    let releaseMutation;
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method)) {
+      try {
+        releaseMutation = await acquireFluxoLock(rootDir);
+        let released = false;
+        const release = async () => { if (released) return; released = true; await releaseMutation(); };
+        response.once('finish', release);
+        response.once('close', release);
+      } catch (error) {
+        sendDomainError(response, error);
+        return;
+      }
+    }
 
     if (request.method === 'GET' && path === '/health') {
       sendJson(response, 200, { ok: true });
+      return;
+    }
+
+    if (request.method === 'GET' && path === '/api/v1/observability') {
+      sendJson(response, 200, observability.snapshot());
+      return;
+    }
+    if (request.method === 'GET' && path === '/api/v1/auth/session') {
+      sendJson(response, 200, { authenticated: true, mode: 'loopback' });
       return;
     }
 
@@ -72,10 +119,39 @@ export function createServer({ rootDir, queueService = createQueueService({ root
       return;
     }
 
+    if (request.method === 'POST' && path === '/api/v1/state/checkpoint') {
+      try { sendJson(response, 200, await checkpointService.save(await readJsonBody(request))); } catch (error) { sendDomainError(response, error); }
+      return;
+    }
+    if (request.method === 'DELETE' && path === '/api/v1/state/checkpoint') {
+      try { sendJson(response, 200, await checkpointService.clear()); } catch (error) { sendDomainError(response, error); }
+      return;
+    }
+
     if (request.method === 'GET' && path === '/api/v1/profile') {
       sendJson(response, 200, await getFluxoProfileSummary(rootDir));
       return;
     }
+
+    if (request.method === 'POST' && path === '/api/v1/onboarding') {
+      try {
+        sendJson(response, 200, await onboardingService.saveOnboarding(await readJsonBody(request)));
+      } catch (error) {
+        sendDomainError(response, error);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && path === '/api/v1/resumes/extract') { try { sendJson(response, 200, await resumeService.extract(await readJsonBody(request))); } catch (error) { sendDomainError(response, error); } return; }
+    if (request.method === 'POST' && path === '/api/v1/resumes/select') { try { sendJson(response, 200, await resumeService.select(await readJsonBody(request))); } catch (error) { sendDomainError(response, error); } return; }
+    if (request.method === 'POST' && path === '/api/v1/jobs/fit') { try { sendJson(response, 200, await resumeService.fit(await readJsonBody(request))); } catch (error) { sendDomainError(response, error); } return; }
+    if (request.method === 'POST' && path === '/api/v1/evidence') { try { sendJson(response, 201, await evidenceService.record(await readJsonBody(request))); } catch (error) { sendDomainError(response, error); } return; }
+    if (request.method === 'POST' && path === '/api/v1/assessments') { try { sendJson(response, 201, await assessmentService.record(await readJsonBody(request))); } catch (error) { sendDomainError(response, error); } return; }
+    if (request.method === 'POST' && path === '/api/v1/assessments/prepare') { try { sendJson(response, 200, await assessmentService.prepare(await readJsonBody(request))); } catch (error) { sendDomainError(response, error); } return; }
+    if (request.method === 'GET' && path === '/api/v1/assessments') { try { sendJson(response, 200, await assessmentService.list()); } catch (error) { sendDomainError(response, error); } return; }
+    if (request.method === 'POST' && path === '/api/v1/imports/legacy') { try { sendJson(response, 200, await legacyImportService.import(await readJsonBody(request))); } catch (error) { sendDomainError(response, error); } return; }
+    if (request.method === 'GET' && path === '/api/v1/pending') { try { sendJson(response, 200, await pendingService.list(Object.fromEntries(new URL(request.url ?? '/', 'http://127.0.0.1').searchParams))); } catch (error) { sendDomainError(response, error); } return; }
+    if (request.method === 'GET' && path === '/api/v1/metrics') { try { sendJson(response, 200, await metricsService.get()); } catch (error) { sendDomainError(response, error); } return; }
 
     if (request.method === 'GET' && path === '/api/v1/runtime-config') {
       sendJson(response, 200, await readRuntimeConfig(rootDir));
@@ -171,7 +247,38 @@ export function createServer({ rootDir, queueService = createQueueService({ root
       for (const event of runService.listEvents(runId)) {
         response.write(`id: ${event.id}\nevent: ${event.type}\ndata: ${event.payloadJson}\n\n`);
       }
+      if (new URL(request.url ?? '/', 'http://127.0.0.1').searchParams.get('stream') === '1' && runService.subscribe) {
+        const unsubscribe = runService.subscribe(runId, (event) => response.write(`id: ${event.id}\nevent: ${event.type}\ndata: ${event.payloadJson}\n\n`));
+        request.on('close', unsubscribe);
+        return;
+      }
       response.end();
+      return;
+    }
+
+    const agentTurnMatch = path.match(/^\/api\/v1\/runs\/([^/]+)\/agent-turn$/);
+    const agentThreadMatch = path.match(/^\/api\/v1\/runs\/([^/]+)\/agent-thread$/);
+    if (request.method === 'POST' && agentThreadMatch) {
+      try {
+        if (!agentAdapter) throw domainError('agent_unavailable', 'App Server local não está configurado.');
+        const runId = decodeURIComponent(agentThreadMatch[1]);
+        if (!runService.getRun(runId)) throw domainError('run_not_found', 'Execução não encontrada.');
+        const result = await agentAdapter.startThread(await readJsonBody(request));
+        const event = runService.appendEvent({ runId, type: 'agent.thread.started', payload: result });
+        sendJson(response, 201, { ...result, event });
+      } catch (error) { sendDomainError(response, error); }
+      return;
+    }
+    if (request.method === 'POST' && agentTurnMatch) {
+      try {
+        if (!agentAdapter) throw domainError('agent_unavailable', 'App Server local não está configurado.');
+        const runId = decodeURIComponent(agentTurnMatch[1]);
+        if (!runService.getRun(runId)) throw domainError('run_not_found', 'Execução não encontrada.');
+        const input = await readJsonBody(request);
+        const result = await (agentAdapter.runTurnForRun ? agentAdapter.runTurnForRun(runId, String(input.threadId ?? ''), String(input.text ?? '')) : agentAdapter.runTurn(String(input.threadId ?? ''), String(input.text ?? '')));
+        const event = runService.appendEvent({ runId, type: 'agent.turn.completed', payload: result });
+        sendJson(response, 200, { result, event });
+      } catch (error) { sendDomainError(response, error); }
       return;
     }
 
@@ -328,9 +435,9 @@ export function createServer({ rootDir, queueService = createQueueService({ root
       return;
     }
 
-    const knownPath = path === '/health' || path === '/api/v1/state' || path === '/api/v1/state/preflight' || path === '/api/v1/state/checkpoint' || path === '/api/v1/profile' || path === '/api/v1/runtime-config' || path === '/api/v1/applications' || path === '/api/v1/preflight/run' || path === '/api/v1/messages/draft' || path === '/api/v1/queue'
+    const knownPath = path === '/health' || path === '/api/v1/state' || path === '/api/v1/state/preflight' || path === '/api/v1/state/checkpoint' || path === '/api/v1/profile' || path === '/api/v1/onboarding' || path === '/api/v1/resumes/extract' || path === '/api/v1/resumes/select' || path === '/api/v1/jobs/fit' || path === '/api/v1/evidence' || path === '/api/v1/assessments' || path === '/api/v1/assessments/prepare' || path === '/api/v1/imports/legacy' || path === '/api/v1/pending' || path === '/api/v1/metrics' || path === '/api/v1/runtime-config' || path === '/api/v1/applications' || path === '/api/v1/preflight/run' || path === '/api/v1/messages/draft' || path === '/api/v1/queue'
       || path === '/api/v1/queue/items' || path === '/api/v1/runs' || path === '/api/v1/approvals' || path === '/api/v1/exports/shareable' || path === '/api/v1/sync/reconcile' || path === '/api/v1/applications/prepare'
-      || path === '/api/v1/campaign' || path === '/api/v1/platforms' || Boolean(claimMatch) || Boolean(failureMatch) || Boolean(runMatch) || Boolean(runActionMatch) || Boolean(runEventsMatch) || Boolean(approvalMatch) || Boolean(applicationEventMatch) || Boolean(applicationRunMatch);
+      || path === '/api/v1/campaign' || path === '/api/v1/platforms' || path === '/api/v1/observability' || path === '/api/v1/auth/session' || Boolean(claimMatch) || Boolean(failureMatch) || Boolean(runMatch) || Boolean(runActionMatch) || Boolean(runEventsMatch) || Boolean(approvalMatch) || Boolean(applicationEventMatch) || Boolean(applicationRunMatch) || Boolean(agentTurnMatch) || Boolean(agentThreadMatch);
     if (knownPath) {
       sendJson(response, 405, { error: { code: 'method_not_allowed', message: 'Método não permitido.' } });
       return;
@@ -375,7 +482,7 @@ function sendJson(response, statusCode, payload) {
 
 function sendDomainError(response, error) {
   const statusCode = error?.code === 'queue_item_not_found' || error?.code === 'run_not_found' || error?.code === 'approval_not_found' ? 404
-    : error?.code?.startsWith('queue_') || error?.code?.startsWith('approval_') || error?.code === 'run_not_resumable' ? 409 : 400;
+    : error?.code === 'fluxo_locked' || error?.code?.startsWith('queue_') || error?.code?.startsWith('approval_') || error?.code === 'run_not_resumable' ? 409 : 400;
   sendJson(response, statusCode, {
     error: { code: error?.code ?? 'request_failed', message: error?.message ?? 'Não foi possível concluir a operação.' }
   });

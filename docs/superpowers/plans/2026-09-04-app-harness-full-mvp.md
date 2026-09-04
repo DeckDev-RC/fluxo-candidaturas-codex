@@ -135,3 +135,65 @@ Já implementada nos commits anteriores: leitor seguro, `GET /health`, `GET /api
 - [x] `npm start` responde em `127.0.0.1`.
 - [x] Não há execução real de candidatura nos testes.
 - [x] `git status` da worktree está limpo após commit.
+
+## Extensão aprovada — frentes restantes
+
+### Task 9: Onboarding visual, perfil e runtime
+
+Adicionar estado de onboarding, campos editáveis não sensíveis, tela de preflight e limites operacionais.
+
+TDD: testes HTTP/UI falhando para onboarding incompleto, salvamento atômico e ausência de segredos; implementação mínima; suíte verde. **Concluída.**
+
+### Task 10: Currículo e aderência
+
+Encapsular `extrair-curriculo.ps1`, `selecionar-curriculo.ps1` e `calcular-aderencia.ps1`, com caminhos restritos e resultado estruturado.
+
+TDD: testes de extensão, path traversal, seleção e requisitos eliminatórios; implementação; suíte verde. **Concluída.**
+
+### Task 11: Integridade de mutações
+
+Aplicar lock, operação pendente, checkpoint, backup e reconciliação em toda mutação de campanha, fila, candidatura, evento e exportação.
+
+TDD: concorrência, crash entre arquivo/banco, idempotência e stale checkpoint; implementação; suíte verde. **Concluída para a superfície HTTP:** lock por raiz cobre POST/PUT/PATCH/DELETE; checkpoint e reconciliação permanecem atômicos e idempotentes.
+
+### Task 12: Streaming do App Server
+
+Conectar notificações JSON-RPC ao `run-service`, SSE e UI, mantendo thread/turn persistidos e sem iniciar processo até uma execução autorizada.
+
+TDD: processo JSONL falso, eventos delta, interrupção e erro; implementação; suíte verde. **Concluída.** Thread/turn, notificações, eventos e SSE estão conectados.
+
+### Task 13: Evidências
+
+Encapsular `registrar-evidencia.ps1`, validar origem e destino em `evidencias/`, registrar hash e associar ao evento/candidatura.
+
+TDD: confirmação sem evidência, path externo, hash e arquivo ausente; implementação; suíte verde. **Concluída.** Captura automática usa o driver Playwright e mantém `evidencias/` como destino.
+
+### Task 14: Questionários e resultados de testes
+
+Adicionar preparo de questionário, portões de autoria, cronômetro somente informativo e registro via `registrar-resultado-teste.ps1`.
+
+TDD: tipos pessoais/fiscalizados, resultado, score e evidência; implementação; suíte verde. **Concluída.** Preparação é explicitamente informativa e requer autoria humana.
+
+### Task 15: Aprovação detalhada
+
+Mostrar payload sanitizado, currículo, respostas, plataforma, hash, validade e diff na UI antes de aprovar/rejeitar.
+
+TDD: payload alterado, expiração, segredo removido e decisão persistida; implementação; suíte verde. **Concluída.** UI exibe resumo sanitizado, hash, run e validade.
+
+### Task 16: Importação e acompanhamento
+
+Encapsular `importar-controles-legados.ps1`, `monitorar-pendencias.ps1` e gerar mensagens/eventos no painel.
+
+TDD: importação idempotente, status mapeado, pendências e mensagens sem envio; implementação; suíte verde. **Concluída.**
+
+### Task 17: Autenticação e observabilidade
+
+Adicionar sessão local, CSRF/origin check, correlation id, redaction central, métricas de execução e health detalhado.
+
+TDD: acesso sem sessão, origem inválida, segredo em log, evento correlacionado e health; implementação; suíte verde. **Concluída.** Limite loopback/origin, request ID, redaction e métricas locais.
+
+### Task 18: E2E final e verificação
+
+Executar cenário completo somente com fixtures, validar UI no Playwright local, documentar execução e atualizar critérios do PRD/SDD.
+
+TDD: cenário completo falhando; integração; suíte, sintaxe e smoke local concluídos. A worktree segue aberta para revisão/commit.

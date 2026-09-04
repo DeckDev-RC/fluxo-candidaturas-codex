@@ -22,6 +22,15 @@ export function createBrowserAdapter({ driver }) {
       if (state?.challenge) throw manualIntervention(state.challenge);
       const text = String(state?.text ?? '').toLowerCase();
       return { confirmed: /candidatura|application/.test(text) && /enviada|submitted|recebida|received/.test(text), state };
+    },
+
+    async captureEvidence({ runId = 'run' } = {}) {
+      const safeId = String(runId).replace(/[^a-zA-Z0-9_-]/g, '_');
+      const path = `evidencias/${safeId}-confirmacao.png`;
+      if (typeof driver.screenshot !== 'function') throw domainError('evidence_capture_unavailable', 'O driver não oferece captura de evidência.');
+      const result = await driver.screenshot(path);
+      if (result?.ok === false) throw domainError('evidence_capture_failed', 'Não foi possível capturar a evidência.');
+      return path;
     }
   };
 }

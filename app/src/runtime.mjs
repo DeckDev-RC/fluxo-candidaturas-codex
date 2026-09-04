@@ -12,6 +12,13 @@ import { createStdioAgentTransport } from './stdio-agent-transport.mjs';
 import { createStore } from './store.mjs';
 import { readRuntimeConfig } from './runtime-config.mjs';
 import { readFluxoState } from './state-reader.mjs';
+import { createResumeService } from './resume-service.mjs';
+import { createEvidenceService } from './evidence-service.mjs';
+import { createAssessmentService } from './assessment-service.mjs';
+import { createLegacyImportService } from './legacy-import-service.mjs';
+import { createPendingService } from './pending-service.mjs';
+import { createCheckpointService } from './checkpoint-service.mjs';
+import { createMetricsService } from './metrics-service.mjs';
 
 export async function createLocalRuntime({ rootDir }) {
   await mkdir(join(rootDir, 'estado'), { recursive: true });
@@ -22,9 +29,16 @@ export async function createLocalRuntime({ rootDir }) {
   const approvalService = createApprovalService({ dbPath });
   const stateStore = createStore({ rootDir, dbPath });
   const browserAdapter = createBrowserAdapter({
-    driver: createPlaywrightCliDriver({ session: runtimeConfig.playwrightSession })
+    driver: createPlaywrightCliDriver({ session: runtimeConfig.playwrightSession, cwd: rootDir })
   });
   const applicationService = createApplicationService({ rootDir });
+  const resumeService = createResumeService({ rootDir });
+  const evidenceService = createEvidenceService({ rootDir });
+  const assessmentService = createAssessmentService({ rootDir });
+  const legacyImportService = createLegacyImportService({ rootDir });
+  const pendingService = createPendingService({ rootDir });
+  const checkpointService = createCheckpointService({ rootDir });
+  const metricsService = createMetricsService({ rootDir });
   const applicationFlow = createApplicationFlow({
     queueService,
     runService,
@@ -43,7 +57,11 @@ export async function createLocalRuntime({ rootDir }) {
     }
   });
   const agentAdapter = createAgentAdapter({
-    transportFactory: () => createStdioAgentTransport({ cwd: rootDir })
+    transportFactory: ({ onNotification }) => createStdioAgentTransport({ cwd: rootDir, onNotification }),
+    onNotification(message, runId) {
+      if (!runId) return;
+      runService.appendEvent({ runId, type: message.method || 'agent.notification', payload: message.params ?? {}, actorType: 'agent' });
+    }
   });
   runService.reconcile();
   await stateStore.syncFromFiles();
@@ -57,6 +75,7 @@ export async function createLocalRuntime({ rootDir }) {
     browserAdapter,
     agentAdapter,
     applicationFlow,
+    resumeService, evidenceService, assessmentService, legacyImportService, pendingService, checkpointService, metricsService,
     async close() {
       await agentAdapter.close();
       stateStore.close();

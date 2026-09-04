@@ -3,22 +3,34 @@ import { summarizePreflight } from './preflight-summary.js';
 const refreshButton = document.querySelector('#refresh');
 const preflightButton = document.querySelector('#run-preflight');
 const exportButton = document.querySelector('#export-shareable');
+const onboardingForm = document.querySelector('#onboarding-form');
+const resumeTools = document.querySelector('#resume-tools');
 
 refreshButton.addEventListener('click', loadState);
 preflightButton.addEventListener('click', runPreflight);
 exportButton.addEventListener('click', exportShareable);
+onboardingForm.addEventListener('submit', saveOnboarding);
+resumeTools.addEventListener('submit', (event) => runResumeOperation(event, 'fit'));
+resumeTools.querySelector('[data-operation="select"]').addEventListener('click', () => runResumeOperation(null, 'select'));
+resumeTools.querySelector('[data-operation="extract"]').addEventListener('click', () => runResumeOperation(null, 'extract'));
 loadState();
 
 async function loadState() {
   refreshButton.disabled = true;
   refreshButton.classList.add('is-loading');
   try {
-    const [response, approvalsResponse] = await Promise.all([
+    const [response, approvalsResponse, profileResponse, metricsResponse, pendingResponse, assessmentsResponse, platformsResponse] = await Promise.all([
       fetch('/api/v1/state', { cache: 'no-store' }),
-      fetch('/api/v1/approvals', { cache: 'no-store' })
+      fetch('/api/v1/approvals', { cache: 'no-store' }),
+      fetch('/api/v1/profile', { cache: 'no-store' }),
+      fetch('/api/v1/metrics', { cache: 'no-store' }),
+      fetch('/api/v1/pending', { cache: 'no-store' }),
+      fetch('/api/v1/assessments', { cache: 'no-store' }),
+      fetch('/api/v1/platforms', { cache: 'no-store' })
     ]);
     if (!response.ok) throw new Error('state_read_failed');
-    render(await response.json(), approvalsResponse.ok ? await approvalsResponse.json() : []);
+    render(await response.json(), approvalsResponse.ok ? await approvalsResponse.json() : [], profileResponse.ok ? await profileResponse.json() : null,
+      metricsResponse.ok ? await metricsResponse.json() : null, pendingResponse.ok ? await pendingResponse.json() : [], assessmentsResponse.ok ? await assessmentsResponse.json() : [], platformsResponse.ok ? await platformsResponse.json() : []);
   } catch {
     renderUnavailable();
   } finally {
@@ -27,7 +39,7 @@ async function loadState() {
   }
 }
 
-function render(state, approvals = []) {
+function render(state, approvals = [], profile = null, metrics = null, pending = [], assessments = [], registry = []) {
   const ready = state.installation.ready;
   document.querySelector('#installation-status').textContent = ready ? 'Pronto para operar' : 'Atenção necessária';
   document.querySelector('#installation-dot').classList.toggle('is-ready', ready);
@@ -35,11 +47,60 @@ function render(state, approvals = []) {
   document.querySelector('#freshness').textContent = `Leitura local · ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
 
   renderMetrics(state);
-  renderPlatforms(state.campaign.platforms);
+  renderPlatforms(state.campaign.platforms, registry);
   renderQueue(state.queue);
   renderApplications(state.applications);
   renderCheckpoint(state.checkpoint);
   renderApprovals(approvals);
+  renderOnboarding(state, profile);
+  renderOperations(metrics, pending, assessments);
+}
+
+function renderOperations(metrics, pending, assessments) {
+  const metricsContainer = document.querySelector('#metrics-detail');
+  const totals = metrics?.totals ?? {};
+  metricsContainer.replaceChildren(...[['candidaturas', totals.applications ?? 0], ['confirmadas', totals.confirmed ?? 0], ['na fila', totals.queue ?? 0]].map(([label, value]) => { const item = document.createElement('div'); item.textContent = `${label}: ${value}`; return item; }));
+  renderCompact('#pending-list', pending, (item) => `${item.urgency ?? '—'} · ${item.reference ?? 'sem referência'} · ${item.nextAction ?? ''}`);
+  renderCompact('#assessment-list', assessments, (item) => `${item.reference ?? '—'} · ${item.name ?? 'teste'} · ${item.status ?? 'sem resultado'}`);
+}
+
+function renderCompact(selector, items, toText) {
+  const container = document.querySelector(selector);
+  if (!items.length) { container.textContent = 'Nenhum registro.'; return; }
+  container.replaceChildren(...items.slice(0, 6).map((item) => { const row = document.createElement('div'); row.textContent = toText(item); return row; }));
+}
+
+async function runResumeOperation(event, operation) {
+  event?.preventDefault();
+  const formData = Object.fromEntries(new FormData(resumeTools));
+  const feedback = document.querySelector('#resume-feedback'); feedback.textContent = 'Processando…';
+  const endpoint = operation === 'select' ? '/api/v1/resumes/select' : operation === 'extract' ? '/api/v1/resumes/extract' : '/api/v1/jobs/fit';
+  const requestBody = operation === 'extract' ? { path: formData.sourcePath } : formData;
+  const response = await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(requestBody) });
+  if (!response.ok) { feedback.textContent = 'Não foi possível concluir.'; return; }
+  const result = await response.json();
+  feedback.textContent = operation === 'select' ? `Resultado: ${result.output ?? 'currículo selecionado'}` : operation === 'extract' ? `Extraído: ${result.path ?? 'ok'}` : `Aderência: ${result.score ?? 0}% · classe ${result.classification ?? '—'}`;
+}
+
+function renderOnboarding(state, profile) {
+  const section = document.querySelector('#onboarding-section');
+  const configured = profile?.profile?.exists === true && state.campaign.platforms.length > 0;
+  section.hidden = configured;
+}
+
+async function saveOnboarding(event) {
+  event.preventDefault();
+  const feedback = document.querySelector('#onboarding-feedback');
+  const data = Object.fromEntries(new FormData(onboardingForm));
+  data.campaign = {
+    totalGoal: Number(data.totalGoal), dailyGoal: Number(data.dailyGoal), weeklyGoal: Number(data.weeklyGoal),
+    platforms: String(data.platforms).split(',').map((name) => name.trim()).filter(Boolean).map((name) => ({ name, enabled: true, goal: 0 }))
+  };
+  delete data.totalGoal; delete data.dailyGoal; delete data.weeklyGoal; delete data.platforms;
+  feedback.textContent = 'Salvando…';
+  const response = await fetch('/api/v1/onboarding', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) });
+  feedback.textContent = response.ok ? 'Configuração salva localmente.' : 'Não foi possível salvar. Revise os campos.';
+  if (response.ok) await loadState();
 }
 
 function renderApprovals(approvals) {
@@ -53,7 +114,7 @@ function renderApprovals(approvals) {
   container.replaceChildren(...approvals.map((approval) => {
     const row = document.createElement('article');
     row.className = 'approval-row';
-    row.innerHTML = `<div><strong>${escapeHtml(approval.kind)}</strong><small>${escapeHtml(approval.status)} · expira ${escapeHtml(approval.expiresAt)}</small></div><div class="approval-actions"></div>`;
+    row.innerHTML = `<div><strong>${escapeHtml(approval.kind)}</strong><small>${escapeHtml(approval.status)} · expira ${escapeHtml(approval.expiresAt)} · run ${escapeHtml(approval.runId)}</small><details class="approval-details"><summary>Ver detalhes da ação</summary><pre>${escapeHtml(JSON.stringify(approval.payloadSummary ?? {}, null, 2))}</pre></details></div><div class="approval-actions"></div>`;
     const actions = row.querySelector('.approval-actions');
     if (approval.status === 'pending') {
       for (const decision of ['approved', 'rejected']) {
@@ -105,7 +166,7 @@ function renderMetrics(state) {
   }));
 }
 
-function renderPlatforms(platforms) {
+function renderPlatforms(platforms, registry = []) {
   const container = document.querySelector('#campaign-platforms');
   if (!platforms.length) {
     container.textContent = 'Nenhuma plataforma configurada.';
@@ -114,9 +175,10 @@ function renderPlatforms(platforms) {
   }
   container.className = 'platform-list';
   container.replaceChildren(...platforms.map((platform) => {
+    const definition = registry.find((item) => item.name === platform.name) ?? {};
     const item = document.createElement('div');
     item.className = 'platform-row';
-    item.innerHTML = `<strong>${escapeHtml(platform.name || '—')}</strong><span>${escapeHtml(platform.enabled ? 'habilitada' : 'desabilitada')}</span><b>${escapeHtml(platform.goal ?? 0)}</b>`;
+    item.innerHTML = `<strong>${escapeHtml(platform.name || '—')}</strong><span>${escapeHtml(`${platform.enabled ? 'habilitada' : 'desabilitada'} · ${definition.auth || 'manual'} · ${definition.urlEnv || 'URL local'}`)}</span><b>${escapeHtml(platform.goal ?? 0)}</b><small>${escapeHtml(definition.playbook || '')}</small>`;
     return item;
   }));
 }

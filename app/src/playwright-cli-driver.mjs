@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 
-export function createPlaywrightCliDriver({ session = 'candidaturas', execute = createDefaultExecutor(session) } = {}) {
+export function createPlaywrightCliDriver({ session = 'candidaturas', cwd, execute = createDefaultExecutor(session, cwd) } = {}) {
   return {
     async snapshot() {
       const result = await execute(['snapshot']);
@@ -18,14 +18,18 @@ export function createPlaywrightCliDriver({ session = 'candidaturas', execute = 
 
     async state() {
       return this.snapshot();
+    },
+
+    async screenshot(path) {
+      return execute(['screenshot', '--filename', String(path)]);
     }
   };
 }
 
-function createDefaultExecutor(session) {
+function createDefaultExecutor(session, cwd) {
   return (commands) => new Promise((resolve, reject) => {
     const child = spawn('npx', ['--yes', '--package', '@playwright/cli', 'playwright-cli', '--session', session, ...commands], {
-      shell: false,
+      shell: false, cwd,
       windowsHide: true
     });
     let stdout = '';
