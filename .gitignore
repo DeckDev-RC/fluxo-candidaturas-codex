@@ -22,6 +22,7 @@ mensagens/*
 output/
 backups/
 dist/
+.worktrees/
 .playwright-cli/
 *.log
 *.tmp
