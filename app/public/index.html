@@ -29,12 +29,13 @@
 
       <section class="status-line" aria-label="Estado da instalação">
         <div class="status-label"><span class="status-dot" id="installation-dot"></span><strong id="installation-status">Carregando</strong></div>
-        <span id="preflight-summary" class="muted">Verificando preflight</span>
+        <div class="status-actions"><span id="preflight-summary" class="muted">Verificando preflight</span><button id="run-preflight" class="inline-action" type="button">Executar preflight</button></div>
       </section>
 
       <section class="overview-section" aria-labelledby="overview-title">
         <div class="section-heading"><p class="eyebrow">visão geral</p><h2 id="overview-title">Campanha</h2></div>
         <div class="metrics-row" id="campaign-metrics" aria-live="polite"></div>
+        <div class="platform-list" id="campaign-platforms" aria-label="Metas por plataforma"></div>
       </section>
 
       <div class="content-grid">
@@ -52,6 +53,11 @@
       <section class="checkpoint-section" aria-labelledby="checkpoint-title">
         <div class="section-heading"><p class="eyebrow">retomada</p><h2 id="checkpoint-title">Checkpoint</h2></div>
         <div id="checkpoint-content" class="checkpoint-content"></div>
+      </section>
+
+      <section class="approval-section" aria-labelledby="approval-title">
+        <div class="section-heading inline"><div><p class="eyebrow">decisão humana</p><h2 id="approval-title">Aprovações</h2></div><span class="count">ações sensíveis</span></div>
+        <div id="approval-list" class="approval-list"></div>
       </section>
     </main>
 

@@ -7,6 +7,11 @@ import { createQueueService } from './queue-service.mjs';
 import { createRunService } from './run-service.mjs';
 import { createApprovalService } from './approval-service.mjs';
 import { createShareableExport } from './export-service.mjs';
+import { createCampaignService } from './campaign-service.mjs';
+import { getFluxoProfileSummary } from './profile-service.mjs';
+import { runPreflight } from './preflight-service.mjs';
+import { createFollowUpService } from './follow-up-service.mjs';
+import { createStore } from './store.mjs';
 
 const PUBLIC_DIR = new URL('../public/', import.meta.url);
 const STATIC_FILES = new Map([
@@ -21,10 +26,14 @@ const JSON_HEADERS = {
   'cache-control': 'no-store'
 };
 
-export function createServer({ rootDir, queueService = createQueueService({ rootDir }), exportService = { createShareableExport: () => createShareableExport({ rootDir }) } }) {
+export function createServer({ rootDir, queueService = createQueueService({ rootDir }), exportService = { createShareableExport: () => createShareableExport({ rootDir }) }, preflightService, followUpService: injectedFollowUpService, stateStore }) {
   mkdirSync(join(rootDir, 'estado'), { recursive: true });
   const runService = createRunService({ dbPath: join(rootDir, 'estado', 'harness.sqlite') });
   const approvalService = createApprovalService({ dbPath: join(rootDir, 'estado', 'harness.sqlite') });
+  const campaignService = createCampaignService({ rootDir });
+  const effectivePreflightService = preflightService ?? { runPreflight: (options) => runPreflight({ rootDir, ...options }) };
+  const followUpService = injectedFollowUpService ?? createFollowUpService({ rootDir });
+  const effectiveStateStore = stateStore ?? createStore({ rootDir, dbPath: join(rootDir, 'estado', 'harness.sqlite') });
   const server = createHttpServer(async (request, response) => {
     const path = new URL(request.url ?? '/', 'http://127.0.0.1').pathname;
 
@@ -45,12 +54,72 @@ export function createServer({ rootDir, queueService = createQueueService({ root
       return;
     }
 
+    if (request.method === 'GET' && path === '/api/v1/state/preflight') {
+      sendJson(response, 200, (await readFluxoState(rootDir)).preflight);
+      return;
+    }
+
+    if (request.method === 'GET' && path === '/api/v1/state/checkpoint') {
+      sendJson(response, 200, (await readFluxoState(rootDir)).checkpoint);
+      return;
+    }
+
+    if (request.method === 'GET' && path === '/api/v1/profile') {
+      sendJson(response, 200, await getFluxoProfileSummary(rootDir));
+      return;
+    }
+
+    if (request.method === 'GET' && path === '/api/v1/applications') {
+      sendJson(response, 200, (await readFluxoState(rootDir)).applications);
+      return;
+    }
+
+    const applicationEventMatch = path.match(/^\/api\/v1\/applications\/([^/]+)\/events$/);
+    if (request.method === 'POST' && applicationEventMatch) {
+      try {
+        const input = await readJsonBody(request);
+        sendJson(response, 201, await followUpService.recordEvent({ reference: decodeURIComponent(applicationEventMatch[1]), ...input }));
+      } catch (error) {
+        sendDomainError(response, error);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && path === '/api/v1/preflight/run') {
+      try {
+        const input = await readJsonBody(request);
+        sendJson(response, 200, await effectivePreflightService.runPreflight(input));
+      } catch (error) {
+        sendDomainError(response, error);
+      }
+      return;
+    }
+
     if (request.method === 'GET' && path === '/api/v1/queue') {
       try {
         sendJson(response, 200, await queueService.listQueue());
       } catch {
         sendJson(response, 500, { error: { code: 'queue_read_failed', message: 'Não foi possível ler a fila local.' } });
       }
+      return;
+    }
+
+    if (request.method === 'GET' && path === '/api/v1/campaign') {
+      sendJson(response, 200, await campaignService.getCampaign());
+      return;
+    }
+
+    if (request.method === 'PUT' && path === '/api/v1/campaign') {
+      try {
+        sendJson(response, 200, await campaignService.updateCampaign(await readJsonBody(request)));
+      } catch (error) {
+        sendDomainError(response, error);
+      }
+      return;
+    }
+
+    if (request.method === 'GET' && path === '/api/v1/platforms') {
+      sendJson(response, 200, await campaignService.listPlatforms());
       return;
     }
 
@@ -61,6 +130,35 @@ export function createServer({ rootDir, queueService = createQueueService({ root
         sendJson(response, 404, { error: { code: 'run_not_found', message: 'Execução não encontrada.' } });
       } else {
         sendJson(response, 200, run);
+      }
+      return;
+    }
+
+    const runEventsMatch = path.match(/^\/api\/v1\/runs\/([^/]+)\/events$/);
+    if (request.method === 'GET' && runEventsMatch) {
+      const runId = decodeURIComponent(runEventsMatch[1]);
+      if (!runService.getRun(runId)) {
+        sendJson(response, 404, { error: { code: 'run_not_found', message: 'Execução não encontrada.' } });
+        return;
+      }
+      response.writeHead(200, {
+        'content-type': 'text/event-stream; charset=utf-8',
+        'cache-control': 'no-cache',
+        connection: 'keep-alive'
+      });
+      for (const event of runService.listEvents(runId)) {
+        response.write(`id: ${event.id}\nevent: ${event.type}\ndata: ${event.payloadJson}\n\n`);
+      }
+      response.end();
+      return;
+    }
+
+    if (request.method === 'POST' && runEventsMatch) {
+      try {
+        const input = await readJsonBody(request);
+        sendJson(response, 201, runService.appendEvent({ runId: decodeURIComponent(runEventsMatch[1]), ...input }));
+      } catch (error) {
+        sendDomainError(response, error);
       }
       return;
     }
@@ -83,6 +181,15 @@ export function createServer({ rootDir, queueService = createQueueService({ root
     if (request.method === 'POST' && path === '/api/v1/exports/shareable') {
       try {
         sendJson(response, 200, await exportService.createShareableExport());
+      } catch (error) {
+        sendDomainError(response, error);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && path === '/api/v1/sync/reconcile') {
+      try {
+        sendJson(response, 200, await effectiveStateStore.syncFromFiles());
       } catch (error) {
         sendDomainError(response, error);
       }
@@ -149,8 +256,9 @@ export function createServer({ rootDir, queueService = createQueueService({ root
       return;
     }
 
-    const knownPath = path === '/health' || path === '/api/v1/state' || path === '/api/v1/queue'
-      || path === '/api/v1/queue/items' || path === '/api/v1/runs' || path === '/api/v1/approvals' || path === '/api/v1/exports/shareable' || Boolean(claimMatch) || Boolean(runMatch) || Boolean(runActionMatch) || Boolean(approvalMatch);
+    const knownPath = path === '/health' || path === '/api/v1/state' || path === '/api/v1/state/preflight' || path === '/api/v1/state/checkpoint' || path === '/api/v1/profile' || path === '/api/v1/applications' || path === '/api/v1/preflight/run' || path === '/api/v1/queue'
+      || path === '/api/v1/queue/items' || path === '/api/v1/runs' || path === '/api/v1/approvals' || path === '/api/v1/exports/shareable' || path === '/api/v1/sync/reconcile'
+      || path === '/api/v1/campaign' || path === '/api/v1/platforms' || Boolean(claimMatch) || Boolean(runMatch) || Boolean(runActionMatch) || Boolean(runEventsMatch) || Boolean(approvalMatch) || Boolean(applicationEventMatch);
     if (knownPath) {
       sendJson(response, 405, { error: { code: 'method_not_allowed', message: 'Método não permitido.' } });
       return;
@@ -181,6 +289,7 @@ export function createServer({ rootDir, queueService = createQueueService({ root
     sendJson(response, 404, { error: { code: 'not_found', message: 'Recurso não encontrado.' } });
   });
   server.once('close', () => {
+    effectiveStateStore.close();
     approvalService.close();
     runService.close();
   });

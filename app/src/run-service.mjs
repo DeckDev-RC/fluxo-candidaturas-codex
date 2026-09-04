@@ -63,6 +63,10 @@ export function createRunService({ dbPath, now = () => new Date() }) {
       return event;
     },
 
+    listEvents(runId) {
+      return database.prepare('select * from domain_events where run_id = ? order by created_at asc').all(runId).map(toEvent);
+    },
+
     pauseRun(id, reason) {
       return updateRun(id, 'paused', reason);
     },

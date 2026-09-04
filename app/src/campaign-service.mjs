@@ -1,0 +1,68 @@
+import { randomUUID } from 'node:crypto';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+
+export function createCampaignService({ rootDir }) {
+  return {
+    async getCampaign() {
+      return readJson(join(rootDir, 'campanha', 'config.json'), { platforms: [] });
+    },
+
+    async listPlatforms() {
+      const config = await readJson(join(rootDir, 'config', 'plataformas.json'), { platforms: [] });
+      return asArray(config.platforms);
+    },
+
+    async updateCampaign(patch) {
+      const current = await readJson(join(rootDir, 'campanha', 'config.json'), { platforms: [] });
+      const platformDefinitions = await this.listPlatforms();
+      const allowedNames = new Set(platformDefinitions.map((item) => item.name));
+      const next = { ...current, ...patch };
+
+      for (const field of ['totalGoal', 'dailyGoal', 'weeklyGoal', 'maxConsecutiveFailures']) {
+        if (field in next && (!Number.isInteger(Number(next[field])) || Number(next[field]) < 0)) {
+          throw domainError('invalid_campaign', `${field} deve ser um inteiro não negativo.`);
+        }
+        if (field in next) next[field] = Number(next[field]);
+      }
+      if ('platforms' in next) {
+        if (!Array.isArray(next.platforms)) throw domainError('invalid_campaign', 'platforms deve ser uma lista.');
+        for (const platform of next.platforms) {
+          if (!allowedNames.has(platform.name)) throw domainError('invalid_platform', `Plataforma desconhecida: ${platform.name}`);
+          if (Number(platform.goal) < 0 || !Number.isInteger(Number(platform.goal))) throw domainError('invalid_campaign', 'A meta da plataforma deve ser um inteiro não negativo.');
+          platform.goal = Number(platform.goal);
+          platform.enabled = platform.enabled === true;
+        }
+      }
+
+      await writeJsonAtomic(join(rootDir, 'campanha', 'config.json'), next);
+      return next;
+    }
+  };
+}
+
+async function readJson(path, fallback) {
+  try {
+    return JSON.parse(await readFile(path, 'utf8'));
+  } catch (error) {
+    if (error?.code === 'ENOENT') return fallback;
+    throw error;
+  }
+}
+
+async function writeJsonAtomic(path, value) {
+  await mkdir(join(path, '..'), { recursive: true });
+  const temporaryPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
+  await writeFile(temporaryPath, JSON.stringify(value, null, 2), 'utf8');
+  await rename(temporaryPath, path);
+}
+
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function domainError(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}

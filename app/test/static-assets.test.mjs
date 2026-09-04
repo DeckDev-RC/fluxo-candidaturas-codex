@@ -16,6 +16,9 @@ test('GET / serves the read-only Fluxo dashboard without secrets', async () => {
     assert.equal(response.status, 200);
     assert.match(response.headers.get('content-type'), /^text\/html/);
     assert.match(body, /Fluxo de candidaturas/);
+    assert.match(body, /run-preflight/);
+    assert.match(body, /campaign-platforms/);
+    assert.match(body, /approval-list/);
     assert.equal(body.includes('GUPY_PASSWORD'), false);
   } finally {
     await close(server);
