@@ -2,9 +2,11 @@ import { summarizePreflight } from './preflight-summary.js';
 
 const refreshButton = document.querySelector('#refresh');
 const preflightButton = document.querySelector('#run-preflight');
+const exportButton = document.querySelector('#export-shareable');
 
 refreshButton.addEventListener('click', loadState);
 preflightButton.addEventListener('click', runPreflight);
+exportButton.addEventListener('click', exportShareable);
 loadState();
 
 async function loadState() {
@@ -121,7 +123,44 @@ function renderPlatforms(platforms) {
 
 function renderQueue(queue) {
   document.querySelector('#queue-count').textContent = `${queue.items.length} ${queue.items.length === 1 ? 'vaga' : 'vagas'}`;
-  renderList('#queue-list', queue.items, (item) => [item.priority || '—', item.role || 'Vaga sem cargo', `${item.company || 'Empresa não informada'} · ${item.platform || 'plataforma não informada'}`, item.status || 'sem status', item.fitScore != null ? `${item.fitScore}% aderência` : 'aderência não calculada']);
+  const container = document.querySelector('#queue-list');
+  if (!queue.items.length) {
+    container.className = 'data-list empty-state';
+    container.textContent = 'Nenhum registro local.';
+    return;
+  }
+  container.className = 'data-list';
+  container.replaceChildren(...queue.items.slice(0, 8).map((item) => {
+    const row = document.createElement('article');
+    row.className = 'data-row';
+    row.innerHTML = `<span class="row-mark">${escapeHtml(item.priority || '—')}</span><div class="row-main"><strong>${escapeHtml(item.role || 'Vaga sem cargo')}</strong><small>${escapeHtml(`${item.company || 'Empresa não informada'} · ${item.platform || 'plataforma não informada'}`)}</small></div><div class="row-meta"><strong>${escapeHtml(item.status || 'sem status')}</strong><small>${escapeHtml(item.fitScore != null ? `${item.fitScore}% aderência` : 'aderência não calculada')}</small></div>`;
+    if (item.status === 'na fila' && item.id) {
+      const button = document.createElement('button');
+      button.className = 'row-action';
+      button.type = 'button';
+      button.textContent = 'Reivindicar';
+      button.addEventListener('click', () => claimQueueItem(item.id));
+      row.append(button);
+    }
+    return row;
+  }));
+}
+
+async function claimQueueItem(id) {
+  const response = await fetch(`/api/v1/queue/${encodeURIComponent(id)}/claim`, { method: 'POST' });
+  if (response.ok) await loadState();
+}
+
+async function exportShareable() {
+  exportButton.disabled = true;
+  exportButton.textContent = 'Exportando…';
+  try {
+    const response = await fetch('/api/v1/exports/shareable', { method: 'POST' });
+    document.querySelector('#footer-version').textContent = response.ok ? 'pacote criado em dist/' : 'falha na exportação';
+  } finally {
+    exportButton.disabled = false;
+    exportButton.textContent = 'Exportar pacote';
+  }
 }
 
 function renderApplications(applications) {

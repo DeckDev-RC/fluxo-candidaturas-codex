@@ -4,6 +4,9 @@ export function createApplicationService({ rootDir = '', scriptRunner = (name, a
   return {
     async recordConfirmedApplication({ item, confirmation, evidencePath = '', resume = '', applicationId = '', nextAction = 'Aguardar retorno', notes = '' }) {
       if (confirmation?.confirmed !== true) throw domainError('submission_not_confirmed', 'A plataforma não confirmou o recebimento.');
+      if (!String(evidencePath).trim()) throw domainError('evidence_required', 'Evidência de confirmação é obrigatória.');
+      if (!isSafeRelativePath(evidencePath, 'evidencias')) throw domainError('invalid_evidence_path', 'Evidência deve ficar em evidencias/.');
+      if (resume && !isSafeRelativePath(resume, 'curriculo')) throw domainError('invalid_resume_path', 'Currículo deve ficar em curriculo/.');
       for (const field of ['platform', 'company', 'role', 'identifierOrUrl']) {
         if (!String(item?.[field] ?? '').trim()) throw domainError('invalid_application', `${field} é obrigatório.`);
       }
@@ -36,4 +39,9 @@ function domainError(code, message) {
   const error = new Error(message);
   error.code = code;
   return error;
+}
+
+function isSafeRelativePath(value, directory) {
+  const normalized = String(value).replaceAll('\\', '/');
+  return normalized.startsWith(`${directory}/`) && !normalized.includes('/../') && !normalized.includes('../') && !normalized.startsWith('/');
 }

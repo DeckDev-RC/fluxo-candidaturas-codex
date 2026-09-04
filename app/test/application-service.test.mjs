@@ -36,3 +36,33 @@ test('application service refuses unconfirmed submission without calling script'
   );
   assert.equal(called, false);
 });
+
+test('application service requires evidence path for a confirmed submission', async () => {
+  let called = false;
+  const service = createApplicationService({
+    async scriptRunner() { called = true; }
+  });
+
+  await assert.rejects(
+    () => service.recordConfirmedApplication({
+      item: { platform: 'GUPY', company: 'Acme', role: 'Dev', identifierOrUrl: '1' },
+      confirmation: { confirmed: true }
+    }),
+    (error) => error.code === 'evidence_required'
+  );
+  assert.equal(called, false);
+});
+
+test('application service rejects resume and evidence paths outside Fluxo folders', async () => {
+  const service = createApplicationService({ async scriptRunner() { throw new Error('must not run'); } });
+  const item = { platform: 'GUPY', company: 'Acme', role: 'Dev', identifierOrUrl: '1' };
+
+  await assert.rejects(
+    () => service.recordConfirmedApplication({ item, confirmation: { confirmed: true }, evidencePath: '..\\secret.txt' }),
+    (error) => error.code === 'invalid_evidence_path'
+  );
+  await assert.rejects(
+    () => service.recordConfirmedApplication({ item, confirmation: { confirmed: true }, evidencePath: 'evidencias/app.json', resume: '..\\private.pdf' }),
+    (error) => error.code === 'invalid_resume_path'
+  );
+});

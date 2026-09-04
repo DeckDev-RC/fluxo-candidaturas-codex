@@ -11,10 +11,12 @@ test('approval service creates and approves a hash-bound request', async () => {
 
   try {
     const approval = service.requestApproval({ runId: 'run-1', kind: 'submission', payload: { company: 'Acme', role: 'Dev' } });
+    const listed = service.listApprovals();
     const approved = service.decideApproval(approval.id, { decision: 'approved', actorId: 'candidate' });
     const verified = service.assertApproved(approval.id, { company: 'Acme', role: 'Dev' });
 
     assert.equal(approval.status, 'pending');
+    assert.equal(listed[0].payloadSummary.company, 'Acme');
     assert.equal(approved.status, 'approved');
     assert.equal(verified.status, 'approved');
   } finally {

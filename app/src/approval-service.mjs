@@ -74,11 +74,19 @@ function hashPayload(payload) {
 }
 
 function toApproval(row) {
+  let payloadSummary = {};
+  try { payloadSummary = redact(JSON.parse(row.payload_json ?? '{}')); } catch { payloadSummary = {}; }
   return {
     id: row.id, runId: row.run_id, kind: row.kind, payloadHash: row.payload_hash,
     status: row.status, decidedBy: row.decided_by, expiresAt: row.expires_at,
-    createdAt: row.created_at, decidedAt: row.decided_at
+    createdAt: row.created_at, decidedAt: row.decided_at, payloadSummary
   };
+}
+
+function redact(value) {
+  if (Array.isArray(value)) return value.map(redact);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value).filter(([key]) => !/(password|token|cookie|secret|mfa|authorization|credential)/i.test(key)).map(([key, entry]) => [key, redact(entry)]));
 }
 
 function domainError(code, message) {

@@ -26,7 +26,7 @@
 
 Já implementada nos commits anteriores: leitor seguro, `GET /health`, `GET /api/v1/state`, UI local, entrypoint e resumo de preflight.
 
-### Task 2: Projeção SQLite e reconciliação
+### Task 2: Projeção SQLite e reconciliação — implementada
 
 **Files:**
 - Create: `app/src/store.mjs`
@@ -35,12 +35,12 @@ Já implementada nos commits anteriores: leitor seguro, `GET /health`, `GET /api
 
 **Interfaces:** `createStore({ dbPath, rootDir })`, `store.syncFromFiles()`, `store.getSnapshot()`, `store.close()`.
 
-- [ ] Escrever testes para criação de schema, importação dos JSONs, divergência e ausência de segredos.
-- [ ] Rodar `npm test` e observar falha por módulo inexistente.
-- [ ] Implementar schema mínimo com `runs`, `operations`, `queue_items`, `applications`, `approvals`, `domain_events` e `failures`.
-- [ ] Rodar suíte completa e confirmar verde.
+- [x] Escrever testes para criação de schema, importação dos JSONs, divergência e ausência de segredos.
+- [x] Rodar `npm test` e observar falha por módulo inexistente.
+- [x] Implementar schema mínimo com `runs`, `operations`, `queue_items`, `applications`, `approvals`, `domain_events` e `failures`.
+- [x] Rodar suíte completa e confirmar verde.
 
-### Task 3: Campanha e fila
+### Task 3: Campanha e fila — implementada
 
 **Files:**
 - Create: `app/src/queue-service.mjs`
@@ -49,12 +49,12 @@ Já implementada nos commits anteriores: leitor seguro, `GET /health`, `GET /api
 
 **Interfaces:** `listQueue()`, `addQueueItem(input)`, `claimNext({ platform })`, `recordQueueFailure(id, error)`.
 
-- [ ] Testar deduplicação por `key` e fingerprint, filtros de meta, ordenação A/B/C, aderência, prazo e limite de falhas.
-- [ ] Observar RED.
-- [ ] Implementar serviço e endpoints `GET /api/v1/queue`, `POST /api/v1/queue/items`, `POST /api/v1/queue/:id/claim`.
-- [ ] Observar GREEN e atualizar dashboard com próxima ação.
+- [x] Testar deduplicação por `key` e fingerprint, filtros de meta, ordenação A/B/C, aderência, prazo e limite de falhas.
+- [x] Observar RED.
+- [x] Implementar serviço e endpoints `GET /api/v1/queue`, `POST /api/v1/queue/items`, `POST /api/v1/queue/:id/claim`.
+- [x] Observar GREEN e atualizar dashboard com próxima ação.
 
-### Task 4: Runs, eventos, locks e checkpoint
+### Task 4: Runs, eventos, locks e checkpoint — implementada
 
 **Files:**
 - Create: `app/src/run-service.mjs`
@@ -64,12 +64,12 @@ Já implementada nos commits anteriores: leitor seguro, `GET /health`, `GET /api
 
 **Interfaces:** `startRun(input)`, `pauseRun(id, reason)`, `resumeRun(id)`, `appendEvent(event)`, `reconcile()`.
 
-- [ ] Testar lock único, idempotência, `MAX_APPLICATIONS_PER_RUN`, `MAX_CONSECUTIVE_FAILURES`, stale checkpoint e retomada.
-- [ ] Observar RED.
-- [ ] Implementar serviços e endpoints de runs, eventos e checkpoint.
-- [ ] Observar GREEN.
+- [x] Testar lock único, idempotência, `MAX_APPLICATIONS_PER_RUN`, `MAX_CONSECUTIVE_FAILURES`, stale checkpoint e retomada.
+- [x] Observar RED.
+- [x] Implementar serviços e endpoints de runs, eventos e checkpoint.
+- [x] Observar GREEN.
 
-### Task 5: Aprovação e política
+### Task 5: Aprovação e política — implementada
 
 **Files:**
 - Create: `app/src/policy.mjs`
@@ -80,12 +80,12 @@ Já implementada nos commits anteriores: leitor seguro, `GET /health`, `GET /api
 
 **Interfaces:** `evaluateAction(action, context)`, `requestApproval(input)`, `decideApproval(id, decision)`.
 
-- [ ] Testar bloqueio de envio sem aprovação, hash inválido, expiração, MFA/CAPTCHA, dados sensíveis e testes cronometrados.
-- [ ] Observar RED.
-- [ ] Implementar policy gateway e endpoints `GET /api/v1/approvals` e `POST /api/v1/approvals/:id/decision`.
-- [ ] Observar GREEN.
+- [x] Testar bloqueio de envio sem aprovação, hash inválido, expiração, MFA/CAPTCHA, dados sensíveis e testes cronometrados.
+- [x] Observar RED.
+- [x] Implementar policy gateway e endpoints `GET /api/v1/approvals` e `POST /api/v1/approvals/:id/decision`.
+- [x] Observar GREEN.
 
-### Task 6: Script Adapter e exportação
+### Task 6: Script Adapter e exportação — implementada
 
 **Files:**
 - Create: `app/src/script-adapter.mjs`
@@ -96,12 +96,12 @@ Já implementada nos commits anteriores: leitor seguro, `GET /health`, `GET /api
 
 **Interfaces:** `runAllowedScript(name, args)`, `createShareableExport(rootDir, destination)`.
 
-- [ ] Testar allowlist, argumentos sem concatenação, redaction, backup, exit code e ausência de arquivos privados no ZIP.
-- [ ] Observar RED.
-- [ ] Implementar adapter e `POST /api/v1/exports/shareable`.
-- [ ] Observar GREEN.
+- [x] Testar allowlist, argumentos sem concatenação, redaction, backup, exit code e ausência de arquivos privados no ZIP.
+- [x] Observar RED.
+- [x] Implementar adapter e `POST /api/v1/exports/shareable`.
+- [x] Observar GREEN.
 
-### Task 7: Agent/Browser adapters simuláveis
+### Task 7: Agent/Browser adapters simuláveis — implementada
 
 **Files:**
 - Create: `app/src/agent-adapter.mjs`
@@ -110,12 +110,12 @@ Já implementada nos commits anteriores: leitor seguro, `GET /health`, `GET /api
 
 **Interfaces:** `createAgentAdapter()`, `createBrowserAdapter()`, `snapshot()`, `prepareApplication()`, `verifySubmission()`.
 
-- [ ] Testar lifecycle initialize/thread/turn, snapshot obrigatório, bloqueio em CAPTCHA/MFA e confirmação visual simulada.
-- [ ] Observar RED.
-- [ ] Implementar interfaces fake e contratos para integração real posterior.
-- [ ] Observar GREEN.
+- [x] Testar lifecycle initialize/thread/turn, snapshot obrigatório, bloqueio em CAPTCHA/MFA e confirmação visual simulada.
+- [x] Observar RED.
+- [x] Implementar interfaces fake e contratos para integração real posterior.
+- [x] Observar GREEN.
 
-### Task 8: Integração do fluxo e E2E simulado
+### Task 8: Integração do fluxo e E2E simulado — implementada
 
 **Files:**
 - Create: `app/test/flow.e2e.test.mjs`
@@ -123,15 +123,15 @@ Já implementada nos commits anteriores: leitor seguro, `GET /health`, `GET /api
 - Modify: `app/public/index.html`
 - Modify: `app/public/app.js`
 
-- [ ] Testar preflight → fila → claim → preparação → aprovação → confirmação simulada → registro → painel.
-- [ ] Observar RED.
-- [ ] Integrar serviços e estados na UI.
-- [ ] Observar GREEN e rodar a suíte completa.
+- [x] Testar preflight → fila → claim → preparação → aprovação → confirmação simulada → registro → painel.
+- [x] Observar RED.
+- [x] Integrar serviços e estados na UI.
+- [x] Observar GREEN e rodar a suíte completa.
 
 ## Verificação final
 
-- [ ] `npm test -- --test-reporter=spec` passa sem falhas.
-- [ ] `node --check` passa em todos os `.mjs` e `.js`.
-- [ ] `npm start` responde em `127.0.0.1`.
-- [ ] Não há execução real de candidatura nos testes.
-- [ ] `git status` da worktree está limpo após commit.
+- [x] `npm test -- --test-reporter=spec` passa sem falhas.
+- [x] `node --check` passa em todos os `.mjs` e `.js`.
+- [x] `npm start` responde em `127.0.0.1`.
+- [x] Não há execução real de candidatura nos testes.
+- [x] `git status` da worktree está limpo após commit.

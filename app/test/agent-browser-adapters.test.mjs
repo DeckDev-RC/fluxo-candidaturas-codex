@@ -12,14 +12,16 @@ test('agent adapter initializes, starts a thread and streams a turn', async () =
         if (method === 'initialize') return { server: 'local' };
         if (method === 'thread/start') return { thread: { id: 'thr-1' } };
         if (method === 'turn/start') return { turn: { id: 'turn-1' } };
-      }
+      },
+      notify(method, params) { messages.push({ method, params }); }
     }
   });
 
   const result = await adapter.runTurn('thr-1', 'Ler o estado local');
 
   assert.equal(messages[0].method, 'initialize');
-  assert.equal(messages[1].method, 'turn/start');
+  assert.equal(messages[1].method, 'initialized');
+  assert.equal(messages[2].method, 'turn/start');
   assert.equal(result.turn.id, 'turn-1');
 });
 

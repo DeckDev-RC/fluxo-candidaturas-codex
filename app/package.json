@@ -3,7 +3,7 @@
   "type": "module",
   "engines": { "node": ">=24.0.0" },
   "scripts": {
-    "start": "node src/main.mjs",
+    "start": "node --disable-warning=ExperimentalWarning src/main.mjs",
     "test": "node --disable-warning=ExperimentalWarning --test"
   }
 }

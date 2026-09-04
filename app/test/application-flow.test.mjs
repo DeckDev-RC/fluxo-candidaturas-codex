@@ -21,7 +21,7 @@ test('application flow connects claim, approval, visual confirmation and record'
       async snapshot() { return { url: 'https://example.test/apply', text: 'form' }; },
       async verifySubmission() { return { confirmed: true, state: { text: 'Candidatura enviada' } }; }
     },
-    async recordApplication(input) { return { id: 'app-1', status: 'enviada', evidence: input.evidence }; }
+    async recordApplication(input) { return { id: 'app-1', status: 'enviada', evidence: input.evidence, confirmed: input.confirmation.confirmed }; }
   });
 
   try {
@@ -31,6 +31,7 @@ test('application flow connects claim, approval, visual confirmation and record'
     const result = await flow.submitApproved(prepared, approval.id, { queueItemId: prepared.item.id, fields: { role: 'Dev' } });
 
     assert.equal(result.application.status, 'enviada');
+    assert.equal(result.application.confirmed, true);
     assert.equal(result.confirmation.confirmed, true);
   } finally {
     runService.close();
@@ -60,6 +61,21 @@ test('application flow refuses to record without visual confirmation', async () 
     runService.close();
     approvalService.close();
   }
+});
+
+test('application flow refuses to prepare when preflight is not ready', async () => {
+  let claimed = false;
+  const flow = createApplicationFlow({
+    queueService: { async claimNext() { claimed = true; } },
+    runService: {},
+    approvalService: {},
+    browserAdapter: {},
+    preflightReady: async () => false,
+    async recordApplication() {}
+  });
+
+  await assert.rejects(() => flow.prepareNext(), (error) => error.code === 'preflight_blocked');
+  assert.equal(claimed, false);
 });
 
 async function fixtureRoot() {

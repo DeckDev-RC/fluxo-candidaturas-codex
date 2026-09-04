@@ -64,6 +64,26 @@ test('POST /api/v1/queue/:id/claim claims an eligible item', async () => {
   }
 });
 
+test('POST /api/v1/queue/:id/failure records a queue failure', async () => {
+  const root = await createFixture({
+    campaign: { maxConsecutiveFailures: 1, platforms: [{ name: 'GUPY', enabled: true, goal: 1 }] },
+    queue: [{ id: 'q1', key: 'GUPY|1', platform: 'GUPY', company: 'Acme', role: 'Dev', identifierOrUrl: '1', status: 'em andamento', attempts: 1 }]
+  });
+  const server = createServer({ rootDir: root });
+  const address = await listen(server);
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/v1/queue/q1/failure`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ errorMessage: 'CAPTCHA' })
+    });
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.status, 'bloqueada');
+  } finally {
+    await close(server);
+  }
+});
+
 async function createFixture({ campaign, queue }) {
   const root = await mkdtemp(join(tmpdir(), 'fluxo-harness-queue-api-'));
   for (const directory of ['estado', 'campanha', 'fila', 'candidaturas']) await mkdir(join(root, directory), { recursive: true });

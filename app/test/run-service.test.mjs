@@ -56,3 +56,16 @@ test('acquireFluxoLock allows only one local mutator at a time', async () => {
   const releaseAfter = await acquireFluxoLock(root);
   await releaseAfter();
 });
+
+test('run service blocks a submission when the per-run limit is reached', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'fluxo-harness-run-'));
+  const service = createRunService({ dbPath: join(root, 'harness.sqlite'), maxApplicationsPerRun: 1 });
+
+  try {
+    const run = service.startRun({ kind: 'campaign' });
+    service.assertCanSubmit(run.id, 0);
+    assert.throws(() => service.assertCanSubmit(run.id, 1), (error) => error.code === 'run_application_limit_reached');
+  } finally {
+    service.close();
+  }
+});

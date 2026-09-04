@@ -1,8 +1,9 @@
 import { evaluateAction } from './policy.mjs';
 
-export function createApplicationFlow({ queueService, runService, approvalService, browserAdapter, recordApplication }) {
+export function createApplicationFlow({ queueService, runService, approvalService, browserAdapter, recordApplication, preflightReady = async () => true }) {
   return {
     async prepareNext({ platform = '' } = {}) {
+      if (!(await preflightReady())) throw domainError('preflight_blocked', 'O preflight precisa estar aprovado antes de preparar uma candidatura.');
       const item = await queueService.claimNext({ platform });
       const run = runService.startRun({ kind: 'application', platform: item.platform, queueReference: item.id });
       const snapshot = await browserAdapter.snapshot();
@@ -20,7 +21,7 @@ export function createApplicationFlow({ queueService, runService, approvalServic
       approvalService.assertApproved(approvalId, payload);
       const confirmation = await browserAdapter.verifySubmission();
       if (!confirmation.confirmed) throw domainError('submission_not_confirmed', 'A plataforma não confirmou o recebimento.');
-      const application = await recordApplication({ item: prepared.item, payload, evidence: confirmation.state });
+      const application = await recordApplication({ item: prepared.item, payload, evidence: confirmation.state, confirmation });
       runService.appendEvent({ runId: prepared.run.id, type: 'application.submission_confirmed', payload: { applicationId: application.id, queueItemId: prepared.item.id } });
       return { application, confirmation };
     }

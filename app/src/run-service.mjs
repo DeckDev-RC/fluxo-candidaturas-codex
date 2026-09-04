@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 
-export function createRunService({ dbPath, now = () => new Date() }) {
+export function createRunService({ dbPath, maxApplicationsPerRun = 30, now = () => new Date() }) {
   const database = new DatabaseSync(dbPath);
   database.exec(`
     create table if not exists runs (
@@ -46,6 +46,14 @@ export function createRunService({ dbPath, now = () => new Date() }) {
     getRun(id) {
       const row = database.prepare('select * from runs where id = ?').get(id);
       return row ? toRun(row) : null;
+    },
+
+    assertCanSubmit(id, submittedCount) {
+      if (!this.getRun(id)) throw domainError('run_not_found', 'Execução não encontrada.');
+      if (Number(submittedCount) >= maxApplicationsPerRun) {
+        throw domainError('run_application_limit_reached', 'O limite de candidaturas desta execução foi atingido.');
+      }
+      return true;
     },
 
     appendEvent({ runId = '', type, aggregateType = 'run', aggregateId = runId, payload = {}, actorType = 'system', idempotencyKey = '' }) {
