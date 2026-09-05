@@ -106,6 +106,8 @@ export function resolveServerServices(options) {
     }),
     budget: options.budget,
     applicationFlow: options.applicationFlow,
+    // A conversa com a IA só existe quando o runtime a fornece (app-server real).
+    conversationService: options.conversationService ?? null,
     observability: options.observability ?? createObservability(),
     actorResolver: options.actorResolver ?? (({ authorization }) => authorization.actor)
   };

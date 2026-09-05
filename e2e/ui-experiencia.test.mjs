@@ -107,20 +107,20 @@ test('U3-03 — corrigir um dado do perfil persiste e não é perguntado de novo
   await page.locator('[data-rota="perfil"]').click();
   await page.getByRole('heading', { name: 'O que entendi sobre você' }).waitFor();
 
-  await page.locator('button[data-corrigir="location"]').click();
-  await page.locator('#corrigir-valor').fill('Belo Horizonte');
+  await page.locator('button[data-corrigir="seniority"]').click();
+  await page.locator('#corrigir-valor').fill('Pleno');
   await page.getByRole('button', { name: 'Salvar correção' }).click();
-  await page.getByText('Belo Horizonte').first().waitFor({ timeout: 30_000 });
+  await page.getByText('Pleno').first().waitFor({ timeout: 30_000 });
 
   const memoria = await runtime.memoryService.safeSummary();
-  assert.equal(memoria.facts.location.value, 'Belo Horizonte');
-  assert.equal(memoria.facts.location.confirmed, true);
-  assert.match(memoria.facts.location.sourceLabel ?? memoria.facts.location.source, /[Rr]esposta/);
+  assert.equal(memoria.facts.seniority.value, 'Pleno');
+  assert.equal(memoria.facts.seniority.confirmed, true);
+  assert.match(memoria.facts.seniority.sourceLabel ?? memoria.facts.seniority.source, /[Rr]esposta/);
 
   // Recarregar mantém o valor corrigido: a pergunta não volta.
   await page.reload();
   await page.locator('[data-rota="perfil"]').click();
-  await page.getByText('Belo Horizonte').first().waitFor({ timeout: 30_000 });
+  await page.getByText('Pleno').first().waitFor({ timeout: 30_000 });
 });
 
 test('U2-06 — abrir por link e recarregar devolvem o mesmo contexto', { timeout: 120_000 }, async (t) => {

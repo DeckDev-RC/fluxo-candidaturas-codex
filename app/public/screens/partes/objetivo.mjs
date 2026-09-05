@@ -15,8 +15,10 @@ export function objetivoAtivo() {
   return String(valor ?? '').trim();
 }
 
-export function abrirMudancaDeObjetivo({ aoSalvar } = {}) {
-  const entrada = el('textarea', { id: 'novo-objetivo', rows: 2, value: objetivoAtivo() });
+// `inicial` permite pré-preencher com um texto proposto (ex.: pela conversa); a
+// pessoa ainda revisa e salva.
+export function abrirMudancaDeObjetivo({ aoSalvar, inicial } = {}) {
+  const entrada = el('textarea', { id: 'novo-objetivo', rows: 2, value: inicial ?? objetivoAtivo() });
   openDialog({
     title: 'Mudar objetivo profissional',
     body: [

@@ -42,6 +42,8 @@ import { createFixtureAgents, createFixtureDiscoveryAdapters } from './fixture-a
 import { createProductionAgents } from './production-agents.mjs';
 import { createAutopilotService } from './autopilot-service.mjs';
 import { createCodexAuthService } from './codex-auth-service.mjs';
+import { createConversationService } from './conversation-service.mjs';
+import { retratoParaConversa } from './conversation-snapshot.mjs';
 import { createCodexHarnessService } from './codex-harness-service.mjs';
 import { createCodexSettingsService } from './codex-settings-service.mjs';
 import { createPlaywrightDiscoveryAdapter } from './discovery-service.mjs';
@@ -136,6 +138,7 @@ export async function createLocalRuntime({ rootDir, browserDriver, headless, sch
   // nenhuma execução: vão para o serviço de auth, que avisa a saúde e a interface.
   const eventosDeExecucao = createAgentEventHandler(runService, { budget: campaignBudget });
   let authService = null;
+  let conversationService = null;
   const agentAdapter = createAgentAdapter({
     domainTools,
     settingsService: codexSettingsService,
@@ -145,6 +148,7 @@ export async function createLocalRuntime({ rootDir, browserDriver, headless, sch
     },
     onNotification: (message, runId) => {
       if (authService?.handleNotification(message)) return;
+      if (conversationService?.handleNotification(message)) return;
       eventosDeExecucao(message, runId);
     }
   });
@@ -169,8 +173,14 @@ export async function createLocalRuntime({ rootDir, browserDriver, headless, sch
     readRuns: async () => runService.listRuns(),
     listEvents: (runId) => runService.listEvents(runId).map((event) => ({ type: event.type, ...safeParse(event.payloadJson) }))
   });
+  conversationService = createConversationService({
+    agentAdapter,
+    rootDir,
+    snapshot: () => retratoParaConversa({ rootDir, persistence, memoryService, approvalService, runService, runtimeHealth })
+  });
 
   return {
+    conversationService,
     runtimeConfig,
     persistence,
     queueService,

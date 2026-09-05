@@ -70,13 +70,18 @@ export function createExecutionRoutes({ rootDir, runService, approvalService, ap
       if (method === 'POST' && acao) {
         return respond(response, 200, async () => {
           const id = decodeURIComponent(acao[1]);
+          // Pausa e retomada pela pessoa ficam no histórico da execução: a
+          // interface (esta ou outra janela) e a conversa leem o motivo real.
           if (acao[2] === 'interrupt') {
             const pausada = runService.pauseRun(id, 'interrompido pelo usuário');
+            runService.appendEvent({ runId: id, type: 'run.paused', payload: { reason: 'interrompido pelo usuário' }, actorType: 'user' });
             if (pausada.agentThreadId && pausada.currentTurnId && agentAdapter?.request) await agentAdapter.request('turn/interrupt', { threadId: pausada.agentThreadId, turnId: pausada.currentTurnId });
             return pausada;
           }
           // Retomar uma candidatura preparada reconcilia a tela observada, nunca reenvia.
-          return applicationFlow?.getPrepared?.(id) ? applicationFlow.reconcileRun(id) : runService.resumeRun(id);
+          const retomada = applicationFlow?.getPrepared?.(id) ? await applicationFlow.reconcileRun(id) : runService.resumeRun(id);
+          runService.appendEvent({ runId: id, type: 'run.resumed', payload: {}, actorType: 'user' });
+          return retomada;
         });
       }
 

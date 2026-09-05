@@ -58,8 +58,9 @@ export async function syntheticRoot(_t, { platformUrls = {}, extraEnv = {} } = {
 export async function onboard(runtime, root) {
   const onboarding = createOnboardingService({ rootDir: root, persistence: runtime.persistence, memoryService: runtime.memoryService });
   await onboarding.saveOnboarding(PROFILE);
-  // O objetivo profissional volta a ser uma lacuna: é o que a jornada precisa resolver com a pessoa.
-  await runtime.memoryService.removeFact('targetRoles');
+  // A localização volta a ser uma lacuna: é o que a jornada precisa resolver com a pessoa.
+  // (O objetivo é digitado no cartão e vira fato confirmado antes da jornada começar.)
+  await runtime.memoryService.removeFact('location');
   // Pré-requisito sintético: o preflight de sistema tem testes próprios e não usa credenciais aqui.
   await writeFile(join(root, 'estado', 'preflight.json'), JSON.stringify({ ready: true, fixture: 'production-journey-e2e', checks: [] }));
 }

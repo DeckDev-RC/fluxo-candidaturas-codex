@@ -43,6 +43,15 @@ export function clearTranscript() {
   avisar();
 }
 
+// Indicador "pensando" enquanto um turno da IA está em curso.
+let pensando = false;
+export function isThinking() { return pensando; }
+export function setThinking(valor) {
+  pensando = Boolean(valor);
+  pendenteRolagem = true;
+  avisar();
+}
+
 // A tela pede rolagem para o fim só quando há linha nova.
 export function takeScrollRequest() {
   const pedido = pendenteRolagem;

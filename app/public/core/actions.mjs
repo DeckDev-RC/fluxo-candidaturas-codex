@@ -34,6 +34,9 @@ export async function salvarPlataformas(plataformas, { silencioso = false } = {}
 
 export async function iniciarJornada({ objetivo, curriculo, plataformas: escolhidas }) {
   if (escolhidas) await salvarPlataformas(escolhidas, { silencioso: true });
+  // O objetivo digitado é resposta da pessoa: vira fato confirmado antes da
+  // jornada, para o Fluxo não perguntar de novo o que acabou de ler.
+  await send('/api/v1/memory/answers', { answers: { targetRoles: objetivo } });
   const importado = curriculo ? await importarCurriculo(curriculo) : null;
   const plataformas = (store.estado?.campaign?.platforms ?? []).filter((item) => item.enabled !== false).map((item) => item.name);
   const resposta = await send('/api/v1/autopilot/start', {

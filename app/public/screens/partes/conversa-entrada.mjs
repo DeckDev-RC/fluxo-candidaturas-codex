@@ -1,15 +1,19 @@
 // Entrada da conversa. O pedido da pessoa entra na linha do tempo e a resposta
-// do Fluxo também: preferência vira alteração revisável, consulta abre a área
-// certa e o que ainda não é atendido é dito com clareza, sem fingir.
+// do Fluxo também. Com a IA conectada, a mensagem vira um turno real no Codex,
+// que responde com o estado atual como contexto e pode propor ações; cada
+// ação passa pelo mesmo portão de confirmação da interface. Sem IA, um roteiro
+// determinístico cobre preferências e atalhos e diz com clareza o que não faz.
 
 import { el } from '../../core/dom.mjs';
-import { describeError } from '../../core/api.mjs';
+import { describeError, send } from '../../core/api.mjs';
 import { corrigirFato } from '../../core/actions.mjs';
-import { ask, say } from '../../core/conversa.mjs';
-import { store } from '../../core/store.mjs';
-import { currentRoute, go } from '../../core/router.mjs';
+import { ask, say, setThinking } from '../../core/conversa.mjs';
+import { isDemo, store } from '../../core/store.mjs';
+import { currentRoute, go, ROTAS } from '../../core/router.mjs';
 import { openDialog } from '../../ui/dialog.mjs';
 import { abrirMudancaDeObjetivo } from './objetivo.mjs';
+
+const MODALIDADES = ['Remoto', 'Híbrido', 'Presencial'];
 
 const ATALHOS = [
   { padrao: /(decis|aprov)/, rota: 'decisoes', resposta: 'Abri a caixa de decisões. As pendentes também aparecem aqui na conversa.' },
@@ -28,8 +32,37 @@ export function bindConversationInput(form) {
     campo.value = '';
     ask(texto);
     if (currentRoute() !== 'agora') go('agora');
-    await interpretar(texto);
+    if (store.ia.disponivel && !isDemo()) await conversarComIa(texto);
+    else await interpretar(texto);
   });
+}
+
+// Turno real: a resposta do modelo entra na conversa; ações vêm em linhas
+// próprias e são executadas aqui, sempre com confirmação quando mudam dados.
+async function conversarComIa(texto) {
+  setThinking(true);
+  try {
+    const { reply, actions = [] } = await send('/api/v1/conversation/turn', { text: texto });
+    setThinking(false);
+    if (reply) say(reply);
+    for (const acao of actions) executarAcao(acao);
+  } catch (error) {
+    setThinking(false);
+    say(`${describeError(error)} Enquanto isso, atendo pedidos simples por aqui.`, { tom: 'atencao' });
+    await interpretar(texto);
+  }
+}
+
+function executarAcao({ tipo, valor }) {
+  if (tipo === 'abrir' && ROTAS.includes(valor)) { go(valor); return; }
+  if (tipo === 'objetivo' && valor) {
+    abrirMudancaDeObjetivo({ inicial: valor, aoSalvar: () => say('Objetivo atualizado. Vale para as próximas buscas; o trabalho já preparado continua como está.', { tom: 'sucesso' }) });
+    return;
+  }
+  if (tipo === 'modalidades') {
+    const novas = valor.split(',').map((item) => item.trim()).map((item) => MODALIDADES.find((m) => m.toLocaleLowerCase() === item.toLocaleLowerCase())).filter(Boolean);
+    if (novas.length) confirmarModalidades([...new Set(novas)]);
+  }
 }
 
 async function interpretar(texto) {
@@ -56,6 +89,11 @@ function propostaDeModalidade(normalizado) {
     ? `aceitar apenas vagas ${modalidade.toLocaleLowerCase()}`
     : `aceitar também vagas ${modalidade.toLocaleLowerCase()}, além de ${atuais.join(', ').toLocaleLowerCase()}`;
   say(`Entendi que você quer ${descricao}. Isto altera as modalidades aceitas no seu perfil e vale para as próximas buscas. Confirme na janela.`);
+  confirmarModalidades(novas);
+}
+
+// Portão único para modalidades, venha do roteiro ou de uma ação proposta pela IA.
+function confirmarModalidades(novas) {
   openDialog({
     title: 'Confirmar mudança de preferência',
     body: [el('p', { class: 'leitura', text: `Modalidades aceitas passam a ser: ${novas.join(', ')}. Confirmar?` })],
@@ -67,6 +105,7 @@ function propostaDeModalidade(normalizado) {
         onSelect: async () => {
           try { await corrigirFato('workModes', novas); }
           catch (error) { say(describeError(error), { tom: 'erro' }); return false; }
+          say(`Modalidades aceitas agora: ${novas.join(', ')}.`, { tom: 'sucesso' });
           return true;
         }
       }
