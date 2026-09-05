@@ -6,6 +6,7 @@ import { isDemo, loadAiStatus, loadState, decisions, store, subscribe } from './
 import { rerender, startRouter, go, currentRoute } from './core/router.mjs';
 import { restoreJourney } from './core/stream.mjs';
 import { onTranscript, startTranscript } from './core/conversa.mjs';
+import { refreshAiOnFocus } from './core/ia-status.mjs';
 import { notice } from './ui/messages.mjs';
 import { agoraScreen } from './screens/agora.mjs';
 import { oportunidadesScreen } from './screens/oportunidades.mjs';
@@ -68,6 +69,7 @@ async function start() {
   if (!isDemo()) {
     restoreJourney();
     loadAiStatus();
+    refreshAiOnFocus();
   }
   pintarCabecalho();
   if (currentRoute() === 'agora' && !store.perfil?.profile?.exists) go('agora');
