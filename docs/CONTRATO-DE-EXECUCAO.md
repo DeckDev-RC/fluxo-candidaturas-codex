@@ -14,9 +14,13 @@ Na máquina que abrirá o projeto, valide:
 - Playwright/CLI do Playwright e um navegador compatível, quando uma execução de
   navegador for autorizada.
 
-O preflight pode registrar a indisponibilidade de PowerShell, Codex, Playwright ou
-internet. Isso é um bloqueio explícito para a capacidade correspondente, não uma
-permissão para contorná-lo com credenciais, shell remoto ou automação escondida.
+O preflight verifica os pré-requisitos locais que consegue observar: `npx`, a
+habilidade/CLI do Playwright, arquivos de instalação, URLs de plataformas e o estado
+de autenticação configurado. Ele não testa diretamente a disponibilidade do Codex CLI
+nem a conectividade geral com a internet; essas limitações devem ser diagnosticadas
+quando a capacidade for usada. Uma pendência detectada é um bloqueio explícito para a
+capacidade correspondente, não uma permissão para contorná-la com credenciais, shell
+remoto ou automação escondida.
 
 ## Inicialização e endereço
 
@@ -49,9 +53,10 @@ segurança do Fluxo:
 
 - **`chatgpt`**: operação assistida pelo agente no ChatGPT/Codex. O usuário confirma
   ações externas e o agente usa Playwright somente na sessão autorizada.
-- **`api-key`**: integração local autenticada por uma chave fornecida pelo usuário,
-  quando essa integração estiver disponível. A chave fica somente no ambiente local;
-  nunca deve aparecer em logs, eventos, payloads, exportações ou na UI.
+- **`api-key`**: conceito reservado para uma futura integração local autenticada por
+  chave. Não é um mecanismo implementado nem uma interface disponível no P0; o app não
+  aceita, valida ou expõe uma API key como modo de execução. Qualquer chave existente
+  no ambiente deve permanecer fora de logs, eventos, payloads, exportações e UI.
 - **fixture**: dados sintéticos para testes e demonstrações. Uma fixture **não
   representa candidatura real**, não deve ser misturada com o root do usuário e não
   acessa contas ou plataformas.

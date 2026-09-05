@@ -25,15 +25,19 @@ test('startup listens locally, honors FLUXO_ROOT and shuts down cleanly', async 
   child.stdout.on('data', (chunk) => { stdout += chunk; });
   child.stderr.on('data', (chunk) => { stderr += chunk; });
 
-  await waitFor(() => stdout.includes('Fluxo app disponível em http://127.0.0.1:'));
-  const port = Number(stdout.match(/127\.0\.0\.1:(\d+)/)?.[1]);
-  assert.ok(port > 0);
-  assert.equal((await fetch(`http://127.0.0.1:${port}/health`)).status, 200);
-  await access(join(root, 'estado'));
+  try {
+    await waitFor(() => stdout.includes('Fluxo app disponível em http://127.0.0.1:'));
+    const port = Number(stdout.match(/127\.0\.0\.1:(\d+)/)?.[1]);
+    assert.ok(port > 0);
+    assert.equal((await fetch(`http://127.0.0.1:${port}/health`)).status, 200);
+    await access(join(root, 'estado'));
 
-  child.kill('SIGTERM');
-  const exit = await waitForExit(child);
-  assert.ok(exit.code === 0 || exit.signal === 'SIGTERM', `${stderr} (${JSON.stringify(exit)})`);
+    child.kill('SIGTERM');
+    const exit = await waitForExit(child);
+    assert.ok(exit.code === 0 || exit.signal === 'SIGTERM', `${stderr} (${JSON.stringify(exit)})`);
+  } finally {
+    await stopChild(child);
+  }
 });
 
 test('execution contract documents the supported local modes and safety boundaries', async () => {
@@ -63,4 +67,10 @@ function waitForExit(child) {
     child.once('error', reject);
     child.once('exit', (code, signal) => resolve({ code, signal }));
   });
+}
+
+async function stopChild(child) {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+  child.kill('SIGTERM');
+  await waitForExit(child);
 }
