@@ -109,12 +109,20 @@ a:hover { color: var(--acento-forte); text-decoration: underline; }
 /* Texto longo permanece legível: quebra em palavra e nunca corta ação. */
 .quebra { overflow-wrap: anywhere; }
 
+/* Lista com marcadores reais (sem caractere de bala no texto). */
+.marcadores { list-style: disc; padding-left: 1.25rem; }
+.marcadores li + li { margin-top: var(--e1); }
+
+/* Grupo de campos sem moldura do navegador. */
+fieldset.grupo { border: 0; padding: 0; margin: 0; min-width: 0; }
+fieldset.grupo > legend { padding: 0; margin-bottom: var(--e1); font-weight: var(--peso-medio); font-size: var(--texto-sm); color: var(--texto); }
+
 ::selection { background: var(--acento-fraco); }
 
 /* Barra de rolagem discreta, coerente com a superfície. */
 * { scrollbar-width: thin; scrollbar-color: var(--linha-forte) transparent; }
 
 @media (forced-colors: active) {
-  .cartao, .painel, .item-lista { border: 1px solid CanvasText; }
+  .painel, .item-lista, .balao-cartao { border: 1px solid CanvasText; }
   :focus-visible { outline: 2px solid Highlight; }
 }

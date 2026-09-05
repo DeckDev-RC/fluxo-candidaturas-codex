@@ -102,6 +102,30 @@ test('tudo confirmado convida para a busca', () => {
 });
 
 test('todos os estados declarados têm resolução possível', () => {
-  assert.equal(ESTADOS.length, 11);
-  assert.equal(new Set(ESTADOS).size, 11);
+  assert.equal(ESTADOS.length, 12);
+  assert.equal(new Set(ESTADOS).size, 12);
+});
+
+// Achado do QA: a jornada parava na revisão humana e a tela dizia "estou
+// trabalhando", sem dizer que a pessoa precisava escolher uma vaga.
+test('jornada parada sem pergunta nem aprovação, com vagas na fila, pede a escolha da vaga', () => {
+  const dados = {
+    perfil: { profile: { exists: true } },
+    ia: { disponivel: true },
+    estado: {
+      installation: { ready: true },
+      campaign: { platforms: [{ name: 'INFOJOBS', enabled: true }], totalGoal: 10 },
+      memory: { facts: { name: { confirmed: true }, targetRoles: { confirmed: true }, location: { confirmed: true } }, resumes: [] },
+      queue: { items: [{ id: 'q1', status: 'na fila', fitScore: 80 }] },
+      applications: { items: [], confirmedCount: 0 }
+    },
+    jornada: { status: 'decisao', perguntas: [], mensagem: 'Revisão humana obrigatória antes do envio.' }
+  };
+  const resolvido = resolveNowState(dados);
+  assert.equal(resolvido.estado, 'escolher-vaga');
+  assert.equal(resolvido.quantidade, 1);
+  // Com pergunta aberta, a lacuna vem antes da escolha.
+  assert.equal(resolveNowState({ ...dados, jornada: { ...dados.jornada, perguntas: [{ key: 'x' }] }, decisoes: [{ tipo: 'informacao' }] }).estado, 'decisao-pendente');
+  // Sem vaga disponível, a jornada parada continua descrita como trabalho em curso.
+  assert.equal(resolveNowState({ ...dados, estado: { ...dados.estado, queue: { items: [] } } }).estado, 'trabalhando');
 });

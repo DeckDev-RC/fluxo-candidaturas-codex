@@ -7,7 +7,10 @@ export function el(tag, props = {}, children = []) {
     if (value === undefined || value === null || value === false) continue;
     if (key === 'class') node.className = value;
     else if (key === 'text') node.textContent = String(value);
-    else if (key === 'dataset') Object.assign(node.dataset, value);
+    // Estilo inline vai pelo CSSOM (a CSP não permite atributo style) e
+    // dataset ignora valores ausentes em vez de gravar "undefined".
+    else if (key === 'style') node.style.cssText = String(value);
+    else if (key === 'dataset') { for (const [nome, item] of Object.entries(value ?? {})) if (item !== undefined && item !== null) node.dataset[nome] = String(item); }
     else if (key === 'onClick') node.addEventListener('click', value);
     else if (key === 'onSubmit') node.addEventListener('submit', value);
     else if (key === 'onInput') node.addEventListener('input', value);
@@ -53,21 +56,61 @@ export function field({ label, help, error, control }) {
   ]);
 }
 
-export function input(props = {}) {
-  return el('input', { type: 'text', ...props });
+// Linha de lista somente de leitura: mesmo desenho das linhas clicáveis, sem
+// parecer clicável. `direita` recebe selos, apoio e ações.
+export function staticListItem({ title, support, detail, right = [] }) {
+  return el('li', {}, [
+    el('div', { class: 'item-lista item-lista-estatico', role: 'none' }, [
+      el('div', {}, [
+        el('p', { class: 'item-titulo quebra', text: title }),
+        support ? el('p', { class: 'item-apoio quebra', text: support }) : null,
+        detail ? el('p', { class: 'apoio quebra', text: detail }) : null
+      ]),
+      el('div', { class: 'item-direita' }, right)
+    ])
+  ]);
+}
+
+// Cabeçalho de área: título, texto de abertura e conteúdo em coluna.
+export function screen({ title, lead, children }) {
+  return el('div', { class: 'area' }, [
+    el('div', { class: 'area-titulo' }, [
+      el('h1', { text: title }),
+      lead ? el('p', { class: 'leitura secundario', text: lead }) : null
+    ]),
+    children
+  ]);
 }
 
 export function badge(text, tone = '') {
   return el('span', { class: 'selo', text, dataset: tone ? { tom: tone } : {} });
 }
 
-export function button(text, { variant = 'botao', ...props } = {}) {
+// Todo botão com ação assíncrona fica ocupado até ela terminar: evita clique
+// duplo, mostra progresso e nunca deixa uma falha sem aviso.
+export function button(text, { variant = 'botao', onClick, ...props } = {}) {
   const classes = variant === 'primario' ? 'botao'
     : variant === 'secundario' ? 'botao botao-secundario'
     : variant === 'texto' ? 'botao botao-texto'
     : variant === 'perigo' ? 'botao botao-perigo'
     : 'botao';
-  return el('button', { type: 'button', class: classes, text, ...props });
+  const node = el('button', { type: 'button', class: classes, text, ...props });
+  if (onClick) {
+    node.addEventListener('click', async (evento) => {
+      let resultado;
+      try { resultado = onClick(evento); } catch (error) { reportarFalha(error); return; }
+      if (!(resultado instanceof Promise)) return;
+      node.disabled = true;
+      node.setAttribute('aria-busy', 'true');
+      try { await resultado; } catch (error) { reportarFalha(error); } finally { node.disabled = false; node.removeAttribute('aria-busy'); }
+    });
+  }
+  return node;
+}
+
+async function reportarFalha(error) {
+  const { notice } = await import('../ui/messages.mjs');
+  notice(error?.message ?? String(error), 'erro');
 }
 
 export function panel({ title, kicker, actions, children, id }) {
@@ -80,6 +123,15 @@ export function panel({ title, kicker, actions, children, id }) {
       actions && el('div', { class: 'linha-acoes' }, actions)
     ]),
     children
+  ]);
+}
+
+// Indicador numérico: rótulo, valor em destaque e apoio opcional.
+export function metric(label, value, support) {
+  return el('div', { class: 'bloco' }, [
+    el('span', { class: 'etiqueta', text: label }),
+    el('strong', { class: 'numero', text: value }),
+    support ? el('span', { class: 'apoio', text: support }) : null
   ]);
 }
 
@@ -99,6 +151,3 @@ export function definitions(rows) {
   ]));
 }
 
-export function busy(text) {
-  return el('span', { class: 'ocupado', text });
-}

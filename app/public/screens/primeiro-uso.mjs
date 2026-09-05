@@ -2,7 +2,7 @@
 // escolha das plataformas, em um único cartão. Transferência, leitura e revisão
 // do currículo são etapas distintas (U3-01, U3-02).
 
-import { badge, button, el, field, panel } from '../core/dom.mjs';
+import { badge, button, el, field, panel, screen } from '../core/dom.mjs';
 import { store } from '../core/store.mjs';
 import { iniciarJornada, importarCurriculo } from '../core/actions.mjs';
 import { clearDraft, draftBound } from '../core/drafts.mjs';
@@ -10,30 +10,33 @@ import { notice } from '../ui/messages.mjs';
 import { go, rerender } from '../core/router.mjs';
 import { platformChooser } from './partes/plataformas-escolha.mjs';
 
-const etapas = { selecionado: 'pendente', importado: 'pendente', lido: 'pendente', confirmado: 'pendente' };
+// Estado da importação em curso nesta sessão; o que está persistido vem do documento.
+let etapas = etapasIniciais();
 let arquivo = null;
 let nomeArquivo = '';
 let erroObjetivo = '';
 let erroPlataformas = '';
 
+function etapasIniciais() { return { selecionado: 'pendente', importado: 'pendente', lido: 'pendente', confirmado: 'pendente' }; }
+
 export function primeiroUsoScreen() {
-  return el('div', { class: 'area', style: 'padding:0' }, [
-    el('div', { class: 'area-titulo' }, [
-      el('h1', { text: 'Diga o que você procura' }),
-      el('p', { class: 'leitura secundario', text: 'Objetivo, currículo e onde procurar. O resto eu pergunto só quando precisar.' })
-    ]),
-    firstRunPanel()
-  ]);
+  const retorno = Boolean(store.perfil?.profile?.exists);
+  return screen({
+    title: retorno ? 'Iniciar uma nova busca' : 'Diga o que você procura',
+    lead: retorno ? 'Confirme o objetivo, o currículo em uso e onde procurar. O que já está confirmado no seu perfil continua valendo.' : 'Objetivo, currículo e onde procurar. O resto eu pergunto só quando precisar.',
+    children: firstRunPanel()
+  });
 }
 
 export function firstRunPanel() {
   const objetivoSalvo = store.estado?.memory?.facts?.targetRoles?.value ?? '';
   const documento = (store.estado?.memory?.resumes ?? []).find((item) => item.selected);
+  // O persistido manda: com documento em uso, as etapas vêm dele; sem documento e sem
+  // importação em curso, tudo volta a pendente (ex.: depois de remover dados).
   if (documento) {
-    etapas.selecionado = 'feito';
-    etapas.importado = 'feito';
-    etapas.lido = documento.sha256 ? 'feito' : 'pendente';
-    etapas.confirmado = store.estado?.memory?.facts?.name?.confirmed ? 'feito' : 'pendente';
+    etapas = { selecionado: 'feito', importado: 'feito', lido: documento.sha256 ? 'feito' : 'pendente', confirmado: store.estado?.memory?.facts?.name?.confirmed ? 'feito' : 'pendente' };
+  } else if (!arquivo && !nomeArquivo) {
+    etapas = etapasIniciais();
   }
 
   const objetivo = draftBound(el('textarea', {
@@ -52,14 +55,14 @@ export function firstRunPanel() {
     id: 'painel-primeiro-uso',
     children: [
       field({ label: 'O que você quer alcançar?', control: objetivo, error: erroObjetivo, help: 'Com suas palavras. Dá para mudar depois.' }),
-      el('div', { class: 'campo' }, [
-        el('span', { text: 'Seu currículo' }),
-        seletorDeArquivo(),
+      el('fieldset', { class: 'campo grupo' }, [
+        el('legend', { text: 'Seu currículo' }),
+        seletorDeArquivo(documento),
         (arquivo || documento) ? etapasDoDocumento() : null,
         documento ? documentoEmUso(documento) : null
       ]),
-      el('div', { class: 'campo', dataset: { erro: erroPlataformas ? 'true' : 'false' } }, [
-        el('span', { text: 'Onde procurar' }),
+      el('fieldset', { class: 'campo grupo', dataset: { erro: erroPlataformas ? 'true' : 'false' } }, [
+        el('legend', { text: 'Onde procurar' }),
         plataformas.node,
         erroPlataformas && el('span', { class: 'campo-erro', text: erroPlataformas })
       ]),
@@ -72,7 +75,7 @@ export function firstRunPanel() {
 }
 
 // Botão com a língua do produto sobre o seletor nativo (escondido, mas focável).
-function seletorDeArquivo() {
+function seletorDeArquivo(documento) {
   const entrada = el('input', {
     id: 'curriculo',
     class: 'arquivo-oculto',
@@ -97,7 +100,7 @@ function seletorDeArquivo() {
   });
   return el('div', { class: 'arquivo' }, [
     entrada,
-    el('label', { class: 'botao botao-secundario', for: 'curriculo', text: nomeArquivo ? 'Trocar currículo' : 'Importar currículo' }),
+    el('label', { class: 'botao botao-secundario', for: 'curriculo', text: (nomeArquivo || documento) ? 'Trocar currículo' : 'Importar currículo' }),
     el('span', { class: 'apoio quebra', text: nomeArquivo || 'PDF, DOCX ou TXT. Fica só neste computador.' })
   ]);
 }

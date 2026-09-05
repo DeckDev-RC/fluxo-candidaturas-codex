@@ -16,8 +16,7 @@
 .painel-cabecalho .etiqueta { margin-bottom: 2px; }
 
 /* Situação atual: a fala presente do Fluxo na conversa, com o maior título da tela. */
-#painel-agora .etiqueta { display: none; }
-#painel-agora h2 { font-size: var(--texto-lg); }
+#painel-agora h1 { font-size: var(--texto-lg); }
 #painel-agora .leitura { color: var(--texto-2); }
 #painel-agora .linha-acoes { margin-top: var(--e2); }
 #painel-agora .linha-acoes:empty { display: none; }
@@ -110,6 +109,22 @@
 .bloco { display: flex; flex-direction: column; gap: 2px; padding: var(--e3) var(--e4); background: var(--superficie); }
 .bloco strong { font-size: 1.75rem; font-weight: var(--peso-forte); letter-spacing: -0.03em; line-height: 1.15; font-variant-numeric: tabular-nums; }
 .bloco .apoio { font-size: var(--texto-xs); }
+
+/* Metas por plataforma: barra proporcional a confirmações reais. */
+.meta { display: flex; flex-direction: column; gap: var(--e1); }
+.meta-linha { display: flex; justify-content: space-between; gap: var(--e2); font-size: var(--texto-sm); }
+.meta-rotulo { color: var(--texto-2); }
+.meta-valor { color: var(--texto-2); }
+.meta[data-destaque="true"] .meta-rotulo,
+.meta[data-destaque="true"] .meta-valor { color: var(--texto); font-weight: var(--peso-medio); }
+.meta-barra { height: 6px; border-radius: 999px; background: var(--superficie-2); border: 1px solid var(--linha); overflow: hidden; }
+.meta-barra span { display: block; height: 100%; border-radius: inherit; background: var(--acento); transition: width var(--duracao-media) var(--curva); }
+.meta[data-completa="true"] .meta-barra span { background: var(--sucesso); }
+
+/* Limites de uso da conta: mesma barra das metas, com nível de alerta. */
+.limites { display: flex; flex-direction: column; gap: var(--e2); }
+.meta[data-nivel="atencao"] .meta-barra span { background: var(--atencao); }
+.meta[data-nivel="erro"] .meta-barra span { background: var(--erro); }
 
 .linha-acoes { display: flex; gap: var(--e2); flex-wrap: wrap; align-items: center; }
 .filtros { display: flex; gap: var(--e3); flex-wrap: wrap; align-items: flex-end; }

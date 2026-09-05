@@ -16,7 +16,7 @@ export function createFollowUpMonitor({ rootDir = '', persistence, adapters = {}
         const platform = String(application.platform ?? '').toUpperCase();
         if (!selected.includes(platform)) continue;
         const adapter = adapters[platform];
-        if (!adapter?.status) { failures.push({ reference: application.id ?? application.key, platform, retryable: true, message: 'Monitor da plataforma não configurado.' }); continue; }
+        if (!adapter?.status) { failures.push({ reference: application.id ?? application.key, platform, type: 'unsupported', retryable: false, message: 'Monitor da plataforma não configurado.' }); continue; }
         try {
           const events = await adapter.status(application, { instruction });
           for (const raw of Array.isArray(events) ? events : []) {
@@ -26,7 +26,7 @@ export function createFollowUpMonitor({ rootDir = '', persistence, adapters = {}
             state.known[fingerprint] = event.occurredAt;
             newEvents.push(event);
           }
-        } catch { failures.push({ reference: application.id ?? application.key, platform, retryable: true, message: `Não foi possível consultar ${platform}.` }); }
+        } catch { failures.push({ reference: application.id ?? application.key, platform, type: 'unavailable', retryable: true, message: `Não foi possível consultar ${platform}.` }); }
       }
       state.checkedAt = now().toISOString();
       state.events = [...state.events, ...newEvents].slice(-500);

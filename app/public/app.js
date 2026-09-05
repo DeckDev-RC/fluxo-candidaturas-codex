@@ -3,11 +3,11 @@
 
 import { bootstrapSession, describeError } from './core/api.mjs';
 import { isDemo, loadState, decisions, store, subscribe } from './core/store.mjs';
-import { rerender, startRouter, go, currentRoute } from './core/router.mjs';
+import { rerender, startRouter } from './core/router.mjs';
 import { restoreJourney } from './core/stream.mjs';
 import { onTranscript, startTranscript } from './core/conversa.mjs';
 import { connectAiStatus, refreshAiOnFocus } from './core/ia-status.mjs';
-import { notice } from './ui/messages.mjs';
+import { notice, renderNotices } from './ui/messages.mjs';
 import { agoraScreen } from './screens/agora.mjs';
 import { oportunidadesScreen } from './screens/oportunidades.mjs';
 import { candidaturasScreen } from './screens/candidaturas.mjs';
@@ -51,6 +51,8 @@ function agendarRepintura() {
   repintura = setTimeout(() => {
     const ativo = document.activeElement;
     if (ativo && ['INPUT', 'TEXTAREA', 'SELECT'].includes(ativo.tagName) && ativo.id !== 'conversa-texto') return;
+    // Um botão ocupado não pode ser trocado no meio da ação: a repintura espera.
+    if (document.querySelector('#tela button[aria-busy="true"]')) { agendarRepintura(); return; }
     if (document.querySelector('#dialogo')?.open) return;
     rerender();
   }, 150);
@@ -58,7 +60,7 @@ function agendarRepintura() {
 
 async function start() {
   startTranscript();
-  if (isDemo()) notice('Demonstração local: os dados desta tela são fictícios e nenhuma ação externa acontece.', 'informacao');
+  if (isDemo()) notice('Demonstração local: os dados desta tela são fictícios e nenhuma ação externa acontece.', 'informacao', { persistente: true });
   try {
     if (!isDemo()) await bootstrapSession();
     await loadState();
@@ -72,7 +74,6 @@ async function start() {
     refreshAiOnFocus();
   }
   pintarCabecalho();
-  if (currentRoute() === 'agora' && !store.perfil?.profile?.exists) go('agora');
 }
 
 // A área de trabalho sabe qual área mostra (data-area, distinto do data-rota
@@ -80,6 +81,7 @@ async function start() {
 function aoTrocarRota(rota) {
   const area = document.querySelector('#conteudo');
   if (area) area.dataset.area = rota;
+  renderNotices();
   pintarCabecalho();
 }
 
@@ -90,15 +92,14 @@ function pintarCabecalho() {
   const pendentes = decisions();
   const indicador = document.querySelector('#indicador-decisoes');
   indicador.dataset.vazio = pendentes.length ? 'false' : 'true';
-  // Sem decisão o indicador é texto: sai da ordem de tabulação e não anuncia link.
-  indicador.setAttribute('tabindex', pendentes.length ? '0' : '-1');
-  indicador.setAttribute('aria-disabled', pendentes.length ? 'false' : 'true');
   document.querySelector('#indicador-decisoes-texto').textContent = pendentes.length
     ? `${pendentes.length} ${pendentes.length === 1 ? 'decisão precisa' : 'decisões precisam'} de você`
     : 'Nenhuma decisão pendente';
   indicador.setAttribute('aria-label', pendentes.length
-    ? `Abrir ${pendentes.length} decisão pendente`
+    ? `Abrir ${pendentes.length} ${pendentes.length === 1 ? 'decisão pendente' : 'decisões pendentes'}`
     : 'Nenhuma decisão pendente');
+  // Sem decisão não é link: o destino só existe quando há o que decidir.
+  if (pendentes.length) indicador.setAttribute('href', '#decisoes'); else indicador.removeAttribute('href');
 }
 
 function descreverTrabalho() {

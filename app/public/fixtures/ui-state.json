@@ -27,11 +27,11 @@
   "approvals": [{
     "id": "demo-approval-1",
     "runId": "demo-run-1",
-    "kind": "application_submission",
+    "kind": "submission",
     "status": "pending",
     "expiresAt": "2026-09-04T20:00:00.000Z",
     "payloadHash": "demo-hash-7c1a",
-    "payloadSummary": { "company": "Acme Tecnologia", "role": "Desenvolvedor backend", "platform": "GUPY", "resume": "curriculo/cv.pdf", "answers": "3 respostas revisadas", "sensitiveData": "não informado" }
+    "payloadSummary": { "payload": { "queueItemId": "demo-job-1", "resume": "curriculo/cv.pdf", "fields": { "formValues": { "name": "Pessoa Demonstração", "email": "demo@example.com" } } } }
   }],
   "profile": { "profile": { "exists": true, "resume": { "selected": "curriculo/cv.pdf" } } },
   "metrics": {

@@ -27,10 +27,24 @@ export function routeParams() {
   return Object.fromEntries(new URLSearchParams(consulta));
 }
 
-export function rerender() { aplicar({ preservarRolagem: true }); }
+// Repintar troca a árvore da tela; o foco volta para o mesmo controle (por id
+// ou por data-id) para a pessoa não ser jogada para o início da página.
+export function rerender() {
+  const ativo = document.activeElement;
+  const seletor = ativo?.id ? `#${CSS.escape(ativo.id)}`
+    : ativo?.dataset?.id ? `[data-id="${CSS.escape(ativo.dataset.id)}"]` : '';
+  aplicar({ preservarRolagem: true });
+  if (seletor && !ativo.isConnected) document.querySelector(seletor)?.focus({ preventScroll: true });
+}
 
 function aplicar({ preservarRolagem = false } = {}) {
   const [nome = ''] = window.location.hash.replace(/^#/, '').split('?');
+  // Âncora interna (ex.: atalho para o conteúdo) leva o foco ao alvo e mantém a rota.
+  if (nome && !ROTAS.includes(nome) && document.getElementById(nome)) {
+    document.getElementById(nome).focus();
+    window.history.replaceState(null, '', `#${atual || 'agora'}`);
+    return;
+  }
   const rota = ROTAS.includes(nome) ? nome : 'agora';
   // A área de trabalho tem rolagem própria: a posição de leitura é dela.
   const area = document.querySelector('#conteudo');

@@ -3,7 +3,7 @@
 
 export const ESTADOS = [
   'primeiro-uso', 'decisao-pendente', 'envio-incerto', 'acesso-indisponivel',
-  'pausada', 'material-nao-lido', 'trabalhando', 'campanha-concluida',
+  'pausada', 'material-nao-lido', 'escolher-vaga', 'trabalhando', 'campanha-concluida',
   'sem-vaga-adequada', 'preparar-ambiente', 'pronta-para-buscar'
 ];
 
@@ -33,6 +33,10 @@ export const TEXTOS = {
   'material-nao-lido': {
     titulo: 'Ainda estou lendo seu currículo',
     corpo: 'O arquivo foi transferido e verificado. A leitura e a sua revisão são etapas separadas: nada é usado antes de você confirmar.'
+  },
+  'escolher-vaga': {
+    titulo: 'Encontrei vagas; escolha qual preparar',
+    corpo: 'Comparei as oportunidades com seus dados confirmados. Preparo a candidatura da que você escolher e paro para você revisar antes de qualquer envio.'
   },
   trabalhando: {
     titulo: 'Estou trabalhando',
@@ -84,6 +88,12 @@ export function resolveNowState({ estado, jornada = {}, decisoes = [], perfil, i
   if (curriculo && !curriculo.sha256 && confirmados < 3) {
     return { estado: 'material-nao-lido', motivo: 'O currículo foi selecionado, mas a leitura ainda não terminou.' };
   }
+  // A jornada parou esperando a pessoa, sem pergunta nem aprovação aberta: a
+  // próxima etapa é escolher qual oportunidade preparar.
+  const escolhiveis = fila.filter(disponivel);
+  if (jornada.status === 'decisao' && !(jornada.perguntas ?? []).length && escolhiveis.length) {
+    return { estado: 'escolher-vaga', motivo: jornada.mensagem ?? 'A busca terminou; a próxima candidatura depende da sua escolha.', quantidade: escolhiveis.length };
+  }
   if (jornada.status === 'trabalhando' || jornada.status === 'decisao') {
     return { estado: 'trabalhando', motivo: jornada.mensagem ?? 'O Fluxo está trabalhando.' };
   }
@@ -99,8 +109,9 @@ export function resolveNowState({ estado, jornada = {}, decisoes = [], perfil, i
   return { estado: 'pronta-para-buscar', motivo: 'Tudo confirmado para iniciar a busca.' };
 }
 
+// Status reais da fila (domínio queue-status): aguardando ou em andamento.
 export function disponivel(item) {
-  return ['na fila', 'em preparação', 'pronta para revisão'].includes(item.status);
+  return ['na fila', 'em andamento'].includes(item.status);
 }
 
 function buscaJaOcorreu(estado) {

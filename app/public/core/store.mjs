@@ -2,6 +2,7 @@
 // nunca depende do runtime de IA: painéis de IA carregam depois, em separado.
 
 import { read } from './api.mjs';
+import { dataHora } from './format.mjs';
 
 const ouvintes = new Set();
 
@@ -21,6 +22,7 @@ export const store = {
   agenda: [],
   notificacoes: [],
   ia: { disponivel: false, mensagem: 'Verificando a automação de IA…', modo: '' },
+  codex: null,
   jornada: { runId: '', status: '', mensagem: '', plano: [], perguntas: [], atualizacoes: [] }
 };
 
@@ -58,6 +60,7 @@ async function loadDemo() {
   store.estado.memory = fixture.memory ?? store.estado.memory;
   store.jornada = { ...store.jornada, ...fixture.autopilot, status: 'trabalhando', plano: fixture.autopilot?.plan ?? [], perguntas: [] };
   store.ia = { disponivel: true, mensagem: 'Demonstração local: a automação não é acionada.', modo: 'demonstracao' };
+  store.codex = fixture.codex ?? null;
   return store;
 }
 
@@ -102,6 +105,8 @@ export async function loadAiStatus() {
 
 // Um retrato da saúde do runtime, venha de consulta ou de evento, vira o mesmo estado.
 export function setAiHealth(saude, modo = saude?.mode ?? '') {
+  // Conta que entra ou sai invalida o retrato de conta, uso e limites.
+  if ((saude?.available === true) !== store.ia.disponivel) store.codex = null;
   store.ia = {
     disponivel: saude?.available === true,
     estado: saude?.state ?? '',
@@ -138,10 +143,10 @@ export function decisions() {
     .filter((item) => item.status !== 'resolved')
     .map((item) => ({ tipo: 'excecao', id: item.id, titulo: item.message ?? 'Situação que precisa de você', detalhe: item.nextAction ?? '' }));
   const incertos = (store.estado?.queue?.items ?? [])
-    .filter((item) => item.status === 'bloqueada' || item.status === 'falha')
+    .filter((item) => item.status === 'bloqueada')
     .map((item) => ({ tipo: 'bloqueio', id: item.id, titulo: `${item.role ?? 'Vaga'} — ${item.company ?? 'empresa não informada'}`, detalhe: item.lastError ?? 'Bloqueio registrado na fila.' }));
   return [
-    ...pendentes.map((item) => ({ tipo: 'aprovacao', id: item.id, titulo: tituloAprovacao(item), detalhe: `Expira em ${item.expiresAt ?? 'prazo não informado'}`, aprovacao: item })),
+    ...pendentes.map((item) => ({ tipo: 'aprovacao', id: item.id, titulo: tituloAprovacao(item), detalhe: item.expiresAt ? `Expira em ${dataHora(item.expiresAt)}` : 'Sem prazo de validade informado', aprovacao: item })),
     ...perguntas,
     ...excecoes,
     ...incertos
