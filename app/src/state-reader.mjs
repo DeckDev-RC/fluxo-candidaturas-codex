@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { openAuthoritativePersistence } from './persistence-authority.mjs';
+import { createStateDocument } from './state-document.mjs';
 
 const CONFIRMED_APPLICATION_STATUSES = new Set([
   'enviada',
@@ -20,16 +21,19 @@ export async function readFluxoState(rootDir, { persistence } = {}) {
   const effectivePersistence = persistence ?? ownedPersistence;
   try {
   const operational = await sqliteOperationalState(effectivePersistence);
+  // Documentos de estado vêm da autoridade da raiz: banco local quando migrado,
+  // arquivo JSON em raiz legada. Nunca dos dois ao mesmo tempo.
+  const documento = (name, file, fallback) => createStateDocument({ rootDir, persistence: effectivePersistence, name, file, fallback }).read();
   const [preflight, campaign, queue, applications, checkpoint, memory, discovery, followup, exceptions] = await Promise.all([
     readJson(join(rootDir, 'estado', 'preflight.json'), { ready: false, checks: [] }),
     operational ? Promise.resolve(operational.campaign) : readJson(join(rootDir, 'campanha', 'config.json'), { platforms: [] }),
     operational ? Promise.resolve(operational.queue) : readJson(join(rootDir, 'fila', 'vagas.json'), []),
     operational ? Promise.resolve(operational.applications) : readJson(join(rootDir, 'candidaturas', 'candidaturas.json'), []),
     readJson(join(rootDir, 'estado', 'checkpoint.json'), null),
-    readJson(join(rootDir, 'estado', 'memoria.json'), { facts: {}, resumes: [], executions: [] }),
-    readJson(join(rootDir, 'estado', 'discovery.json'), { opportunities: [], failures: [], duplicates: 0 }),
-    readJson(join(rootDir, 'estado', 'followup.json'), { events: [], checkedAt: '' }),
-    readJson(join(rootDir, 'estado', 'excecoes.json'), [])
+    documento('memory', 'estado/memoria.json', { facts: {}, resumes: [], executions: [] }),
+    documento('discovery', 'estado/discovery.json', { opportunities: [], failures: [], duplicates: 0 }),
+    documento('followup', 'estado/followup.json', { events: [], checkedAt: '' }),
+    documento('exceptions', 'estado/excecoes.json', [])
   ]);
 
   const safePreflight = redact(preflight);

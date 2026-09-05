@@ -2,12 +2,24 @@ import { extractStructuredFacts } from './fact-extractor.mjs';
 import { applyCampaignFilters } from './campaign-filters.mjs';
 import { buildPlatformSearch } from './platform-search.mjs';
 import { classifyCompletion } from './completion-states.mjs';
+import { chooseAgentTool } from './agent-contracts.mjs';
 import { createDomainError } from './domain/errors.mjs';
 
 export function createProductionAgents({
   intakeService, discoveryService, fitService, followUpMonitor, applicationFlow,
   memoryService, resumeImportService, campaignService, runtimeConfig = {}
 } = {}) {
+  // A ferramenta anunciada em cada evento é a que existe de fato neste ambiente,
+  // conforme o contrato do especialista. Nada é rotulado como fixture na produção.
+  const disponiveis = {
+    file: Boolean(intakeService),
+    script: Boolean(fitService),
+    playwright: Boolean(discoveryService || applicationFlow || followUpMonitor),
+    api: false,
+    fixture: false
+  };
+  const ferramenta = (agente) => chooseAgentTool(agente, disponiveis);
+
   return {
     intake: {
       name: 'intake',
@@ -33,7 +45,7 @@ export function createProductionAgents({
         if (gaps.length) {
           return waiting('intake', `Preciso de ${gaps.length} informação(ões) para buscar com segurança.`, { preview, questions: preview.questions, missing: gaps }, 'fluxo_record_gap');
         }
-        return ok('intake', 'file', 'Perfil estruturado com origem e pendências explícitas.', preview, preview.ready === true);
+        return ok('intake', ferramenta('intake'), 'Perfil estruturado com origem e pendências explícitas.', preview, preview.ready === true);
       }
     },
     discovery: {
@@ -59,7 +71,7 @@ export function createProductionAgents({
           platforms: searches.filter((item) => !item.unavailable).map((item) => item.platform),
           searchPlan: searches
         });
-        return ok('discovery', 'playwright', `Observei ${result.created.length} oportunidade(s).`, { ...result, searches }, true);
+        return ok('discovery', ferramenta('discovery'), `Observei ${result.created.length} oportunidade(s).`, { ...result, searches }, true);
       }
     },
     fit: {
@@ -75,7 +87,7 @@ export function createProductionAgents({
         const eligible = filtered.filter((item) => item.filter.eligible).map((item) => item.opportunity);
         const result = fitService.shortlist({ opportunities: eligible, facts, limit: Number(context.input?.limit ?? 10) });
         result.rejected = filtered.filter((item) => !item.filter.eligible).map((item) => ({ ...item.opportunity, reason: item.filter.explanation }));
-        return ok('fit', 'script', `Comparei ${result.items.length} oportunidade(s) elegíveis.`, result, true);
+        return ok('fit', ferramenta('fit'), `Comparei ${result.items.length} oportunidade(s) elegíveis.`, result, true);
       }
     },
     application: {
@@ -85,11 +97,11 @@ export function createProductionAgents({
       async run(context) {
         assertAvailable('application', applicationFlow);
         const selected = context.outputs.fit?.items ?? [];
-        if (!selected.length) return ok('application', 'playwright', 'Nenhuma candidatura elegível nesta rodada.', { prepared: 0 }, true);
+        if (!selected.length) return ok('application', ferramenta('application'), 'Nenhuma candidatura elegível nesta rodada.', { prepared: 0 }, true);
         if (!context.input?.approvalId) {
           return waiting('application', 'Revisão humana obrigatória antes do envio.', { prepared: selected.length, reviewRequired: true }, 'fluxo_review');
         }
-        return ok('application', 'playwright', 'Revisão aprovada encaminhada ao fluxo de envio.', { prepared: selected.length }, false);
+        return ok('application', ferramenta('application'), 'Revisão aprovada encaminhada ao fluxo de envio.', { prepared: selected.length }, false);
       }
     },
     followup: {
@@ -103,7 +115,7 @@ export function createProductionAgents({
           instruction: context.input?.instruction ?? ''
         });
         const completion = classifyCompletion({ emptyQueue: false, modelSaidDone: false });
-        return ok('followup', 'playwright', result.summary, { ...result, campaignComplete: completion.complete }, true);
+        return ok('followup', ferramenta('followup'), result.summary, { ...result, campaignComplete: completion.complete }, true);
       }
     }
   };

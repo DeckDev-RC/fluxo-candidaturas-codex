@@ -24,7 +24,10 @@ function normalize(status, now) {
   const expired = status?.expired === true || raw === 'expired' || (status?.expiresAt && Date.parse(status.expiresAt) <= now.getTime());
   const signedIn = status?.signedIn === true || raw === 'signed_in' || raw === 'authenticated';
   const signedOut = raw === 'signed_out' || raw === 'logged_out' || status?.signedIn === false;
-  const state = expired ? 'expired' : signedIn ? 'signed_in' : signedOut ? 'signed_out' : raw === 'unavailable' ? 'unavailable' : signedIn === false ? 'signed_out' : 'unavailable';
+  // Sem evidência positiva, o estado é "indisponível": afirmar que a pessoa está
+  // desconectada é uma afirmação, e ela precisa vir do runtime.
+  const bruto = expired ? 'expired' : signedIn ? 'signed_in' : signedOut ? 'signed_out' : 'unavailable';
+  const state = RUNTIME_STATES.includes(bruto) ? bruto : 'unavailable';
   return {
     state,
     available: state === 'signed_in',

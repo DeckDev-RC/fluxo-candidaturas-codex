@@ -1,11 +1,12 @@
 import { PRODUCT_POLICY, campaignLimitsFrom } from './product-policy.mjs';
 import { buildSubmissionReview } from './review-service.mjs';
 import { createRecoveryGuidance } from './recovery-service.mjs';
-import { resolveAiMode } from './ai-modes.mjs';
+import { assertNoSilentFallback, resolveAiMode } from './ai-modes.mjs';
 
 export function createFinalReleaseRoutes({
   resumeImportService, memoryService, schedulerService, notificationService,
-  runtimeHealth, orchestrator, campaignService, runtimeConfig, sessionStore
+  runtimeHealth, orchestrator, campaignService, runtimeConfig, sessionStore,
+  consistencyService, budget
 } = {}) {
   return async function handle(request, response, { path, sendJson, sendDomainError, readJsonBody }) {
     try {
@@ -15,6 +16,12 @@ export function createFinalReleaseRoutes({
       }
       if (request.method === 'POST' && path === '/api/v1/memory/answers') {
         sendJson(response, 200, { answers: await memoryService.recordAnswers((await readJsonBody(request)).answers ?? {}) });
+        return true;
+      }
+      const conflitoMatch = path.match(/^\/api\/v1\/memory\/conflicts\/([^/]+)\/resolve$/);
+      if (request.method === 'POST' && conflitoMatch) {
+        const { value } = await readJsonBody(request);
+        sendJson(response, 200, { conflicts: await memoryService.resolveConflict(decodeURIComponent(conflitoMatch[1]), value) });
         return true;
       }
       if (request.method === 'GET' && path === '/api/v1/runtime/health') {
@@ -27,7 +34,11 @@ export function createFinalReleaseRoutes({
       }
       if (request.method === 'GET' && path === '/api/v1/ai/mode') {
         const health = await runtimeHealth.snapshot();
-        sendJson(response, 200, resolveAiMode({ requested: health.available ? 'codex-app-server' : 'offline-read', runtime: { available: health.available, mode: health.available ? 'codex-app-server' : 'offline-read' } }));
+        const solicitado = health.available ? 'codex-app-server' : 'offline-read';
+        const resolvido = resolveAiMode({ requested: solicitado, runtime: { available: health.available, mode: solicitado } });
+        // Trocar de modo é decisão explícita: uma mudança silenciosa entre consultas é recusada.
+        assertNoSilentFallback({ from: solicitado, to: resolvido.mode });
+        sendJson(response, 200, { ...resolvido, state: health.state, message: health.message });
         return true;
       }
       if (request.method === 'POST' && path === '/api/v1/scheduler/jobs') {
@@ -77,8 +88,21 @@ export function createFinalReleaseRoutes({
         sendJson(response, 200, await sessionStore.save(await readJsonBody(request)));
         return true;
       }
+      if (request.method === 'GET' && path === '/api/v1/consistency') {
+        if (!consistencyService) {
+          sendJson(response, 200, { consistent: true, divergences: [], available: false });
+          return true;
+        }
+        sendJson(response, 200, { available: true, ...(await consistencyService.report()) });
+        return true;
+      }
       if (request.method === 'GET' && path === '/api/v1/campaign/limits') {
-        sendJson(response, 200, { ...(await campaignService.getCampaign()), limits: campaignLimitsFrom(runtimeConfig) });
+        // O consumo medido acompanha o limite: um teto sem leitura não protege nada.
+        sendJson(response, 200, {
+          ...(await campaignService.getCampaign()),
+          limits: campaignLimitsFrom(runtimeConfig),
+          usage: budget?.snapshot ? budget.snapshot() : { measured: false, reason: 'Nenhum orçamento de campanha ativo nesta sessão.' }
+        });
         return true;
       }
     } catch (error) {

@@ -1,8 +1,38 @@
 # Histórico de versões
 
-## 1.2.0 — 2026-09-05 — candidata com jornada controlada certificada
+## 1.2.0 — 2026-09-05 — candidata com jornada controlada certificada e interface repaginada
 
-Evidência D/I/B nesta base: 276 testes do app, 6 do desktop e 12 de navegador real. Nenhuma evidência R de plataforma real; nenhum envio real autorizado.
+Evidência D/I/B nesta base: 293 testes do app, 6 do desktop e 19 de navegador real. Nenhuma evidência R de plataforma real; nenhum envio real autorizado.
+
+Interface repaginada na direção Trajetória, com arquitetura por área do candidato:
+
+- áreas Agora, Oportunidades, Candidaturas, Meu perfil, Decisões, Configurações e Ajuda substituem a navegação por ferramenta de implementação;
+- tela Agora deriva 11 estados do estado persistido, incluindo envio incerto, IA indisponível, pausa e campanha concluída;
+- caixa de decisões por urgência, com revisão pré-envio nomeando a empresa e execução automática da revisão aprovada;
+- tokens de cor, tipografia, espaçamento, borda, elevação e movimento com contraste verificado por teste;
+- interface dividida em módulos por área; nenhum uso de `innerHTML` com conteúdo de página externa;
+- rascunho, seleção, rolagem e foco preservados durante atualizações e ao recarregar;
+- vocabulário de implementação removido do caminho principal;
+- janela de preparação do ambiente alinhada à mesma linguagem; mínimo da janela reduzido para 720×560.
+
+Limpeza de dívida técnica guiada por uma guarda automática contra código morto:
+
+- `composicao-viva.test.mjs` recusa módulo ou exportação de produção alcançada apenas por teste, e recusa rota chamada pela interface que não exista no servidor;
+- o controlador de formulário, o inspetor de confirmação por plataforma, o detector de página não suportada, a fronteira de confiança de página, a classificação de página de busca, a identidade da revisão, a política de ação externa, a escolha de ferramenta por contrato e a máquina de estados da candidatura entraram no caminho real;
+- `llm-provider` foi removido por embutir fallback silencioso, proibido pela política de modos de IA; `mutation-runner` saiu por duplicar o registro de operações do servidor;
+- memória, exceções, descoberta, acompanhamento, agenda e notificações passaram a ter autoridade única: banco local em raiz migrada, arquivo em raiz legada, nunca os dois;
+- o consumo informado pelo App Server passou a alimentar o orçamento da campanha, com leitura na interface;
+- as ferramentas de leitura ganharam escopo opcional, evitando trazer o estado inteiro;
+- a evidência é capturada no trecho da confirmação quando a página o expõe, reduzindo dado pessoal na imagem;
+- o ícone do aplicativo passou a ser gerado da própria marca, sem dependência gráfica externa;
+- documentos compartilhados entre a linha principal e a linha do app têm teste de alinhamento; PRD e SDD estavam divergentes e foram reconciliados.
+
+Correções encontradas ao auditar as marcações do checklist funcional:
+
+- a agenda de acompanhamento gravava trabalho mas nunca disparava; agora existe executor com intervalo, deduplicação, orçamento e parada por cancelamento;
+- notificações passaram a nascer de novidade observada e de ausência de adaptador, em vez de só por chamada de API;
+- o orçamento derivado por tarefa filha passou a ser usado no caminho real do orquestrador;
+- a consistência entre candidatura, evidência, eventos e contadores virou serviço com rota e aviso na interface.
 
 - jornada do Autopilot conduzida pela interface com o orquestrador de produção e Chromium real em site controlado;
 - pausa de especialista publicada no stream do run e respondida na própria tela, com retomada da tarefa correta;

@@ -1,5 +1,8 @@
 import { access } from 'node:fs/promises';
 import { join } from 'node:path';
+import { inspectConfirmation } from './platform-confirmation.mjs';
+import { detectUnsupportedPage } from './unsupported-page.mjs';
+import { assertTrustedPage } from './trust-boundary.mjs';
 
 const SENSITIVE_KEY = /(password|token|cookie|secret|mfa|authorization|credential)/i;
 
@@ -30,6 +33,9 @@ export function createBrowserAdapter({ driver, evidenceRoot = '' }) {
     async snapshot() {
       const state = await driver.snapshot();
       if (state?.challenge) throw manualIntervention(state.challenge);
+      // Toda página lida passa pela fronteira de confiança: conteúdo de vaga não
+      // concede permissão, não instrui shell e não aprova pela pessoa.
+      assertTrustedPage(state ?? {});
       lastSnapshot = redact(state);
       return lastSnapshot;
     },
@@ -44,7 +50,16 @@ export function createBrowserAdapter({ driver, evidenceRoot = '' }) {
 
     async observeForm() {
       const observed = await this.snapshot();
-      return { ...observed, fields: observed?.dom?.fields ?? observed?.fields ?? [], visual: observed?.screenshot ?? observed?.visual ?? null };
+      // Página sem formulário reconhecível pausa a capacidade em vez de inventar campos.
+      const unsupported = detectUnsupportedPage(observed, { capability: 'preenchimento de formulário' });
+      if (unsupported) throw unsupported;
+      // `fieldDetails` traz referência, rótulo e tipo de cada controle observado;
+      // `fields` é só a lista de referências. O controlador precisa do tipo.
+      return {
+        ...observed,
+        fields: observed?.fieldDetails ?? observed?.dom?.fields ?? observed?.fields ?? [],
+        visual: observed?.screenshot ?? observed?.visual ?? null
+      };
     },
 
     async fillConfirmed(facts = {}) {
@@ -71,18 +86,28 @@ export function createBrowserAdapter({ driver, evidenceRoot = '' }) {
       throw domainError('submission_not_confirmed', 'Resultado do envio incerto. Reconcilie a tela antes de qualquer nova tentativa.');
     },
 
+    // A leitura da confirmação é do inspetor de plataforma: uma única regra decide
+    // positivo, negativo, condicional, vaga errada e candidatura anterior.
     async verifySubmission(expected = {}) {
       const state = redact(await driver.state());
       if (state?.challenge) throw manualIntervention(state.challenge);
       lastSnapshot = state;
-      const text = String(state?.confirmationText ?? state?.text ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-      const negative = /\b(nao|not|never|failed|falhou|erro|error)\b|\b(quando|quando for|sera enviada|will be|if you)\b/.test(text);
-      const positive = /(?:sua |your )?(?:candidatura|application)\s+(?:(?:foi|was|has been)\s+)?(?:enviada|recebida|submitted|received)\b/.test(text);
       const identity = String(expected.identifierOrUrl ?? expected.jobId ?? '');
       const observedIdentity = String(state.jobUrl || state.jobId || '');
-      const matching = !identity || Boolean(observedIdentity && (observedIdentity === identity || identity.replace(/\/$/, '').endsWith('/' + observedIdentity)));
-      const confirmed = positive && !negative && matching;
-      return { confirmed, confirmedAt: confirmed ? new Date().toISOString() : null, state };
+      const inspection = inspectConfirmation({
+        text: String(state?.confirmationText ?? state?.text ?? ''),
+        // O inspetor compara identidade quando a plataforma expõe a vaga observada.
+        expectedJob: observedIdentity && identity ? finalSegment(identity) : '',
+        observedJob: observedIdentity && identity ? finalSegment(observedIdentity) : '',
+        previousApplication: state?.previousApplication === true
+      });
+      return {
+        confirmed: inspection.ok === true,
+        kind: inspection.kind,
+        reason: inspection.ok === true ? '' : inspection.message,
+        confirmedAt: inspection.ok === true ? new Date().toISOString() : null,
+        state
+      };
     },
 
     async captureEvidence({ runId = 'run' } = {}) {
@@ -109,6 +134,10 @@ function redact(value) {
   if (Array.isArray(value)) return value.map(redact);
   if (!value || typeof value !== 'object') return value;
   return Object.fromEntries(Object.entries(value).filter(([key]) => !SENSITIVE_KEY.test(key)).map(([key, entry]) => [key, redact(entry)]));
+}
+
+function finalSegment(value) {
+  return String(value).replace(/\/+$/, '').split('/').at(-1);
 }
 
 function manualIntervention(challenge) {

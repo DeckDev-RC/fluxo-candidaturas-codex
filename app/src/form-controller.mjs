@@ -1,5 +1,10 @@
 const SUPPORTED_TYPES = new Set(['text', 'select', 'checkbox', 'radio', 'date', 'file', 'textarea']);
 
+// Variações de campo de texto do HTML tratadas como texto. Qualquer outro tipo
+// permanece como veio e é ignorado no preenchimento: controle não anunciado não
+// é preenchido às cegas.
+const EQUIVALENTES_A_TEXTO = new Set(['email', 'tel', 'number', 'url', 'search', 'input', 'select-one', 'select-multiple']);
+
 export function createFormController({ browserAdapter, lease } = {}) {
   let generation = 0;
 
@@ -18,11 +23,12 @@ export function createFormController({ browserAdapter, lease } = {}) {
       const current = await this.observe(taskId);
       const payload = {};
       for (const field of current.fields) {
-        const fact = facts[field.name] ?? facts[field.key];
+        // O fato pode estar sob a referência do controle ou sob o nome do campo.
+        const fact = facts[field.ref] ?? facts[field.name] ?? facts[field.key];
         if (!fact) continue;
         if (field.sensitive && fact.confirmed !== true) continue;
         if (!SUPPORTED_TYPES.has(field.type)) continue;
-        payload[field.name] = { value: fact.value, confirmed: fact.confirmed === true };
+        payload[field.ref || field.name] = { value: fact.value, confirmed: fact.confirmed === true };
       }
       const snapshot = await browserAdapter.fillConfirmed(payload);
       generation += 1;
@@ -31,12 +37,25 @@ export function createFormController({ browserAdapter, lease } = {}) {
   };
 }
 
+// O observador pode devolver só a referência do controle (texto) ou o detalhe
+// completo com tipo e rótulo. Os dois formatos viram o mesmo campo normalizado.
 function normalizeFields(fields = []) {
-  return (Array.isArray(fields) ? fields : []).map((field) => ({
-    name: String(field.name ?? field.ref ?? ''),
-    type: SUPPORTED_TYPES.has(field.type) ? field.type : 'text',
-    sensitive: field.sensitive === true,
-    required: field.required === true,
-    step: Number(field.step ?? 1)
-  })).filter((field) => field.name);
+  return (Array.isArray(fields) ? fields : []).map((field) => {
+    const detalhe = typeof field === 'string' ? { ref: field } : field ?? {};
+    const ref = String(detalhe.ref ?? detalhe.name ?? '');
+    const tipo = String(detalhe.type ?? 'text');
+    return {
+      ref,
+      name: String(detalhe.name || ref),
+      label: String(detalhe.label ?? ''),
+      type: SUPPORTED_TYPES.has(tipo) ? tipo : EQUIVALENTES_A_TEXTO.has(tipo) ? equivalente(tipo) : tipo,
+      sensitive: detalhe.sensitive === true || /senha|password|cpf|token/i.test(`${detalhe.name ?? ''} ${detalhe.label ?? ''}`),
+      required: detalhe.required === true,
+      step: Number(detalhe.step ?? 1)
+    };
+  }).filter((field) => field.ref);
+}
+
+function equivalente(tipo) {
+  return tipo.startsWith('select') ? 'select' : 'text';
 }

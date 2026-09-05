@@ -172,13 +172,12 @@ async function uiSmoke(t, runtime, rootDir) {
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   try {
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
-    await page.locator('#primary-nav a[href="#queue"]').click();
-    await page.waitForFunction(() => document.querySelector('#screen-title')?.textContent.includes('Fila'));
-    await page.locator('#queue-list').getByText(/Empresa Sintética 1/).waitFor();
-    await page.locator('#primary-nav a[href="#applications"]').click();
-    await page.waitForFunction(() => document.querySelector('#screen-title')?.textContent === 'Candidaturas');
-    await page.locator('#primary-nav a[href="#followup"]').click();
-    await page.waitForFunction(() => document.querySelector('#screen-title')?.textContent.includes('Acompanhamento'));
+    await page.locator('[data-rota="oportunidades"]').click();
+    await page.getByText(/Empresa Sintética 1/).first().waitFor();
+    await page.locator('[data-rota="candidaturas"]').click();
+    await page.getByRole('heading', { name: 'Onde está cada processo' }).waitFor();
+    // O acompanhamento vive dentro das candidaturas: sem tela separada de registro manual.
+    await page.getByRole('heading', { name: 'Novidades das plataformas' }).waitFor();
     await page.screenshot({ path: join(artifacts, 'fluxo-ui-followup.png'), fullPage: true });
     assert.deepEqual(errors, []);
   } finally { await browser.close(); await close(server); }

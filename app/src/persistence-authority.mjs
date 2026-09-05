@@ -61,9 +61,30 @@ export function createPersistenceAuthority({ rootDir, dbPath = join(rootDir, 'es
     }
   }
 
+  // Documentos de estado da era do aplicativo: nascem no banco e não têm espelho
+  // JSON, então não participam da verificação de divergência legada.
+  function readRuntimeDocument(name, fallback = {}) {
+    requireSqlite();
+    const row = database.prepare('select payload_json from runtime_documents where name = ?').get(String(name));
+    return row ? JSON.parse(row.payload_json) : clone(fallback);
+  }
+  function saveRuntimeDocument(name, payload) {
+    requireSqlite();
+    database.prepare(`insert into runtime_documents (name, payload_json, updated_at) values (?, ?, ?)
+      on conflict(name) do update set payload_json = excluded.payload_json, updated_at = excluded.updated_at`)
+      .run(String(name), JSON.stringify(payload ?? null), now().toISOString());
+    return clone(payload);
+  }
+
   return {
     dbPath,
     assertNoDrift,
+    readRuntimeDocument,
+    saveRuntimeDocument,
+    listRuntimeDocuments() {
+      requireSqlite();
+      return database.prepare('select name, updated_at from runtime_documents order by name').all().map((row) => ({ name: row.name, updatedAt: row.updated_at }));
+    },
     async getMode() { return isSqlite() ? 'sqlite' : 'json'; },
     isSqliteAuthoritySync() { return isSqlite(); },
     async isSqliteAuthority() { return isSqlite(); },
@@ -201,7 +222,8 @@ export function createAutoPersistence(options) {
 function applyMigrations(database) {
   database.exec(`create table if not exists schema_migrations (version integer primary key, applied_at text not null);
     create table if not exists persistence_meta (key text primary key, value text not null);
-    create table if not exists operational_documents (name text primary key, payload_json text not null, updated_at text not null);`);
+    create table if not exists operational_documents (name text primary key, payload_json text not null, updated_at text not null);
+    create table if not exists runtime_documents (name text primary key, payload_json text not null, updated_at text not null);`);
   const exists = database.prepare('select 1 from schema_migrations where version = ?').get(CURRENT_SCHEMA_VERSION);
   if (!exists) database.prepare('insert into schema_migrations (version, applied_at) values (?, ?)').run(CURRENT_SCHEMA_VERSION, new Date().toISOString());
 }

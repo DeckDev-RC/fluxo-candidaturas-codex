@@ -1,1 +1,94 @@
-:root{font-family:system-ui,sans-serif;color:#203b35;background:#f6f4ed}body{margin:0}main{padding:38px;max-width:720px;margin:auto}.brand{letter-spacing:.15em;font-size:12px;color:#4b796c}h1{font-size:30px;font-weight:550}p{line-height:1.6;color:#52655e}ul{padding:0;list-style:none}li{padding:15px 0;border-bottom:1px solid #d6ded6}li strong{display:block}li span{display:block;margin-top:5px;font-size:14px;color:#52655e}.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:24px}button{border:1px solid #93aaa0;border-radius:6px;padding:10px 14px;background:#fff;color:#23483b;cursor:pointer}button:focus-visible{outline:3px solid #51a084}button:disabled{opacity:.5}#workspace{overflow-wrap:anywhere;font-size:13px}#feedback{color:#79451c}
+/* Janela de diagnóstico com a mesma linguagem da direção Trajetória (U8-06).
+   Os tokens são repetidos aqui porque esta janela não carrega a interface web. */
+
+:root {
+  --mineral: #f4f3ef;
+  --papel: #ffffff;
+  --tinta: #20262b;
+  --tinta-media: #4d565d;
+  --tinta-suave: #6b7479;
+  --terracota: #b44832;
+  --terracota-escura: #8f3826;
+  --sucesso: #1f6b4a;
+  --atencao: #8a5a00;
+  --erro: #a32116;
+  --linha: #dcd9d1;
+  --linha-controle: #8c8578;
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+  color: var(--tinta);
+  background: var(--mineral);
+}
+
+body { margin: 0; font-size: 15px; line-height: 1.55; }
+
+main {
+  padding: 2rem;
+  max-width: 44rem;
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.brand {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--tinta-suave);
+  font-weight: 600;
+}
+
+h1 { font-size: 1.75rem; font-weight: 600; letter-spacing: -0.01em; margin: 0; }
+p { margin: 0; color: var(--tinta-media); }
+
+ul {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+  background: var(--papel);
+  border: 1px solid var(--linha);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+li { padding: 0.75rem 1rem; }
+li + li { border-top: 1px solid var(--linha); }
+li strong { display: block; font-weight: 600; }
+li span { display: block; margin-top: 2px; font-size: 13px; color: var(--tinta-media); }
+li[data-status="ok"] strong::after { content: " · pronto"; color: var(--sucesso); font-weight: 600; }
+li[data-status="pendente"] strong::after { content: " · atenção necessária"; color: var(--atencao); font-weight: 600; }
+li[data-status="erro"] strong::after { content: " · falhou"; color: var(--erro); font-weight: 600; }
+
+.actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
+
+button {
+  font: inherit;
+  font-weight: 600;
+  min-height: 2.25rem;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--linha-controle);
+  border-radius: 6px;
+  background: var(--papel);
+  color: var(--tinta);
+  cursor: pointer;
+}
+
+button#refresh { background: var(--terracota); border-color: var(--terracota); color: var(--papel); }
+button#refresh:hover { background: var(--terracota-escura); }
+button:hover { background: #e8e6df; }
+button#refresh:hover { color: var(--papel); }
+
+button:focus-visible { outline: 2px solid var(--tinta); outline-offset: 2px; }
+button:disabled { color: var(--tinta-suave); cursor: not-allowed; }
+
+#workspace { overflow-wrap: anywhere; font-size: 13px; color: var(--tinta-suave); }
+
+#feedback {
+  min-height: 1.4rem;
+  color: var(--tinta);
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}

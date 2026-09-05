@@ -18,8 +18,9 @@
     "migrate": "node app/scripts/migrate-persistence.mjs",
     "diagnose": "node desktop/diagnostics.mjs",
     "browser:install": "playwright install chromium",
-    "build:dir": "electron-builder --win --x64 --dir --publish never",
-    "build": "electron-builder --win nsis --x64 --publish never"
+    "build:dir": "npm run icon:build && electron-builder --win --x64 --dir --publish never",
+    "build": "npm run icon:build && electron-builder --win nsis --x64 --publish never",
+    "icon:build": "node app/scripts/build-icon.mjs"
   },
   "dependencies": {
     "playwright": "1.63.0"
@@ -67,7 +68,8 @@
     "asar": true,
     "win": {
       "target": "nsis",
-      "signAndEditExecutable": false
+      "icon": "build/icon.png",
+      "signExecutable": false
     },
     "nsis": {
       "oneClick": false,

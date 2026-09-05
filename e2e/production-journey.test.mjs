@@ -38,22 +38,27 @@ test('F8-02 jornada pela UI: objetivo, lacuna respondida, busca real e envio apr
 
 async function journey({ page, runtime, fixture, board, url, resumePath }) {
   await page.goto(url);
-  await page.locator('#autopilot-intent').fill('conduzir candidaturas de engenharia de software remotas');
-  await page.locator('#autopilot-resume').setInputFiles(resumePath);
-  await page.locator('#autopilot-start').click();
-
-  // O currículo importado não declara cargo-alvo: o Intake precisa parar e perguntar.
-  const decisions = page.locator('#autopilot-decisions');
-  await decisions.locator('#autopilot-answers-fields input[name="targetRoles"]').waitFor({ timeout: 60_000 });
-  await page.screenshot({ path: join(artifacts, 'f8-02-lacuna.png'), fullPage: true });
-  assert.match(await page.locator('#autopilot-status').textContent(), /informação/i);
+  // A tela Agora reconhece que está tudo confirmado e oferece iniciar a busca.
+  await page.getByRole('button', { name: 'Procurar vagas agora' }).click();
+  await page.locator('#objetivo').fill('conduzir candidaturas de engenharia de software remotas');
+  await page.locator('#curriculo').setInputFiles(resumePath);
+  // Transferência, verificação e leitura são etapas distintas: espero a leitura terminar.
+  await page.locator('#documento-etapas span:nth-child(3)[data-estado="feito"]').waitFor({ timeout: 60_000 });
+  await page.getByText(/Verificação do arquivo/).waitFor({ timeout: 30_000 });
   const imported = await readFile(join(fixture.root, 'curriculo', 'curriculo-sintetico.txt'), 'utf8');
   assert.match(imported, /fixture@example\.test/, 'o conteúdo do arquivo externo precisa ter sido transferido');
+  await page.locator('#comecar').click();
 
-  await decisions.locator('input[name="targetRoles"]').fill('Engenharia de software');
-  await decisions.locator('#autopilot-answers-submit').click();
-  // A jornada retomada só pode voltar a parar na revisão humana da candidatura (4ª etapa).
-  await page.locator('#autopilot-plan li:nth-child(4)[data-status="waiting_user"]').waitFor({ timeout: 150_000 });
+  // O currículo importado não declara cargo-alvo: o Intake precisa parar e perguntar.
+  await page.locator('#lista-decisoes').waitFor({ timeout: 60_000 });
+  await page.screenshot({ path: join(artifacts, 'ui-lacuna.png'), fullPage: true });
+  assert.match(await page.locator('#indicador-decisoes-texto').textContent(), /decis/i);
+  await page.getByRole('button', { name: 'Responder' }).first().click();
+  await page.locator('#lacuna-targetRoles').fill('Engenharia de software');
+  await page.getByRole('button', { name: 'Responder e continuar' }).click();
+
+  // A jornada retomada só pode voltar a parar na revisão humana da candidatura.
+  await page.locator('#percurso li:nth-child(4)[data-status="waiting_user"]').waitFor({ timeout: 150_000 });
 
   const run = runtime.runService.listRuns().find((item) => item.kind === 'autopilot');
   const completed = eventsOf(runtime, run.id)
@@ -77,8 +82,8 @@ async function journey({ page, runtime, fixture, board, url, resumePath }) {
   const state = await readFluxoState(fixture.root);
   assert.equal(state.queue.items.length, 3, 'o link repetido do quadro não pode virar uma vaga a mais');
   assert.equal(state.queue.items.every((item) => item.platform === 'INFOJOBS'), true);
-  await page.locator('#primary-nav a[href="#queue"]').click();
-  await page.locator('#queue-list').getByText(/Empresa Sintética/).first().waitFor({ timeout: 30_000 });
+  await page.locator('[data-rota="oportunidades"]').click();
+  await page.getByText(/Empresa Sintética/).first().waitFor({ timeout: 30_000 });
 
   const review = await submitThroughUi(page);
   assert.match(review, /Pessoa Sintética E2E/, 'a revisão precisa mostrar o valor que será enviado');
@@ -86,7 +91,9 @@ async function journey({ page, runtime, fixture, board, url, resumePath }) {
   assert.equal(board.submissions.length, 1, 'a plataforma controlada deve receber exatamente um envio');
   assert.equal(board.submissions[0].fields.name, 'Pessoa Sintética E2E');
   assert.equal(board.submissions[0].fields.note, '', 'campo sem fato confirmado não pode ser preenchido');
-  await page.screenshot({ path: join(artifacts, 'f8-02-candidatura-confirmada.png'), fullPage: true });
+  await page.locator('[data-rota="candidaturas"]').click();
+  await page.getByText(/enviada/).first().waitFor({ timeout: 30_000 });
+  await page.screenshot({ path: join(artifacts, 'ui-candidatura-confirmada.png'), fullPage: true });
 
   const applications = await runtime.persistence.getApplications();
   assert.equal(applications.length, 1);
@@ -99,20 +106,21 @@ async function journey({ page, runtime, fixture, board, url, resumePath }) {
   } finally { database.close(); }
 }
 
+// Preparar → revisar no diálogo → aprovar. A tarefa autorizada segue sozinha
+// até a confirmação da plataforma, sem um segundo clique de "enviar".
 async function submitThroughUi(page) {
-  await page.locator('#primary-nav a[href="#applications"]').click();
-  await page.waitForFunction(() => document.querySelector('#screen-title')?.textContent === 'Candidaturas');
-  await page.locator('#application-tools select[name="platform"]').selectOption('INFOJOBS');
-  await page.locator('[data-application-action="prepare"]').click();
-  await page.locator('#application-review').waitFor({ state: 'visible', timeout: 60_000 });
-  const review = await page.locator('#application-review-facts').innerText();
-  await page.locator('[data-application-action="approve"]').click();
-  const approve = page.locator('#approval-list button.approval-button.primary').first();
-  await approve.waitFor({ timeout: 30_000 });
-  await approve.click();
-  await page.locator('[data-application-action="submit"]:not([disabled])').waitFor({ timeout: 30_000 });
-  await page.locator('[data-application-action="submit"]').click();
-  await page.waitForFunction(() => /confirmado/i.test(document.querySelector('#application-feedback')?.textContent ?? ''), null, { timeout: 90_000 });
+  await page.locator('#lista-decisoes, .lista').first().waitFor({ timeout: 30_000 });
+  await page.getByRole('option').filter({ hasText: 'Engenharia de software' }).first().click();
+  await page.locator('#preparar-candidatura').click();
+  const dialogo = page.locator('#dialogo');
+  await dialogo.waitFor({ state: 'visible', timeout: 60_000 });
+  const review = await dialogo.innerText();
+  await page.getByRole('button', { name: /^Aprovar envio para/ }).click();
+  await page.waitForFunction(
+    () => /recebimento/i.test(document.querySelector('#mensagens')?.textContent ?? ''),
+    null,
+    { timeout: 90_000 }
+  );
   return review;
 }
 
@@ -132,9 +140,10 @@ function observe(page) {
 }
 
 async function report(page, runtime, observed) {
-  console.log('AUTOPILOT STATUS:', await page.locator('#autopilot-status').textContent().catch(() => 'indisponível'));
-  console.log('SCREEN STATE:', await page.locator('#screen-state').textContent().catch(() => 'indisponível'));
-  console.log('QUEUE:', await page.locator('#queue-list').textContent().catch(() => 'indisponível'));
+  console.log('ESTADO DA JORNADA:', await page.locator('#estado-trabalho').textContent().catch(() => 'indisponível'));
+  console.log('DECISÕES:', await page.locator('#indicador-decisoes-texto').textContent().catch(() => 'indisponível'));
+  console.log('TELA:', (await page.locator('#tela').textContent().catch(() => 'indisponível')).slice(0, 800));
+  console.log('MENSAGENS:', await page.locator('#mensagens').textContent().catch(() => 'indisponível'));
   console.log('CHAMADAS COM ERRO:', JSON.stringify(observed.calls));
   console.log('ERROS DE PÁGINA:', JSON.stringify(observed.errors));
   for (const run of runtime.runService.listRuns()) {

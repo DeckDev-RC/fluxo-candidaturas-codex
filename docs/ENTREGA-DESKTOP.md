@@ -4,12 +4,12 @@
 
 | Verificação | Resultado |
 |---|---|
-| Testes do app | 276 aprovados, 0 falhas |
+| Testes do app | 312 aprovados, 0 falhas |
 | Testes da infraestrutura desktop | 6 aprovados, 0 falhas |
-| E2E Chromium real (jornada + matriz de cenários + preflight) | 12 aprovados, 0 falhas |
+| E2E Chromium real (jornada, matriz de cenários, experiência de UI e preflight) | 19 aprovados, 0 falhas |
 | Desktop empacotado (smoke) | Abriu, leu offline, isolou renderer, preservou dados e encerrou o backend |
-| Instalador | `dist/desktop/Fluxo-1.2.0-Windows-x64.exe`, sha256 `b9cc41c1744d7ddb1ed5e2246eb92932cef4ae18f1ef9120c1054ab5eece2409`, **não assinado** |
-| Inventário do build | `output/build-inventory.json`, 311 arquivos de origem, sem `.env` e sem bancos operacionais |
+| Instalador | `dist/desktop/Fluxo-1.2.0-Windows-x64.exe`, sha256 `9be704bad238b400403c081a8571d230b61a1dd396a390c941f7912a591d23da`, **não assinado** |
+| Inventário do build | `output/build-inventory.json`, 334 arquivos de origem, sem `.env` e sem bancos operacionais |
 
 **Certificado nesta candidata (evidência B, site controlado):** jornada do Autopilot conduzida pela interface com o orquestrador de produção; importação de currículo de fora do projeto; pausa de especialista respondida na tela e retomada na tarefa correta; busca na página configurada de cada plataforma; revisão com campos preenchidos e currículo anexado; aprovação humana obrigatória; envio confirmado com evidência e registro em SQLite; recusa de revisão alterada, CAPTCHA, plataforma fora do ar, vaga duplicada e página hostil.
 

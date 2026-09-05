@@ -30,7 +30,9 @@ async function start() {
     onExit: () => { if (!quitting && mainWindow) { backendUrl = null; void mainWindow.loadURL(diagnosticUrl); } }
   });
 
-  mainWindow = new BrowserWindow({ width: 1280, height: 860, minWidth: 900, minHeight: 650, title: 'Fluxo', show: false, webPreferences: { preload, nodeIntegration: false, contextIsolation: true, sandbox: true } });
+  // Mínimo baixo o suficiente para 1024×768 com zoom de texto: a interface tem
+  // composição de coluna única abaixo de 48rem (U8-03).
+  mainWindow = new BrowserWindow({ width: 1280, height: 860, minWidth: 720, minHeight: 560, title: 'Fluxo', show: false, webPreferences: { preload, nodeIntegration: false, contextIsolation: true, sandbox: true } });
   mainWindow.once('ready-to-show', () => mainWindow.show());
   mainWindow.on('closed', () => { mainWindow = null; });
   protectWindow(mainWindow);
@@ -79,7 +81,7 @@ async function selectWorkspace(preferencesPath) {
 
 function showDiagnostics() {
   if (diagnosticWindow) { diagnosticWindow.focus(); return; }
-  diagnosticWindow = new BrowserWindow({ parent: mainWindow, width: 760, height: 620, title: 'Diagnóstico do Fluxo', webPreferences: { preload, nodeIntegration: false, contextIsolation: true, sandbox: true } });
+  diagnosticWindow = new BrowserWindow({ parent: mainWindow, width: 760, height: 620, minWidth: 560, minHeight: 480, title: 'Preparação do ambiente — Fluxo', webPreferences: { preload, nodeIntegration: false, contextIsolation: true, sandbox: true } });
   protectWindow(diagnosticWindow); diagnosticWindow.on('closed', () => { diagnosticWindow = null; });
   void diagnosticWindow.loadURL(diagnosticUrl);
 }

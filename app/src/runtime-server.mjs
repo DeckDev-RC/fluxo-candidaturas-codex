@@ -36,6 +36,9 @@ export async function createRuntimeServer({ rootDir, port = 4173 } = {}) {
     runtimeHealth: runtime.runtimeHealth,
     sessionStore: runtime.sessionStore,
     orchestrator: runtime.orchestrator,
+    consistencyService: runtime.consistencyService,
+    policyGateway: runtime.policyGateway,
+    budget: runtime.campaignBudget,
     requireSession: true
   });
   return { runtime, server, port };

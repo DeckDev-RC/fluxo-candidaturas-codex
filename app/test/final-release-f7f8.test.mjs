@@ -32,10 +32,12 @@ test('production packages must not auto-select fixture mode', async () => {
   assert.equal(started.run.mode, 'autonomous');
 });
 
-test('controlled campaign of 20 opportunities tracks duplicates, exclusions, approvals and cancel', async () => {
+// F8-05: campanha controlada de 20 oportunidades, interrompida de verdade em três
+// fronteiras diferentes, com o serviço de execução reaberto a cada interrupção.
+// O teste anterior só simulava o laço em memória e não retomava nada.
+test('controlled campaign of 20 opportunities survives interruption at three boundaries', async () => {
   const root = await mkdtemp(join(tmpdir(), 'fluxo-20-'));
-  const runService = createRunService({ dbPath: join(root, 'harness.sqlite') });
-  const budget = createCampaignBudget({ config: { maxApplicationsPerRun: 5, maxConsecutiveFailures: 3 } });
+  const dbPath = join(root, 'harness.sqlite');
   const opportunities = Array.from({ length: 20 }, (_, index) => ({
     id: `job-${index + 1}`,
     role: index % 5 === 0 ? 'Estágio' : 'Backend',
@@ -44,43 +46,91 @@ test('controlled campaign of 20 opportunities tracks duplicates, exclusions, app
     workMode: 'Remoto',
     identifierOrUrl: index % 7 === 0 ? 'https://gupy.io/jobs/acme' : `https://gupy.io/jobs/${index + 1}`
   }));
+
   const filters = { roles: ['Backend'], exclusions: ['Estágio'] };
-  const decisions = opportunities.map((item) => ({
-    item,
-    filter: applyCampaignFilters(item, filters, { skills: { value: ['Node.js'], confirmed: true } })
-  }));
-  const excluded = decisions.filter((item) => !item.filter.eligible);
-  const seen = new Set();
-  const unique = [];
-  for (const entry of decisions.filter((item) => item.filter.eligible)) {
-    const key = `${entry.item.company}|${entry.item.role}|${entry.item.identifierOrUrl}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    unique.push(entry.item);
+  const eligible = opportunities.filter((item) => applyCampaignFilters(item, filters, { skills: { value: ['Node.js'], confirmed: true } }).eligible);
+  const unique = [...new Map(eligible.map((item) => [`${item.company}|${item.role}|${item.identifierOrUrl}`, item])).values()];
+  assert.ok(eligible.length < opportunities.length, 'exclusões precisam remover parte das oportunidades');
+  assert.ok(unique.length < eligible.length, 'duplicata por empresa+cargo+URL precisa ser descartada');
+
+  const budget = createCampaignBudget({ config: { maxApplicationsPerRun: 20, maxConsecutiveFailures: 5 } });
+  const enviados = [];
+  // Interrompe em três fronteiras: antes da busca, antes da revisão e antes do acompanhamento.
+  const interrupcoes = ['discovery', 'application', 'followup'];
+  let pararEm = interrupcoes.shift();
+  let runId = '';
+
+  for (let volta = 0; volta < 4; volta += 1) {
+    // Cada volta reabre o serviço no mesmo banco: nada pode viver só em memória.
+    const runService = createRunService({ dbPath });
+    try {
+      const agents = Object.fromEntries(['intake', 'discovery', 'fit', 'application', 'followup'].map((name) => [name, {
+        async run(context) {
+          if (name === pararEm) {
+            const erro = new Error(`interrupção controlada em ${name}`);
+            erro.code = 'interrupcao_de_teste';
+            throw erro;
+          }
+          if (name === 'application') {
+            for (const item of unique) {
+              context.budget.assertCanAct('external');
+              if (enviados.includes(item.id)) continue;
+              enviados.push(item.id);
+              context.budget.recordSubmission();
+            }
+          }
+          return { confirmed: true, result: { name, prepared: unique.length } };
+        }
+      }]));
+      const orchestrator = createAutopilotOrchestrator({ runService, budget, agents, maxRetries: 0 });
+
+      if (!runId) {
+        const inicio = await orchestrator.start({ objective: 'campanha-20', input: { goalsMet: true, explicitClose: true } });
+        runId = inicio.run.id;
+        await inicio.completion;
+      } else {
+        await orchestrator.continue(runId, {});
+      }
+
+      const tarefas = runService.listSubtasks(runId);
+      assert.equal(tarefas.length, 5, 'as cinco tarefas ficam persistidas no banco');
+      assert.deepEqual(tarefas[1].dependsOn, ['intake'], 'a dependência entre etapas é persistida');
+
+      if (pararEm) {
+        const travada = tarefas.find((item) => item.parentTask === pararEm);
+        assert.equal(travada.status, 'needs_attention', `${pararEm} precisa ficar registrada como pendente`);
+        assert.ok(travada.attempts >= 1, 'a tentativa precisa ser persistida, não só contada em memória');
+        // As etapas anteriores continuam concluídas: retomar não refaz a jornada.
+        for (const anterior of tarefas.slice(0, tarefas.indexOf(travada))) {
+          assert.equal(anterior.status, 'succeeded', `${anterior.parentTask} não deveria voltar para trás`);
+        }
+        pararEm = interrupcoes.shift();
+      } else {
+        assert.equal(tarefas.every((item) => item.status === 'succeeded'), true, 'a jornada retomada precisa fechar todas as etapas');
+        assert.deepEqual(runService.readySubtasks(runId), [], 'nenhuma tarefa fica pendente ao final');
+      }
+    } finally {
+      runService.close();
+    }
   }
-  let approved = 0;
-  const failures = [];
-  for (const [index, item] of unique.entries()) {
-    budget.assertCanAct('external');
-    if (index === 0 || index === 1 || index === 2) failures.push({ stage: index, recovered: true });
-    if (index === 3) { budget.cancel(); break; }
-    budget.recordSubmission();
-    approved += 1;
+
+  assert.equal(enviados.length, unique.length, 'cada oportunidade elegível é enviada exatamente uma vez');
+  assert.equal(new Set(enviados).size, enviados.length, 'nenhuma oportunidade é enviada duas vezes após as retomadas');
+  assert.equal(budget.snapshot().submitted, unique.length, 'o contador da campanha precisa bater com os envios');
+
+  // Cancelar a campanha depois das retomadas barra qualquer nova ação externa.
+  const runService = createRunService({ dbPath });
+  try {
+    const orchestrator = createAutopilotOrchestrator({
+      runService,
+      budget,
+      agents: Object.fromEntries(['intake', 'discovery', 'fit', 'application', 'followup'].map((name) => [name, { async run() { return { confirmed: true, result: { name } }; } }]))
+    });
+    assert.equal(orchestrator.cancel(runId).cancelled, true);
+    assert.throws(() => budget.childBudget().assertCanAct('external'), { code: 'campaign_cancelled' });
+  } finally {
+    runService.close();
   }
-  assert.equal(excluded.length > 0, true);
-  assert.equal(unique.length < opportunities.length, true);
-  assert.equal(approved <= 5, true);
-  assert.equal(failures.length, 3);
-  assert.throws(() => budget.assertCanAct('external'), { code: 'campaign_cancelled' });
-  const orchestrator = createAutopilotOrchestrator({
-    runService,
-    budget,
-    agents: Object.fromEntries(['intake', 'discovery', 'fit', 'application', 'followup'].map((name) => [name, { async run() { return { confirmed: true, result: { name } }; } }]))
-  });
-  const started = await orchestrator.start({ objective: 'campanha-20', mode: 'fixture' });
-  const cancelled = orchestrator.cancel(started.run.id);
-  assert.equal(cancelled.cancelled, true);
-  runService.close();
 });
 
 test('legacy JSON root still requires explicit migration', async () => {

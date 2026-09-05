@@ -46,13 +46,16 @@ import { createCodexSettingsService } from './codex-settings-service.mjs';
 import { createPlaywrightDiscoveryAdapter } from './discovery-service.mjs';
 import { createResumeImportService } from './resume-import-service.mjs';
 import { createSchedulerService } from './scheduler-service.mjs';
+import { createSchedulerRunner } from './scheduler-runner.mjs';
 import { createNotificationService } from './notification-service.mjs';
 import { createRuntimeHealth } from './runtime-health.mjs';
 import { createSessionStore } from './session-store.mjs';
 import { createCampaignBudget } from './campaign-budget.mjs';
 import { createCampaignService } from './campaign-service.mjs';
+import { createConsistencyService } from './consistency-service.mjs';
+import { createFormController } from './form-controller.mjs';
 
-export async function createLocalRuntime({ rootDir, browserDriver, headless } = {}) {
+export async function createLocalRuntime({ rootDir, browserDriver, headless, schedulerTickMs = 60_000 } = {}) {
   await mkdir(join(rootDir, 'estado'), { recursive: true });
   const persistence = createPersistenceAuthority({ rootDir });
   if (!['campanha/config.json', 'fila/vagas.json', 'candidaturas/candidaturas.json'].some(path => existsSync(join(rootDir, path)))) await persistence.initializeNew();
@@ -75,18 +78,18 @@ export async function createLocalRuntime({ rootDir, browserDriver, headless } = 
   const pendingService = createPendingService({ rootDir });
   const checkpointService = createCheckpointService({ rootDir, mutationLock: false });
   const metricsService = createMetricsService({ rootDir, readOperations: async () => stateStore.listOperations(), readRuns: async () => runService.listRuns(), readExceptions: async () => exceptionService.list(), readTraces: async () => [] });
-  const memoryService = createMemoryService({ rootDir, mutationLock: false });
+  const memoryService = createMemoryService({ rootDir, persistence, mutationLock: false });
   const intakeService = createIntakeService({ rootDir, memoryService });
   const fixtureDiscoveryAdapters = createFixtureDiscoveryAdapters();
-  const discoveryService = createDiscoveryService({ rootDir, queueService, adapters: platformAdapters, fixtureAdapters: fixtureDiscoveryAdapters, mutationLock: false });
+  const discoveryService = createDiscoveryService({ rootDir, persistence, queueService, adapters: platformAdapters, fixtureAdapters: fixtureDiscoveryAdapters, mutationLock: false });
   const fitService = createFitService();
-  const exceptionService = createExceptionService({ rootDir, runService, mutationLock: false });
-  const followUpMonitor = createFollowUpMonitor({ rootDir, adapters: platformAdapters });
+  const exceptionService = createExceptionService({ rootDir, persistence, runService, mutationLock: false });
+  const followUpMonitor = createFollowUpMonitor({ rootDir, persistence, adapters: platformAdapters });
   const auditService = createAuditService({ rootDir });
   const campaignService = createCampaignService({ rootDir, persistence, mutationLock: false });
   const resumeImportService = createResumeImportService({ rootDir, memoryService });
-  const schedulerService = createSchedulerService({ rootDir, minIntervalMs: runtimeConfig.followUpMinIntervalMs });
-  const notificationService = createNotificationService({ rootDir });
+  const schedulerService = createSchedulerService({ rootDir, persistence, minIntervalMs: runtimeConfig.followUpMinIntervalMs });
+  const notificationService = createNotificationService({ rootDir, persistence });
   const sessionStore = createSessionStore({ rootDir });
   const campaignBudget = createCampaignBudget({ config: runtimeConfig });
   const fixtureOrchestrator = createAutopilotOrchestrator({ runService, memoryService, auditService, agents: createFixtureAgents({ rootDir, intakeService, discoveryService, fitService, followUpMonitor }) });
@@ -103,6 +106,7 @@ export async function createLocalRuntime({ rootDir, browserDriver, headless } = 
     approvalService,
     policyGateway,
     browserAdapter,
+    formController: createFormController({ browserAdapter }),
     checkpointService,
     checkpointAfterEachAction: runtimeConfig.checkpointAfterEachAction,
     evidenceMode: runtimeConfig.evidenceMode,
@@ -122,10 +126,10 @@ export async function createLocalRuntime({ rootDir, browserDriver, headless } = 
   Object.assign(productionAgents, createProductionAgents({ intakeService, discoveryService, fitService, followUpMonitor, applicationFlow, memoryService, resumeImportService, campaignService, runtimeConfig }));
   const codexSettingsService = createCodexSettingsService({ rootDir, readModels: async () => (await codexHarnessService.snapshot()).models ?? [], mutationLock: false });
   const agentAdapter = createAgentAdapter({
-    domainTools: createDomainTools({ rootDir, runService, readState: () => readFluxoState(rootDir), discoveryService, fitService, memoryService, applicationFlow, browserAdapter, followUpMonitor, resumeImportService }),
+    domainTools: createDomainTools({ rootDir, runService, readState: () => readFluxoState(rootDir), discoveryService, fitService, memoryService, applicationFlow, browserAdapter, followUpMonitor, resumeImportService, budget: campaignBudget }),
     settingsService: codexSettingsService,
     transportFactory: ({ onNotification, onRequest }) => createStdioAgentTransport({ cwd: rootDir, authMode: runtimeConfig.authMode, onNotification, onRequest }),
-    onNotification: createAgentEventHandler(runService)
+    onNotification: createAgentEventHandler(runService, { budget: campaignBudget })
   });
   const codexHarnessService = createCodexHarnessService({ request: (method, params) => agentAdapter.request(method, params) });
   const authService = createCodexAuthService({ agentAdapter });
@@ -135,6 +139,19 @@ export async function createLocalRuntime({ rootDir, browserDriver, headless } = 
   for (const run of runService.listRuns()) agentAdapter.bindRun(run.id, run.agentThreadId, run.currentTurnId);
   runService.reconcile();
   await stateStore.syncFromFiles();
+  // A agenda só funciona com o processo aberto; o executor liga junto do runtime.
+  const schedulerRunner = createSchedulerRunner({
+    schedulerService,
+    followUpMonitor,
+    notificationService,
+    budget: campaignBudget,
+    tickMs: schedulerTickMs
+  }).start();
+  const consistencyService = createConsistencyService({
+    readState: () => readFluxoState(rootDir, { persistence }),
+    readRuns: async () => runService.listRuns(),
+    listEvents: (runId) => runService.listEvents(runId).map((event) => ({ type: event.type, ...safeParse(event.payloadJson) }))
+  });
 
   return {
     runtimeConfig,
@@ -149,8 +166,9 @@ export async function createLocalRuntime({ rootDir, browserDriver, headless } = 
     applicationFlow,
     resumeService, evidenceService, messageService, assessmentService, legacyImportService, pendingService, checkpointService, metricsService,
     memoryService, intakeService, discoveryService, fitService, exceptionService, followUpMonitor, auditService, authService, codexHarnessService, codexSettingsService, orchestrator, autopilotService,
-    resumeImportService, schedulerService, notificationService, sessionStore, runtimeHealth, campaignBudget, campaignService,
+    resumeImportService, schedulerService, schedulerRunner, notificationService, sessionStore, runtimeHealth, campaignBudget, campaignService, consistencyService,
     async close() {
+      schedulerRunner.stop();
       await agentAdapter.close();
       await driver.close?.();
       for (const service of [queueService, applicationService, pendingService, metricsService]) service.close?.();
@@ -160,4 +178,8 @@ export async function createLocalRuntime({ rootDir, browserDriver, headless } = 
       runService.close();
     }
   };
+}
+
+function safeParse(json) {
+  try { return JSON.parse(json ?? '{}'); } catch { return {}; }
 }

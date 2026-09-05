@@ -41,12 +41,24 @@ export function createPlaywrightDriver({ rootDir, headless = false, browserType,
       if (rel.startsWith('..') || resolve(absolute) === resolve(rootDir)) throw error('invalid_resume_path', 'Anexe um arquivo da pasta curriculo.');
       await (await locator(ref)).setInputFiles(absolute);
     },
-    async screenshot(path) {
+    // A evidência prefere o trecho da confirmação: capturar a página inteira
+    // arrasta dado pessoal que não é necessário para provar o recebimento.
+    async screenshot(path, { scope = 'confirmation' } = {}) {
       const absolute = resolve(rootDir, path); const rel = relative(rootDir, absolute);
       if (rel.startsWith('..')) throw error('invalid_evidence_path', 'A evidência deve permanecer na pasta local.');
       await mkdir(dirname(absolute), { recursive: true });
-      await (await getPage()).screenshot({ path: absolute, fullPage: true });
-      return { ok: true, path };
+      const page = await getPage();
+      if (scope === 'confirmation') {
+        const alvo = page.locator('[data-confirmation], [data-application-status]').first();
+        if (await alvo.count().catch(() => 0)) {
+          try {
+            await alvo.screenshot({ path: absolute });
+            return { ok: true, path, scope: 'confirmation' };
+          } catch { /* elemento sem caixa visível: cai para a página inteira */ }
+        }
+      }
+      await page.screenshot({ path: absolute, fullPage: true });
+      return { ok: true, path, scope: 'page' };
     },
     async close() { if (context) await context.close(); context = null; page = suppliedPage; starting = null; }
   };

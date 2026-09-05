@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { canTransitionApproval } from './domain/approval-status.mjs';
 import { createDomainError } from './domain/errors.mjs';
+import { assertHumanDecision } from './product-policy.mjs';
 
 export function createApprovalService({ dbPath, now = () => new Date() }) {
   const database = new DatabaseSync(dbPath);
@@ -38,6 +39,8 @@ export function createApprovalService({ dbPath, now = () => new Date() }) {
       const row = getRow(id);
       ensureNotExpired(row, now());
       if (!['approved', 'rejected'].includes(decision)) throw domainError('invalid_approval_decision', 'Decisão de aprovação inválida.');
+      // Regra do produto: agente não decide ação externa sensível.
+      assertHumanDecision(authority);
       if (!isTrustedUserAuthority(authority)) throw domainError('approval_decision_forbidden', 'A decisão de aprovação exige uma pessoa usuária autenticada.');
       const transition = canTransitionApproval(row.status, decision);
       if (!transition.allowed) throw domainError(transition.reason, 'A aprovação já possui uma decisão terminal.');

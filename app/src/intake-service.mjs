@@ -8,15 +8,24 @@ export function createIntakeService({ rootDir = '', memoryService = createMemory
     async preview({ source = 'currículo local', text = '', documents = [], facts: provided } = {}) {
       const inputs = Array.isArray(documents) && documents.length ? documents : [{ path: source, text }];
       let facts = {};
+      // Divergência entre duas versões do mesmo dado não é descartada: o Fluxo
+      // não escolhe sozinho qual vale (F1-03).
+      const conflicts = [];
       for (const document of inputs) {
         const extracted = extractStructuredFacts({ text: document.text ?? '', source: String(document.path ?? source) });
         const merged = mergeFacts(facts, extracted.facts);
         facts = merged.facts;
+        conflicts.push(...merged.conflicts);
       }
-      if (provided && typeof provided === 'object') facts = mergeFacts(facts, provided).facts;
+      if (provided && typeof provided === 'object') {
+        const merged = mergeFacts(facts, provided);
+        facts = merged.facts;
+        conflicts.push(...merged.conflicts);
+      }
       const missing = REQUIRED_FOR_FIRST_SEARCH.filter((key) => !facts[key]?.value);
       const questions = missing.slice(0, 5).map((key) => ({ key, prompt: questionFor(key), required: true }));
-      return { facts, missing, questions, documents: inputs.map((document) => ({ path: String(document.path ?? source), imported: true })), summary: summarize(facts), ready: missing.length === 0 };
+      if (conflicts.length) await memoryService.recordConflicts?.(conflicts);
+      return { facts, missing, questions, conflicts, documents: inputs.map((document) => ({ path: String(document.path ?? source), imported: true })), summary: summarize(facts), ready: missing.length === 0 && conflicts.length === 0 };
     },
 
     async commit({ preview, corrections = {} } = {}) {

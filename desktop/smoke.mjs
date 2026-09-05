@@ -14,7 +14,9 @@ const app = await electron.launch({ ...(executablePath ? { executablePath, args:
 try {
   const window = await app.firstWindow();
   await window.waitForURL('http://127.0.0.1:*/', { timeout: 30_000 });
-  await window.locator('#app-main').waitFor();
+  // A área de trabalho da pessoa é o alvo: se ela não pinta, o app não abriu de fato.
+  await window.locator('#conteudo').waitFor();
+  await window.locator('#objetivo-texto').waitFor();
   const isolation = await window.evaluate(() => ({ require: typeof require, desktop: typeof window.fluxoDesktop?.diagnostics }));
   assert.deepEqual(isolation, { require: 'undefined', desktop: 'function' });
   const workspace = await window.evaluate(() => window.fluxoDesktop.workspace());

@@ -18,8 +18,16 @@ test('SQLite authority routes campaign, queue, confirmed application and follow-
     await createCampaignService({ rootDir: root, persistence }).updateCampaign({ totalGoal: 2, platforms: [{ name: 'GUPY', enabled: true, goal: 2 }] });
     const queue = createQueueService({ rootDir: root, persistence, checkpointAfterEachAction: false });
     const item = await queue.addQueueItem({ platform: 'GUPY', company: 'Fluxo', role: 'Developer', identifierOrUrl: 'https://jobs/1', priority: 'A' });
-    const record = await createApplicationService({ rootDir: root, persistence, scriptRunner: async (...args) => { scripts.push(args); return { ok: false }; } }).recordConfirmedApplication({ item, confirmation: { confirmed: true }, evidencePath: 'evidencias/confirmacao.png', applicationId: 'remote-1' });
-    const repeated = await createApplicationService({ rootDir: root, persistence }).recordConfirmedApplication({ item, confirmation: { confirmed: true }, evidencePath: 'evidencias/confirmacao.png', applicationId: 'remote-1' });
+    // A confirmação real sempre traz o horário observado na plataforma.
+    const confirmation = { confirmed: true, confirmedAt: new Date().toISOString() };
+    const service = createApplicationService({ rootDir: root, persistence, scriptRunner: async (...args) => { scripts.push(args); return { ok: false }; } });
+    await assert.rejects(
+      service.recordConfirmedApplication({ item, confirmation: { confirmed: true }, evidencePath: 'evidencias/confirmacao.png' }),
+      { code: 'submission_confirmation_timestamp_required' },
+      'confirmação sem horário não pode virar candidatura enviada'
+    );
+    const record = await service.recordConfirmedApplication({ item, confirmation, evidencePath: 'evidencias/confirmacao.png', applicationId: 'remote-1' });
+    const repeated = await createApplicationService({ rootDir: root, persistence }).recordConfirmedApplication({ item, confirmation, evidencePath: 'evidencias/confirmacao.png', applicationId: 'remote-1' });
     await createFollowUpService({ rootDir: root, persistence, scriptRunner: async (...args) => { scripts.push(args); return { ok: false }; } }).recordEvent({ reference: record.record.id, type: 'status', status: 'triagem', evidence: 'evidencias/triagem.png' });
     const state = await readFluxoState(root, { persistence });
     assert.equal(scripts.length, 0);
