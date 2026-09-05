@@ -92,7 +92,9 @@ function seletorDeArquivo(documento) {
         etapas.lido = resultado.extraction?.ok === false ? 'falha' : 'feito';
         arquivo = null;
       } catch (error) {
+        // O arquivo recusado não fica pendurado para o "Começar" tentar de novo.
         etapas.importado = 'falha';
+        arquivo = null;
         notice(error.message, 'erro');
       }
       rerender();

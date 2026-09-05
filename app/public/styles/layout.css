@@ -88,7 +88,8 @@
 
 /* Área de trabalho: rolagem própria e conteúdo em largura de leitura. */
 .area {
-  padding: var(--e6) var(--e5);
+  --area-topo: var(--e6);
+  padding: var(--area-topo) var(--e5);
   overflow: auto;
   min-height: 0;
   display: flex;
@@ -164,7 +165,7 @@
 }
 
 @media (max-width: 48rem) {
-  .area { padding: var(--e4); }
+  .area { --area-topo: var(--e4); padding: var(--e4); }
   .cabecalho { padding: var(--e2) var(--e4); }
   .conversa { padding: var(--e3) var(--e4); }
   .navegacao a span { display: none; }
