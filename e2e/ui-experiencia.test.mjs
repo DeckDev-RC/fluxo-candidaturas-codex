@@ -45,11 +45,15 @@ test('U8-03 — janelas de referência e zoom de 200% preservam as ações', { t
     await page.locator('#painel-agora').waitFor();
     const excesso = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     assert.ok(excesso <= 1, `em ${largura}×${altura} a tela não deve rolar na horizontal (excesso ${excesso}px)`);
-    const acao = page.locator('#acoes-agora button').first();
-    if (await acao.count()) {
-      const caixa = await acao.boundingBox();
-      assert.ok(caixa && caixa.x >= 0 && caixa.x + caixa.width <= largura + 1, `ação principal cortada em ${largura}px`);
-    }
+    // A medida é lida dentro da página, de uma vez: uma repintura entre localizar
+    // e medir devolveria caixa nula sem que a ação tenha sido cortada.
+    const caixa = await page.evaluate(() => {
+      const botao = document.querySelector('#acoes-agora button');
+      if (!botao) return null;
+      const { x, width } = botao.getBoundingClientRect();
+      return { x, width };
+    });
+    if (caixa) assert.ok(caixa.x >= 0 && caixa.x + caixa.width <= largura + 1, `ação principal cortada em ${largura}px`);
   }
 
   // Zoom de 200% equivale a metade da área útil: a ação principal continua acessível.

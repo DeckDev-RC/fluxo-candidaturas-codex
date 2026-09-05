@@ -38,6 +38,20 @@ export function createApplicationFlow({ queueService, runService, approvalServic
       return { item, run, snapshot };
     },
 
+    // Prepara a vaga e já preenche o formulário observado com os fatos confirmados
+    // da memória, devolvendo o que a revisão precisa mostrar: campos e currículo.
+    async prepareForReview(input = {}, memorySummary = { facts: {} }) {
+      const prepared = await this.prepareNext(input);
+      const resume = memorySummary?.selectedResume ?? null;
+      try {
+        const filled = await this.fillConfirmed(prepared, memorySummary?.facts ?? {});
+        return { ...prepared, snapshot: filled.snapshot ?? prepared.snapshot, resume, fill: { status: 'preenchido', values: filled.snapshot?.formValues ?? {} } };
+      } catch (error) {
+        // Formulário que não aceita preenchimento guiado ainda pode ser revisado e enviado.
+        return { ...prepared, resume, fill: { status: 'pendente', code: error.code ?? 'fill_failed', message: error.message } };
+      }
+    },
+
     async fillConfirmed(prepared, facts = {}) {
       if (!prepared?.run?.id || typeof browserAdapter.fillConfirmed !== 'function') throw domainError('application_form_unavailable', 'O formulário observado não aceita preenchimento guiado.');
       if (browserAdapter.assertContext) await browserAdapter.assertContext(prepared.snapshot, prepared.item);

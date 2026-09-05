@@ -125,8 +125,11 @@ export async function createLocalRuntime({ rootDir, browserDriver, headless, sch
   });
   Object.assign(productionAgents, createProductionAgents({ intakeService, discoveryService, fitService, followUpMonitor, applicationFlow, memoryService, resumeImportService, campaignService, runtimeConfig }));
   const codexSettingsService = createCodexSettingsService({ rootDir, readModels: async () => (await codexHarnessService.snapshot()).models ?? [], mutationLock: false });
+  // O registro de ferramentas é exposto no runtime para que a suíte exercite cada
+  // ferramenta pela composição real, não só por construção isolada.
+  const domainTools = createDomainTools({ rootDir, runService, readState: () => readFluxoState(rootDir), discoveryService, fitService, memoryService, applicationFlow, browserAdapter, followUpMonitor, resumeImportService, budget: campaignBudget });
   const agentAdapter = createAgentAdapter({
-    domainTools: createDomainTools({ rootDir, runService, readState: () => readFluxoState(rootDir), discoveryService, fitService, memoryService, applicationFlow, browserAdapter, followUpMonitor, resumeImportService, budget: campaignBudget }),
+    domainTools,
     settingsService: codexSettingsService,
     transportFactory: ({ onNotification, onRequest }) => createStdioAgentTransport({ cwd: rootDir, authMode: runtimeConfig.authMode, onNotification, onRequest }),
     onNotification: createAgentEventHandler(runService, { budget: campaignBudget })
@@ -163,6 +166,7 @@ export async function createLocalRuntime({ rootDir, browserDriver, headless, sch
     stateStore,
     browserAdapter,
     agentAdapter,
+    domainTools,
     applicationFlow,
     resumeService, evidenceService, messageService, assessmentService, legacyImportService, pendingService, checkpointService, metricsService,
     memoryService, intakeService, discoveryService, fitService, exceptionService, followUpMonitor, auditService, authService, codexHarnessService, codexSettingsService, orchestrator, autopilotService,
