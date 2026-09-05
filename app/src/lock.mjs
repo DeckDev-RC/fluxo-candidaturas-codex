@@ -13,10 +13,12 @@ export async function acquireFluxoLock(rootDir) {
     if (handle) await handle.close();
     if (error?.code === 'EEXIST') {
       let recovery;
+      let ownPid = false;
       try {
         recovery = await open(`${lockPath}.recovery`, 'wx');
         const owner = JSON.parse(await readFile(lockPath, 'utf8'));
-        if (Number.isInteger(owner.pid) && owner.pid > 0) {
+        ownPid = owner.pid === process.pid;
+        if (Number.isInteger(owner.pid) && owner.pid > 0 && !ownPid) {
           let dead = false;
           try { process.kill(owner.pid, 0); } catch (error) { dead = error.code === 'ESRCH'; }
           if (dead) {
@@ -27,7 +29,11 @@ export async function acquireFluxoLock(rootDir) {
       } catch (recoveryError) {
         if (!['EEXIST', 'ENOENT'].includes(recoveryError.code) && !(recoveryError instanceof SyntaxError)) throw recoveryError;
       } finally { if (recovery) { await recovery.close(); await unlink(`${lockPath}.recovery`).catch(() => {}); } }
-      const locked = new Error('Outra execução do Fluxo já está usando esta raiz.');
+      // A trava é por processo: quando o dono é este mesmo processo, não há "outra
+      // execução" — há outra operação ainda em andamento, e a mensagem precisa dizer isso.
+      const locked = new Error(ownPid
+        ? 'O Fluxo ainda está concluindo outra operação. Aguarde alguns segundos e tente de novo.'
+        : 'Outra execução do Fluxo já está usando esta raiz.');
       locked.code = 'fluxo_locked';
       throw locked;
     }

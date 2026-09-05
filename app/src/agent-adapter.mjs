@@ -26,7 +26,17 @@ export function createAgentAdapter({ transport, transportFactory, onNotification
         if (active.notify) active.notify('initialized', {});
         initialized = true;
         return result;
-      })().catch(error => { initialization = null; throw error; });
+      })().catch(error => {
+        initialization = null;
+        // Um processo que nem subiu não pode ficar em cache: a próxima tentativa
+        // (por exemplo, depois de instalar o Codex) precisa criar um transporte novo.
+        if (transportFactory && ['agent_unavailable', 'agent_closed', 'transport_closed'].includes(error?.code)) {
+          const dead = activeTransport;
+          activeTransport = null;
+          Promise.resolve(dead?.close?.()).catch(() => {});
+        }
+        throw error;
+      });
       return initialization;
     },
 

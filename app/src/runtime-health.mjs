@@ -1,11 +1,26 @@
 export const RUNTIME_STATES = ['signed_out', 'signed_in', 'expired', 'unavailable', 'offline'];
 
-export function createRuntimeHealth({ authService, now = () => new Date() } = {}) {
+export const CODEX_MISSING_GUIDANCE = 'Instale o Codex CLI (npm install -g @openai/codex) ou informe o caminho do executável em CODEX_COMMAND no arquivo .env e clique em "Verificar novamente".';
+
+// `codex` é opcional: quando informado, resolve o executável e permite explicar
+// a indisponibilidade mais comum — o Codex não está instalado ou não foi encontrado.
+export function createRuntimeHealth({ authService, codex = null, now = () => new Date() } = {}) {
   return {
     async snapshot() {
+      const executable = codex ? codex() : null;
+      if (executable && !executable.found) {
+        return {
+          state: 'unavailable',
+          available: false,
+          offlineRead: true,
+          reason: 'codex_not_found',
+          message: `Automação indisponível — ${executable.reason} ${CODEX_MISSING_GUIDANCE}`,
+          codex: { found: false, path: '', source: executable.source ?? '' }
+        };
+      }
       try {
         const status = await authService?.status?.();
-        return normalize(status, now());
+        return { ...normalize(status, now()), ...(executable ? { codex: { found: true, path: executable.path, source: executable.source } } : {}) };
       } catch (error) {
         return {
           state: 'unavailable',

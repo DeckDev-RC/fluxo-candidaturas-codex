@@ -28,31 +28,47 @@ export function configuracoesScreen() {
 
 function iaPanel() {
   const ia = store.ia;
+  const semCodex = ia.motivo === 'codex_not_found';
+  const rotulo = ia.disponivel ? 'conectada' : semCodex ? 'Codex não encontrado' : 'indisponível';
   return panel({
     kicker: 'automação',
     title: 'Automação de IA',
     id: 'painel-ia',
-    actions: [badge(ia.disponivel ? 'conectada' : 'indisponível', ia.disponivel ? 'sucesso' : 'atencao')],
+    actions: [badge(rotulo, ia.disponivel ? 'sucesso' : 'atencao')],
     children: [
       el('p', { class: 'leitura secundario', text: ia.mensagem }),
       el('p', { class: 'apoio', text: `Modo em uso: ${rotuloModo(ia.modo)}. Sem automação, você continua podendo revisar dados, decidir e registrar informações.` }),
       el('div', { class: 'linha-acoes' }, [
-        button('Entrar com ChatGPT', {
-          id: 'entrar-chatgpt',
-          onClick: async () => {
-            try {
-              const resultado = await send('/api/v1/auth/openai/login', {});
-              if (resultado.authUrl) window.open(resultado.authUrl, '_blank', 'noopener');
-              notice(resultado.userCode
-                ? `Conclua o login no navegador usando o código ${resultado.userCode}. Nunca cole senha ou código aqui na conversa.`
-                : 'Conclua o login do ChatGPT na janela que abriu e volte para esta tela.', 'informacao');
-            } catch (error) { notice(error.message, 'erro'); }
-          }
-        }),
+        // Sem o executável, o login não tem como começar: oferecer o botão só produziria erro.
+        ...(semCodex || ia.disponivel ? [] : [botaoEntrarChatGPT()]),
         button('Verificar novamente', { variant: 'secundario', onClick: async () => { await loadAiStatus(); rerender(); } })
       ])
     ]
   });
+}
+
+function botaoEntrarChatGPT() {
+  const botao = button('Entrar com ChatGPT', {
+    id: 'entrar-chatgpt',
+    onClick: async () => {
+      // Feedback imediato: o login pode levar segundos e um segundo clique confunde.
+      botao.disabled = true;
+      botao.textContent = 'Abrindo o login…';
+      try {
+        const resultado = await send('/api/v1/auth/openai/login', {});
+        if (resultado.authUrl) window.open(resultado.authUrl, '_blank', 'noopener');
+        notice(resultado.userCode
+          ? `Conclua o login no navegador usando o código ${resultado.userCode}. Nunca cole senha ou código aqui na conversa.`
+          : 'Conclua o login do ChatGPT na janela que abriu e volte para esta tela.', 'informacao');
+      } catch (error) {
+        notice(error.message, 'erro');
+      } finally {
+        botao.disabled = false;
+        botao.textContent = 'Entrar com ChatGPT';
+      }
+    }
+  });
+  return botao;
 }
 
 function plataformasPanel() {

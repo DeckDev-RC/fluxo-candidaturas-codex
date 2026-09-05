@@ -28,7 +28,7 @@ test('runtime config reads safe operational controls and omits credentials', asy
   assert.equal(JSON.stringify(config).includes('must-not-leak'), false);
   assert.deepEqual(Object.keys(config).sort(), [
     'allowAutomatedSubmission', 'authMode', 'browserAutomationRequired',
-    'checkpointAfterEachAction', 'cloudEnabled', 'cloudModel', 'evidenceMode',
+    'checkpointAfterEachAction', 'cloudEnabled', 'cloudModel', 'codexCommand', 'evidenceMode',
     'followUpMinIntervalMs',
     'localModel', 'maxApplicationsPerRun', 'maxConsecutiveFailures',
     'maxRunDurationMs', 'maxRunTokens', 'maxTaskAttempts',

@@ -45,6 +45,9 @@ export async function syntheticRoot(_t, { platformUrls = {}, extraEnv = {} } = {
     REQUIRE_FINAL_CONFIRMATION: 'true',
     ALLOW_AUTOMATED_SUBMISSION: 'false',
     PLAYWRIGHT_HEADLESS: 'true',
+    // A jornada controlada não pode depender de haver um Codex instalado na máquina
+    // que roda a suíte: o caminho inexistente torna a indisponibilidade determinística.
+    CODEX_COMMAND: join(root, 'codex-ausente', 'codex.exe'),
     ...Object.fromEntries(Object.entries(platformUrls).map(([platform, url]) => [`${platform}_URL`, url])),
     ...extraEnv
   };

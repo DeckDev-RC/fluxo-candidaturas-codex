@@ -99,6 +99,8 @@ export async function loadAiStatus() {
   const modo = await read('/api/v1/ai/mode', { fallback: null });
   store.ia = {
     disponivel: saude?.available === true,
+    estado: saude?.state ?? '',
+    motivo: saude?.reason ?? '',
     mensagem: saude?.available === true
       ? 'Automação de IA conectada.'
       : saude?.message ?? 'A automação de IA não está conectada. Você continua podendo revisar e decidir.',

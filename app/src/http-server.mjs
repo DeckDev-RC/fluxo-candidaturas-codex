@@ -61,7 +61,10 @@ export function createServer(options) {
   ];
 
   // Serviços que já tratam a própria trava de mutação não passam pela trava do servidor.
-  const travaDoServico = (path) => (path.startsWith('/api/v1/queue/') && s.queueService.handlesMutationLock)
+  // Login e logout do Codex não tocam os dados do Fluxo e podem esperar o usuário no
+  // navegador: segurar a trava aqui bloquearia todo o resto durante o login.
+  const travaDoServico = (path) => path.startsWith('/api/v1/auth/openai/')
+    || (path.startsWith('/api/v1/queue/') && s.queueService.handlesMutationLock)
     || (path === '/api/v1/campaign' && s.campaignService.handlesMutationLock)
     || (path === '/api/v1/onboarding' && s.onboardingService.handlesMutationLock)
     || (path === '/api/v1/state/checkpoint' && s.checkpointService.handlesMutationLock)

@@ -17,6 +17,7 @@ import { createDomainTools } from './domain-tools.mjs';
 import { createQueueService } from './queue-service.mjs';
 import { createRunService } from './run-service.mjs';
 import { createStdioAgentTransport } from './stdio-agent-transport.mjs';
+import { resolveCodexCommand } from './codex-command.mjs';
 import { createStore } from './store.mjs';
 import { readRuntimeConfig } from './runtime-config.mjs';
 import { readFluxoState } from './state-reader.mjs';
@@ -128,15 +129,21 @@ export async function createLocalRuntime({ rootDir, browserDriver, headless, sch
   // O registro de ferramentas é exposto no runtime para que a suíte exercite cada
   // ferramenta pela composição real, não só por construção isolada.
   const domainTools = createDomainTools({ rootDir, runService, readState: () => readFluxoState(rootDir), discoveryService, fitService, memoryService, applicationFlow, browserAdapter, followUpMonitor, resumeImportService, budget: campaignBudget });
+  // O Codex é procurado a cada início do transporte: quem instala o Codex com o
+  // app aberto só precisa clicar em "Verificar novamente".
+  const codex = () => resolveCodexCommand({ configured: runtimeConfig.codexCommand });
   const agentAdapter = createAgentAdapter({
     domainTools,
     settingsService: codexSettingsService,
-    transportFactory: ({ onNotification, onRequest }) => createStdioAgentTransport({ cwd: rootDir, authMode: runtimeConfig.authMode, onNotification, onRequest }),
+    transportFactory: ({ onNotification, onRequest }) => {
+      const resolved = codex();
+      return createStdioAgentTransport({ command: resolved.command || resolved.path || 'codex', shell: resolved.shell, cwd: rootDir, authMode: runtimeConfig.authMode, onNotification, onRequest });
+    },
     onNotification: createAgentEventHandler(runService, { budget: campaignBudget })
   });
   const codexHarnessService = createCodexHarnessService({ request: (method, params) => agentAdapter.request(method, params) });
   const authService = createCodexAuthService({ agentAdapter });
-  const runtimeHealth = createRuntimeHealth({ authService });
+  const runtimeHealth = createRuntimeHealth({ authService, codex });
   const autopilotService = createAutopilotService({ runService, agentAdapter, orchestrator: fixtureOrchestrator, productionOrchestrator: orchestrator });
   exceptionService.setOrchestrator?.(orchestrator);
   for (const run of runService.listRuns()) agentAdapter.bindRun(run.id, run.agentThreadId, run.currentTurnId);
