@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -33,4 +33,12 @@ test('stdio transport performs JSONL request-response with a local agent process
   } finally {
     await transport.close();
   }
+});
+
+test('stdio transport removes API keys and isolates the Codex home for ChatGPT OAuth', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'fluxo-harness-agent-auth-'));
+  const fakeAgent = join(root, 'fake-agent-auth.mjs');
+  await writeFile(fakeAgent, `process.stdin.setEncoding('utf8'); process.stdin.on('data', chunk => { const message = JSON.parse(chunk); process.stdout.write(JSON.stringify({ id: message.id, result: { openai: process.env.OPENAI_API_KEY || '', codex: process.env.CODEX_API_KEY || '', home: process.env.CODEX_HOME || '', keep: process.env.FLUXO_TEST_VALUE || '' } }) + '\\n'); });`);
+  const transport = createStdioAgentTransport({ command: process.execPath, args: [fakeAgent], cwd: root, authMode: 'chatgpt', env: { OPENAI_API_KEY: 'secret', CODEX_API_KEY: 'secret', CODEX_HOME: 'C:/CodexData', FLUXO_TEST_VALUE: 'kept' } });
+  try { const result = await transport.request('initialize'); assert.deepEqual(result, { openai: '', codex: '', home: join(root, 'estado', 'codex-home'), keep: 'kept' }); await access(join(root, 'estado', 'codex-home')); } finally { await transport.close(); }
 });

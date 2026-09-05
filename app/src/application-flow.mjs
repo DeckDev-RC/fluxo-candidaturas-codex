@@ -3,18 +3,26 @@ import { createPolicyGateway } from './policy.mjs';
 export function createApplicationFlow({ queueService, runService, approvalService, policyGateway: injectedPolicyGateway, browserAdapter, recordApplication, checkpointService, checkpointAfterEachAction = true, evidenceMode = '', preflightReady = async () => true }) {
   const policyGateway = injectedPolicyGateway ?? createPolicyGateway({ approvalService });
   return {
-    async prepareNext({ platform = '', checkpoint = null } = {}) {
+    async prepareNext({ platform = '', itemId = '', checkpoint = null } = {}) {
       if (!(await preflightReady())) throw domainError('preflight_blocked', 'O preflight precisa estar aprovado antes de preparar uma candidatura.');
       if (checkpoint && browserAdapter.reconcile) {
         const reconciliation = await browserAdapter.reconcile(checkpoint);
         if (reconciliation.requiresReview) throw domainError('checkpoint_mismatch', 'A tela observada diverge do checkpoint; revisão manual necessária.');
       }
-      const item = await queueService.claimNext({ platform });
+      const item = await queueService.claimNext({ id: itemId, platform });
       const run = runService.startRun({ kind: 'application', platform: item.platform, queueReference: item.id });
       const snapshot = await browserAdapter.snapshot();
       runService.appendEvent({ runId: run.id, type: 'application.prepared', payload: { queueItemId: item.id, url: snapshot.url ?? '' } });
       if (checkpointAfterEachAction && checkpointService?.save) await checkpointService.save({ phase: 'aguardando aprovação', platform: item.platform, url: item.identifierOrUrl, applicationKey: item.key, notes: 'Revisão pré-envio', blocker: 'approval_required', consecutiveFailures: 0 });
       return { item, run, snapshot };
+    },
+
+    async fillConfirmed(prepared, facts = {}) {
+      if (!prepared?.run?.id || typeof browserAdapter.fillConfirmed !== 'function') throw domainError('application_form_unavailable', 'O formulário observado não aceita preenchimento guiado.');
+      const snapshot = await browserAdapter.fillConfirmed(facts);
+      runService.appendEvent({ runId: prepared.run.id, type: 'application.fields.filled', payload: { fields: Object.keys(facts).filter((key) => facts[key]?.confirmed === true), url: snapshot?.url ?? prepared.snapshot?.url ?? '' } });
+      if (checkpointAfterEachAction && checkpointService?.save) await checkpointService.save({ phase: 'campos preenchidos', platform: prepared.item.platform, url: prepared.item.identifierOrUrl, applicationKey: prepared.item.key, notes: 'Fatos confirmados preenchidos; aguardando revisão', blocker: 'approval_required', consecutiveFailures: 0 });
+      return { status: 'observed', snapshot };
     },
 
     requestSubmissionApproval(runId, payload) {
@@ -32,7 +40,9 @@ export function createApplicationFlow({ queueService, runService, approvalServic
     async submitApproved(prepared, approvalId, payload) {
       if (runService.assertCanSubmit) runService.assertCanSubmit(prepared.run.id);
       policyGateway.assertApproved({ approvalId, action: { kind: 'submission', version: 'v1' }, payload, context: { requireFinalConfirmation: true } });
-      const confirmation = await browserAdapter.verifySubmission();
+      const confirmation = browserAdapter.submitWithRetry
+        ? await browserAdapter.submitWithRetry('submit', { maxAttempts: 2 })
+        : await browserAdapter.verifySubmission();
       if (!confirmation.confirmed) throw domainError('submission_not_confirmed', 'A plataforma não confirmou o recebimento.');
       const effectivePayload = { ...(payload ?? {}) };
       if (!effectivePayload.evidencePath && browserAdapter.captureEvidence) {

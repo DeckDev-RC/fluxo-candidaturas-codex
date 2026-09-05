@@ -1,8 +1,18 @@
 import { spawn } from 'node:child_process';
+import { mkdirSync } from 'node:fs';
 import { createInterface } from 'node:readline';
+import { join } from 'node:path';
 
-export function createStdioAgentTransport({ command = 'codex', args = ['app-server', '--listen', 'stdio://'], cwd, env = process.env, onNotification = () => {} }) {
-  const child = spawn(command, args, { cwd, env, shell: false, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+export function createStdioAgentTransport({ command = 'codex', args = ['app-server', '--listen', 'stdio://'], cwd, env = process.env, authMode = 'chatgpt', onNotification = () => {} }) {
+  const childEnv = { ...env };
+  if (authMode === 'chatgpt') {
+    for (const key of ['OPENAI_API_KEY', 'CODEX_API_KEY', 'CODEX_ACCESS_TOKEN']) delete childEnv[key];
+    if (cwd) {
+      childEnv.CODEX_HOME = join(cwd, 'estado', 'codex-home');
+      mkdirSync(childEnv.CODEX_HOME, { recursive: true });
+    }
+  }
+  const child = spawn(command, args, { cwd, env: childEnv, shell: false, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
   const pending = new Map();
   const lines = createInterface({ input: child.stdout });
   let nextId = 1;

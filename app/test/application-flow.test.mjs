@@ -39,6 +39,20 @@ test('application flow connects claim, approval, visual confirmation and record'
   }
 });
 
+test('application flow prepares the queue item selected by the user', async () => {
+  let claimInput;
+  const flow = createApplicationFlow({
+    queueService: { async claimNext(input) { claimInput = input; return { id: 'q-selected', key: 'GUPY|selected', platform: 'GUPY', company: 'Acme', role: 'Dev', identifierOrUrl: 'selected' }; } },
+    runService: { startRun() { return { id: 'run-selected' }; }, appendEvent() {} },
+    approvalService: {},
+    browserAdapter: { async snapshot() { return { url: 'https://example.test' }; } },
+    async recordApplication() {}
+  });
+
+  await flow.prepareNext({ itemId: 'q-selected', platform: 'GUPY' });
+  assert.deepEqual(claimInput, { id: 'q-selected', platform: 'GUPY' });
+});
+
 test('application flow refuses to record without visual confirmation', async () => {
   const root = await fixtureRoot();
   const queueService = createQueueService({ rootDir: root });

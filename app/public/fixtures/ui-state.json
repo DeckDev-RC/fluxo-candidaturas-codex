@@ -1,0 +1,49 @@
+{
+  "screens": ["home", "setup", "queue", "applications", "operations", "followup"],
+  "autopilot": { "status": "running", "message": "A IA está comparando oportunidades compatíveis.", "runId": "demo-run-1", "timeline": [{ "status": "succeeded", "message": "Entendi seu objetivo profissional." }, { "status": "succeeded", "message": "Analisei o currículo disponível." }, { "status": "running", "message": "Estou comparando oportunidades compatíveis." }], "plan": [{ "id": "profile", "label": "Entender seu perfil", "status": "succeeded" }, { "id": "discovery", "label": "Encontrar oportunidades", "status": "running" }, { "id": "fit", "label": "Comparar aderência", "status": "pending" }, { "id": "applications", "label": "Conduzir candidaturas", "status": "pending" }, { "id": "followup", "label": "Acompanhar processos", "status": "pending" }] },
+  "memory": { "facts": { "targetRoles": { "value": "Desenvolvedor backend", "source": "Configuração inicial" }, "workModes": { "value": "Remoto", "source": "Configuração inicial" } }, "selectedResume": { "path": "curriculo/cv.pdf" }, "lastExecution": { "status": "running" } },
+  "exceptions": [],
+  "codex": { "status": "ready", "account": { "email": "demo@example.com", "planType": "plus" }, "usage": { "summary": { "lifetimeTokens": 120000 } }, "rateLimits": { "primary": { "usedPercent": 12, "resetsAt": 1788576918 }, "secondary": { "usedPercent": 48 } }, "models": [{ "id": "gpt-5.6-luna", "displayName": "GPT-5.6-Luna", "efforts": ["low", "medium", "high", "xhigh"] }, { "id": "gpt-5.6-sol", "displayName": "GPT-5.6-Sol", "efforts": ["low", "medium", "high", "xhigh", "max", "ultra"] }], "settings": { "model": "gpt-5.6-luna", "effort": "medium", "verbosity": "medium", "reasoningSummary": "auto" } },
+  "state": {
+    "installation": { "ready": true },
+    "preflight": { "ready": true, "checks": [] },
+    "campaign": {
+      "totalGoal": 12,
+      "dailyGoal": 3,
+      "weeklyGoal": 8,
+      "platforms": [{ "name": "GUPY", "enabled": true, "goal": 6 }, { "name": "LINKEDIN", "enabled": true, "goal": 6 }]
+    },
+    "queue": {
+      "items": [{ "id": "demo-job-1", "priority": "A", "role": "Desenvolvedor backend", "company": "Acme Tecnologia", "platform": "GUPY", "status": "na fila", "fitScore": 88, "deadline": "2026-09-10", "attempts": 0 }],
+      "counts": { "na fila": 1, "em andamento": 0, "bloqueada": 0 }
+    },
+    "applications": {
+      "items": [{ "id": "demo-app-1", "role": "Analista de dados", "company": "Núcleo Digital", "platform": "LINKEDIN", "status": "triagem", "nextAction": "Acompanhar em 3 dias", "history": [{ "at": "2026-09-03", "type": "entrevista", "note": "Entrevista agendada" }] }],
+      "confirmedCount": 1,
+      "counts": { "triagem": 1 }
+    },
+    "checkpoint": { "phase": "revisão", "platform": "GUPY", "applicationKey": "demo-job-1", "notes": "Aguardando decisão humana" }
+  },
+  "approvals": [{
+    "id": "demo-approval-1",
+    "runId": "demo-run-1",
+    "kind": "application_submission",
+    "status": "pending",
+    "expiresAt": "2026-09-04T20:00:00.000Z",
+    "payloadHash": "demo-hash-7c1a",
+    "payloadSummary": { "company": "Acme Tecnologia", "role": "Desenvolvedor backend", "platform": "GUPY", "resume": "curriculo/cv.pdf", "answers": "3 respostas revisadas", "sensitiveData": "não informado" }
+  }],
+  "profile": { "profile": { "exists": true, "resume": { "selected": "curriculo/cv.pdf" } } },
+  "metrics": {
+    "totals": { "applications": 1, "confirmed": 1, "queue": 1, "blocked": 0, "failures": 0, "assessments": 1, "evidenceCoverage": 100 },
+    "rates": { "failure": 0, "blocked": 0 },
+    "timings": { "averageOperationMs": 4200 },
+    "followUp": { "nextActions": 1 },
+    "byStatus": { "triagem": 1 },
+    "byPlatform": { "LINKEDIN": 1 },
+    "campaign": { "totalGoal": 12, "dailyGoal": 3, "weeklyGoal": 8 }
+  },
+  "pending": [{ "urgency": "hoje", "reference": "demo-app-1", "nextAction": "Confirmar horário da entrevista" }],
+  "assessments": [{ "reference": "demo-app-1", "name": "Teste técnico", "status": "concluído" }],
+  "platforms": [{ "name": "GUPY", "auth": "manual", "urlEnv": "GUPY_URL", "playbook": "Fluxo Gupy" }, { "name": "LINKEDIN", "auth": "manual", "urlEnv": "LINKEDIN_URL", "playbook": "Fluxo LinkedIn" }]
+}

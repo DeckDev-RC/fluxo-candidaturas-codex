@@ -25,9 +25,11 @@ test('runtime config reads safe operational controls and omits credentials', asy
   assert.equal(config.evidenceMode, 'confirmation');
   assert.equal(JSON.stringify(config).includes('must-not-leak'), false);
   assert.deepEqual(Object.keys(config).sort(), [
-    'allowAutomatedSubmission', 'browserAutomationRequired', 'checkpointAfterEachAction',
-    'evidenceMode', 'maxApplicationsPerRun', 'maxConsecutiveFailures',
-    'playwrightHeadless', 'playwrightSession', 'requireFinalConfirmation'
+    'allowAutomatedSubmission', 'authMode', 'browserAutomationRequired',
+    'checkpointAfterEachAction', 'cloudEnabled', 'cloudModel', 'evidenceMode',
+    'localModel', 'maxApplicationsPerRun', 'maxConsecutiveFailures',
+    'modelProvider', 'playwrightHeadless', 'playwrightSession',
+    'requireFinalConfirmation'
   ]);
 });
 
@@ -37,4 +39,5 @@ test('runtime config returns safe defaults without env file', async () => {
   assert.equal(config.requireFinalConfirmation, true);
   assert.equal(config.allowAutomatedSubmission, false);
   assert.equal(config.maxApplicationsPerRun, 30);
+  assert.equal(config.authMode, 'chatgpt');
 });

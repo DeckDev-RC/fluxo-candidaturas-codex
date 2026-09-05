@@ -7,6 +7,7 @@ export function createPlaywrightCliDriver({ session = 'candidaturas', cwd, execu
       const text = `${result.stdout ?? ''}\n${result.stderr ?? ''}`.trim();
       return { text, challenge: detectChallenge(text) };
     },
+    async goto(url) { return execute(['goto', String(url)]); },
 
     async fill(ref, value) {
       return execute(['fill', String(ref), String(value)]);

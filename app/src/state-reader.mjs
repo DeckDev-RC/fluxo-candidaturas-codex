@@ -15,12 +15,16 @@ const CONFIRMED_APPLICATION_STATUSES = new Set([
 const SENSITIVE_KEY = /(password|token|cookie|secret|mfa|authorization|credential)/i;
 
 export async function readFluxoState(rootDir) {
-  const [preflight, campaign, queue, applications, checkpoint] = await Promise.all([
+  const [preflight, campaign, queue, applications, checkpoint, memory, discovery, followup, exceptions] = await Promise.all([
     readJson(join(rootDir, 'estado', 'preflight.json'), { ready: false, checks: [] }),
     readJson(join(rootDir, 'campanha', 'config.json'), { platforms: [] }),
     readJson(join(rootDir, 'fila', 'vagas.json'), []),
     readJson(join(rootDir, 'candidaturas', 'candidaturas.json'), []),
-    readJson(join(rootDir, 'estado', 'checkpoint.json'), null)
+    readJson(join(rootDir, 'estado', 'checkpoint.json'), null),
+    readJson(join(rootDir, 'estado', 'memoria.json'), { facts: {}, resumes: [], executions: [] }),
+    readJson(join(rootDir, 'estado', 'discovery.json'), { opportunities: [], failures: [], duplicates: 0 }),
+    readJson(join(rootDir, 'estado', 'followup.json'), { events: [], checkedAt: '' }),
+    readJson(join(rootDir, 'estado', 'excecoes.json'), [])
   ]);
 
   const safePreflight = redact(preflight);
@@ -50,7 +54,11 @@ export async function readFluxoState(rootDir) {
       counts: countByStatus(safeApplicationItems),
       confirmedCount: safeApplicationItems.filter((item) => CONFIRMED_APPLICATION_STATUSES.has(item.status)).length
     },
-    checkpoint: checkpoint === null ? null : redact(checkpoint)
+    checkpoint: checkpoint === null ? null : redact(checkpoint),
+    memory: redactMemory(memory),
+    discovery: redact(discovery),
+    followup: redact(followup),
+    exceptions: Array.isArray(exceptions) ? exceptions.map((item) => redactException(redact(item))) : []
   };
 }
 
@@ -90,4 +98,16 @@ function redact(value) {
       .filter(([key]) => !SENSITIVE_KEY.test(key))
       .map(([key, entry]) => [key, redact(entry)])
   );
+}
+
+function redactException(value) {
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value).filter(([key]) => !['response', 'observed', 'detail'].includes(key)));
+}
+
+function redactMemory(value) {
+  const safe = redact(value);
+  if (!safe || typeof safe !== 'object' || !safe.facts || typeof safe.facts !== 'object') return safe;
+  safe.facts = Object.fromEntries(Object.entries(safe.facts).filter(([key, fact]) => !fact?.sensitive && !SENSITIVE_KEY.test(key)));
+  return safe;
 }
