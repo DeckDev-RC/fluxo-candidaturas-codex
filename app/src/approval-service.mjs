@@ -31,18 +31,19 @@ export function createApprovalService({ dbPath, now = () => new Date() }) {
       database.prepare(`insert into approvals
         (id, run_id, kind, payload_hash, payload_json, status, expires_at, created_at)
         values (?, ?, ?, ?, ?, ?, ?, ?)`).run(approval.id, approval.runId, approval.kind, approval.payloadHash, approval.payloadJson, approval.status, approval.expiresAt, approval.createdAt);
-      return { ...approval, payloadSummary: redact(payload) };
+      return publicApproval(approval, payload);
     },
 
-    decideApproval(id, { decision, actorId = 'user', actorType = 'user', reason } = {}) {
+    decideApproval(id, { decision, actorId, actorType, reason } = {}, authority) {
       const row = getRow(id);
       ensureNotExpired(row, now());
       if (!['approved', 'rejected'].includes(decision)) throw domainError('invalid_approval_decision', 'Decisão de aprovação inválida.');
-      if (actorType !== 'user') throw domainError('approval_decision_forbidden', 'A decisão de aprovação exige uma pessoa usuária.');
+      const decisionAuthority = authority ?? { actorId: actorId ?? 'user', actorType: actorType ?? 'user' };
+      if (decisionAuthority.actorType !== 'user') throw domainError('approval_decision_forbidden', 'A decisão de aprovação exige uma pessoa usuária.');
       const transition = canTransitionApproval(row.status, decision);
       if (!transition.allowed) throw domainError(transition.reason, 'A aprovação já possui uma decisão terminal.');
       const decidedAt = now().toISOString();
-      const decisionAudit = createDecisionAudit({ actorId, actorType, reason, decision, decidedAt });
+      const decisionAudit = createDecisionAudit({ ...decisionAuthority, reason, decision, decidedAt });
       database.prepare('update approvals set status = ?, decided_by = ?, decided_at = ? where id = ?').run(decision, JSON.stringify(decisionAudit), decidedAt, id);
       return toApproval({ ...row, status: decision, decided_by: JSON.stringify(decisionAudit), decided_at: decidedAt });
     },
@@ -94,6 +95,15 @@ function toApproval(row) {
     id: row.id, runId: row.run_id, kind: row.kind, payloadHash: row.payload_hash,
     status: row.status, decidedBy: decisionAudit.actorId, decisionActorType: decisionAudit.actorType, decisionReason: decisionAudit.reason, expiresAt: row.expires_at,
     createdAt: row.created_at, decidedAt: row.decided_at, payloadSummary
+  };
+}
+
+function publicApproval(approval, payload) {
+  return {
+    id: approval.id, runId: approval.runId, kind: approval.kind, payloadHash: approval.payloadHash,
+    status: approval.status, decidedBy: approval.decidedBy, decisionActorType: null, decisionReason: null,
+    expiresAt: approval.expiresAt, createdAt: approval.createdAt, decidedAt: approval.decidedAt,
+    payloadSummary: redact(payload)
   };
 }
 

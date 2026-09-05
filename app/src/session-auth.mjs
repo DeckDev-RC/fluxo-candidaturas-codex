@@ -10,13 +10,17 @@ export function createSessionAuth({ required = false } = {}) {
       return { authenticated: true, mode: 'loopback', csrfToken };
     },
     authorize(request, { mutation = false } = {}) {
-      if (!required) return { ok: true };
+      if (!required) return { ok: true, actor: localUiActor() };
       const cookies = parseCookies(request.headers?.cookie);
       if (cookies.fluxo_session !== sessionToken) return { ok: false, status: 401, code: 'session_required', message: 'Sessão local ausente ou expirada.' };
       if (mutation && request.headers?.['x-fluxo-csrf'] !== csrfToken) return { ok: false, status: 403, code: 'csrf_required', message: 'Token CSRF ausente ou inválido.' };
-      return { ok: true };
+      return { ok: true, actor: localUiActor() };
     }
   };
+}
+
+function localUiActor() {
+  return { actorId: 'local-ui', actorType: 'user' };
 }
 
 function parseCookies(value = '') {

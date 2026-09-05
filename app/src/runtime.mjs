@@ -19,6 +19,8 @@ import { createLegacyImportService } from './legacy-import-service.mjs';
 import { createPendingService } from './pending-service.mjs';
 import { createCheckpointService } from './checkpoint-service.mjs';
 import { createMetricsService } from './metrics-service.mjs';
+import { createPolicyGateway } from './policy.mjs';
+import { createMessageService } from './message-service.mjs';
 
 export async function createLocalRuntime({ rootDir }) {
   await mkdir(join(rootDir, 'estado'), { recursive: true });
@@ -27,6 +29,7 @@ export async function createLocalRuntime({ rootDir }) {
   const queueService = createQueueService({ rootDir, checkpointAfterEachAction: runtimeConfig.checkpointAfterEachAction, maxConsecutiveFailures: runtimeConfig.maxConsecutiveFailures, mutationLock: false });
   const runService = createRunService({ dbPath, maxApplicationsPerRun: runtimeConfig.maxApplicationsPerRun });
   const approvalService = createApprovalService({ dbPath });
+  const policyGateway = createPolicyGateway({ approvalService });
   const stateStore = createStore({ rootDir, dbPath });
   const browserAdapter = createBrowserAdapter({
     driver: createPlaywrightCliDriver({ session: runtimeConfig.playwrightSession, cwd: rootDir }), evidenceRoot: rootDir
@@ -34,7 +37,8 @@ export async function createLocalRuntime({ rootDir }) {
   const applicationService = createApplicationService({ rootDir, mutationLock: false });
   const resumeService = createResumeService({ rootDir });
   const evidenceService = createEvidenceService({ rootDir, mutationLock: false });
-  const assessmentService = createAssessmentService({ rootDir });
+  const messageService = createMessageService({ rootDir, policyGateway });
+  const assessmentService = createAssessmentService({ rootDir, policyGateway });
   const legacyImportService = createLegacyImportService({ rootDir });
   const pendingService = createPendingService({ rootDir });
   const checkpointService = createCheckpointService({ rootDir, mutationLock: false });
@@ -48,6 +52,7 @@ export async function createLocalRuntime({ rootDir }) {
     queueService,
     runService,
     approvalService,
+    policyGateway,
     browserAdapter,
     checkpointService,
     checkpointAfterEachAction: runtimeConfig.checkpointAfterEachAction,
@@ -79,11 +84,12 @@ export async function createLocalRuntime({ rootDir }) {
     queueService,
     runService,
     approvalService,
+    policyGateway,
     stateStore,
     browserAdapter,
     agentAdapter,
     applicationFlow,
-    resumeService, evidenceService, assessmentService, legacyImportService, pendingService, checkpointService, metricsService,
+    resumeService, evidenceService, messageService, assessmentService, legacyImportService, pendingService, checkpointService, metricsService,
     async close() {
       await agentAdapter.close();
       stateStore.close();

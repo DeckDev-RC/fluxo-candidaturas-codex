@@ -28,6 +28,7 @@ import { isLocalRequest } from './local-auth.mjs';
 import { createObservability } from './observability.mjs';
 import { createHash, randomUUID } from 'node:crypto';
 import { createSessionAuth } from './session-auth.mjs';
+import { createPolicyGateway } from './policy.mjs';
 
 const PUBLIC_DIR = new URL('../public/', import.meta.url);
 const STATIC_FILES = new Map([
@@ -43,18 +44,19 @@ const JSON_HEADERS = {
   'cache-control': 'no-store'
 };
 
-export function createServer({ rootDir, queueService = createQueueService({ rootDir }), exportService = { createShareableExport: () => createShareableExport({ rootDir, mutationLock: false }) }, preflightService, followUpService: injectedFollowUpService, messageService: injectedMessageService, onboardingService: injectedOnboardingService, resumeService: injectedResumeService, evidenceService: injectedEvidenceService, assessmentService: injectedAssessmentService, legacyImportService: injectedLegacyImportService, pendingService: injectedPendingService, checkpointService: injectedCheckpointService, metricsService: injectedMetricsService, agentAdapter, observability = createObservability(), requireSession = false, stateStore, applicationFlow, runService: injectedRunService, approvalService: injectedApprovalService }) {
+export function createServer({ rootDir, queueService = createQueueService({ rootDir }), exportService = { createShareableExport: () => createShareableExport({ rootDir, mutationLock: false }) }, preflightService, followUpService: injectedFollowUpService, messageService: injectedMessageService, onboardingService: injectedOnboardingService, resumeService: injectedResumeService, evidenceService: injectedEvidenceService, assessmentService: injectedAssessmentService, legacyImportService: injectedLegacyImportService, pendingService: injectedPendingService, checkpointService: injectedCheckpointService, metricsService: injectedMetricsService, agentAdapter, observability = createObservability(), requireSession = false, stateStore, applicationFlow, runService: injectedRunService, approvalService: injectedApprovalService, policyGateway: injectedPolicyGateway, actorResolver = ({ authorization }) => authorization.actor }) {
   mkdirSync(join(rootDir, 'estado'), { recursive: true });
   const runService = injectedRunService ?? createRunService({ dbPath: join(rootDir, 'estado', 'harness.sqlite') });
   const approvalService = injectedApprovalService ?? createApprovalService({ dbPath: join(rootDir, 'estado', 'harness.sqlite') });
+  const policyGateway = injectedPolicyGateway ?? createPolicyGateway({ approvalService });
   const campaignService = createCampaignService({ rootDir });
   const effectivePreflightService = preflightService ?? { runPreflight: (options) => runPreflight({ rootDir, ...options }) };
   const followUpService = injectedFollowUpService ?? createFollowUpService({ rootDir });
-  const messageService = injectedMessageService ?? createMessageService({ rootDir });
+  const messageService = injectedMessageService ?? createMessageService({ rootDir, policyGateway });
   const onboardingService = injectedOnboardingService ?? createOnboardingService({ rootDir });
   const resumeService = injectedResumeService ?? createResumeService({ rootDir });
   const evidenceService = injectedEvidenceService ?? createEvidenceService({ rootDir });
-  const assessmentService = injectedAssessmentService ?? createAssessmentService({ rootDir });
+  const assessmentService = injectedAssessmentService ?? createAssessmentService({ rootDir, policyGateway });
   const legacyImportService = injectedLegacyImportService ?? createLegacyImportService({ rootDir });
   const pendingService = injectedPendingService ?? createPendingService({ rootDir });
   const checkpointService = injectedCheckpointService ?? createCheckpointService({ rootDir });
@@ -80,7 +82,7 @@ export function createServer({ rootDir, queueService = createQueueService({ root
     let releaseMutation;
     const isMutation = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method);
     const queueMutationHandled = path.startsWith('/api/v1/queue/') && queueService.handlesMutationLock;
-    const serviceMutationHandled = queueMutationHandled || path === '/api/v1/campaign' && campaignService.handlesMutationLock || path === '/api/v1/onboarding' && onboardingService.handlesMutationLock || path === '/api/v1/state/checkpoint' && checkpointService.handlesMutationLock || path === '/api/v1/evidence' && evidenceService.handlesMutationLock || path.startsWith('/api/v1/assessments') && assessmentService.handlesMutationLock || path === '/api/v1/imports/legacy' && legacyImportService.handlesMutationLock || /^\/api\/v1\/applications\/[^/]+\/events$/.test(path) && followUpService.handlesMutationLock || path === '/api/v1/messages/draft' && messageService.handlesMutationLock;
+    const serviceMutationHandled = queueMutationHandled || path === '/api/v1/campaign' && campaignService.handlesMutationLock || path === '/api/v1/onboarding' && onboardingService.handlesMutationLock || path === '/api/v1/state/checkpoint' && checkpointService.handlesMutationLock || path === '/api/v1/evidence' && evidenceService.handlesMutationLock || ['/api/v1/assessments', '/api/v1/assessments/prepare'].includes(path) && assessmentService.handlesMutationLock || path === '/api/v1/imports/legacy' && legacyImportService.handlesMutationLock || /^\/api\/v1\/applications\/[^/]+\/events$/.test(path) && followUpService.handlesMutationLock || path === '/api/v1/messages/draft' && messageService.handlesMutationLock;
     if (isMutation && !serviceMutationHandled) {
       try {
         releaseMutation = await acquireFluxoLock(rootDir);
@@ -221,6 +223,26 @@ export function createServer({ rootDir, queueService = createQueueService({ root
     if (request.method === 'POST' && path === '/api/v1/messages/draft') {
       try {
         sendJson(response, 200, await messageService.createDraft(await readJsonBody(request)));
+      } catch (error) {
+        sendDomainError(response, error);
+      }
+      return;
+    }
+
+    const policyApprovalMatch = path.match(/^\/api\/v1\/(assessments|messages)\/approval(?:\/([^/]+)\/assert)?$/);
+    if (request.method === 'POST' && policyApprovalMatch) {
+      try {
+        const input = await readJsonBody(request);
+        const isAssessment = policyApprovalMatch[1] === 'assessments';
+        const approvalId = policyApprovalMatch[2] ? decodeURIComponent(policyApprovalMatch[2]) : '';
+        const result = approvalId
+          ? isAssessment
+            ? assessmentService.assertTimedTestApproved({ approvalId, payload: input.payload ?? {} })
+            : messageService.assertSendApproved({ approvalId, payload: input.payload ?? {} })
+          : isAssessment
+            ? assessmentService.requestTimedTestApproval(input)
+            : messageService.requestSendApproval(input);
+        sendJson(response, approvalId ? 200 : 201, result);
       } catch (error) {
         sendDomainError(response, error);
       }
@@ -373,7 +395,8 @@ export function createServer({ rootDir, queueService = createQueueService({ root
         } else {
           const prepared = preparedApplications.get(runId);
           if (!prepared) throw domainError('application_context_missing', 'Contexto de candidatura não está disponível para esta execução.');
-          const result = await applicationFlow.submitApproved(prepared, input.approvalId, input);
+          const { approvalId, ...payload } = input;
+          const result = await applicationFlow.submitApproved(prepared, approvalId, payload);
           preparedApplications.delete(runId);
           sendJson(response, 200, result);
         }
@@ -419,7 +442,8 @@ export function createServer({ rootDir, queueService = createQueueService({ root
     if (request.method === 'POST' && approvalMatch) {
       try {
         const input = await readJsonBody(request);
-        sendJson(response, 200, approvalService.decideApproval(decodeURIComponent(approvalMatch[1]), input));
+        if (input.actorType === 'agent') throw domainError('approval_decision_forbidden', 'Agentes não podem decidir aprovações.');
+        sendJson(response, 200, approvalService.decideApproval(decodeURIComponent(approvalMatch[1]), input, actorResolver({ request, authorization })));
       } catch (error) {
         sendDomainError(response, error);
       }
@@ -485,7 +509,7 @@ export function createServer({ rootDir, queueService = createQueueService({ root
 
     const knownPath = path === '/health' || path === '/api/v1/state' || path === '/api/v1/state/preflight' || path === '/api/v1/state/checkpoint' || path === '/api/v1/profile' || path === '/api/v1/onboarding' || path === '/api/v1/resumes/extract' || path === '/api/v1/resumes/select' || path === '/api/v1/jobs/fit' || path === '/api/v1/evidence' || path === '/api/v1/assessments' || path === '/api/v1/assessments/prepare' || path === '/api/v1/imports/legacy' || path === '/api/v1/pending' || path === '/api/v1/metrics' || path === '/api/v1/runtime-config' || path === '/api/v1/applications' || path === '/api/v1/preflight/run' || path === '/api/v1/messages/draft' || path === '/api/v1/queue' || path === '/api/v1/queue/search'
       || path === '/api/v1/queue/items' || path === '/api/v1/runs' || path === '/api/v1/approvals' || path === '/api/v1/exports/shareable' || path === '/api/v1/sync/reconcile' || path === '/api/v1/applications/prepare'
-      || path === '/api/v1/campaign' || path === '/api/v1/platforms' || path === '/api/v1/observability' || path === '/api/v1/operations' || path === '/api/v1/auth/session' || Boolean(claimMatch) || Boolean(failureMatch) || Boolean(runMatch) || Boolean(runActionMatch) || Boolean(runEventsMatch) || Boolean(approvalMatch) || Boolean(approvalPreviewMatch) || Boolean(applicationEventMatch) || Boolean(applicationRunMatch) || Boolean(agentTurnMatch) || Boolean(agentThreadMatch);
+      || path === '/api/v1/campaign' || path === '/api/v1/platforms' || path === '/api/v1/observability' || path === '/api/v1/operations' || path === '/api/v1/auth/session' || Boolean(claimMatch) || Boolean(failureMatch) || Boolean(runMatch) || Boolean(runActionMatch) || Boolean(runEventsMatch) || Boolean(approvalMatch) || Boolean(approvalPreviewMatch) || Boolean(policyApprovalMatch) || Boolean(applicationEventMatch) || Boolean(applicationRunMatch) || Boolean(agentTurnMatch) || Boolean(agentThreadMatch);
     if (knownPath) {
       sendJson(response, 405, { error: { code: 'method_not_allowed', message: 'Método não permitido.' } });
       return;

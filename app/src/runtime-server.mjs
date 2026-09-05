@@ -10,6 +10,7 @@ export async function createRuntimeServer({ rootDir, port = 4173 } = {}) {
     approvalService: runtime.approvalService,
     stateStore: runtime.stateStore,
     applicationFlow: runtime.applicationFlow,
+    messageService: runtime.messageService,
     resumeService: runtime.resumeService,
     evidenceService: runtime.evidenceService,
     assessmentService: runtime.assessmentService,

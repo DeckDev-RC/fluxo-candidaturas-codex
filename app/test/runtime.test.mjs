@@ -17,9 +17,14 @@ test('local runtime composes state, queue, approval, browser and agent adapters 
 
   try {
     assert.equal(typeof runtime.applicationFlow.prepareNext, 'function');
+    assert.equal(typeof runtime.policyGateway.requestApproval, 'function');
     assert.equal(typeof runtime.browserAdapter.snapshot, 'function');
     assert.equal(typeof runtime.agentAdapter.runTurn, 'function');
     assert.equal(runtime.runtimeConfig.playwrightSession, 'candidaturas');
+    const approval = runtime.assessmentService.requestTimedTestApproval({ runId: 'run-1', payload: { name: 'Lógica', durationSeconds: 900 } });
+    assert.equal(approval.kind, 'timed_test');
+    const messageApproval = runtime.messageService.requestSendApproval({ runId: 'run-1', payload: { recipient: 'Pessoa Teste', text: 'Olá, Pessoa Teste.' } });
+    assert.equal(messageApproval.kind, 'message');
   } finally {
     await runtime.close();
   }

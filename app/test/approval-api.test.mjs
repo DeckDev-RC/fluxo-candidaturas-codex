@@ -16,7 +16,7 @@ test('approval API creates, lists and decides a submission approval', async () =
     const requested = await fetchJson(address, '/api/v1/approvals', 'POST', {
       runId: createdRun.id,
       kind: 'submission',
-      payload: { company: 'Acme', role: 'Dev' }
+      payload: { company: 'Acme', role: 'Dev', token: 'not-exposed' }
     });
     const listed = await fetchJson(address, '/api/v1/approvals');
     const decided = await fetchJson(address, `/api/v1/approvals/${requested.id}/decision`, 'POST', {
@@ -24,8 +24,29 @@ test('approval API creates, lists and decides a submission approval', async () =
     });
 
     assert.equal(requested.status, 'pending');
+    assert.equal('payloadJson' in requested, false);
+    assert.equal(requested.payloadSummary.token, undefined);
     assert.equal(listed.length, 1);
     assert.equal(decided.status, 'approved');
+    assert.equal(decided.decidedBy, 'local-ui');
+  } finally {
+    await close(server);
+  }
+});
+
+test('approval API rejects an agent authority even when the payload omits actorType', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'fluxo-harness-approval-agent-api-'));
+  await mkdir(join(root, 'estado'), { recursive: true });
+  const server = createServer({ rootDir: root, actorResolver: () => ({ actorId: 'agent-1', actorType: 'agent' }) });
+  const address = await listen(server);
+  try {
+    const run = await fetchJson(address, '/api/v1/runs', 'POST', { kind: 'application' });
+    const approval = await fetchJson(address, '/api/v1/approvals', 'POST', { runId: run.id, kind: 'message', payload: { text: 'Olá' } });
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/v1/approvals/${approval.id}/decision`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ decision: 'approved' })
+    });
+    assert.equal(response.status, 409);
+    assert.equal((await response.json()).error.code, 'approval_decision_forbidden');
   } finally {
     await close(server);
   }

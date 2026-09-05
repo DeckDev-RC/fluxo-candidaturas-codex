@@ -53,5 +53,29 @@ test('all HTTP mutations honor the Fluxo lock', async () => {
   } finally { await close(server); await release(); }
 });
 
+test('operations API requests and validates timed-test and message approvals through the composed gateway', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'fluxo-policy-operations-api-'));
+  await mkdir(join(root, 'estado'), { recursive: true });
+  const server = createServer({ rootDir: root });
+  const address = await listen(server);
+  try {
+    const run = await responseJson(address, 'POST', '/api/v1/runs', { kind: 'application' });
+    const timed = await responseJson(address, 'POST', '/api/v1/assessments/approval', { runId: run.id, payload: { name: 'Lógica', durationSeconds: 900 } });
+    const message = await responseJson(address, 'POST', '/api/v1/messages/approval', { runId: run.id, payload: { recipient: 'Pessoa Teste', text: 'Olá, Pessoa Teste.' } });
+    await responseJson(address, 'POST', `/api/v1/approvals/${timed.id}/decision`, { decision: 'approved' });
+    await responseJson(address, 'POST', `/api/v1/approvals/${message.id}/decision`, { decision: 'approved' });
+    const timedAsserted = await responseJson(address, 'POST', `/api/v1/assessments/approval/${timed.id}/assert`, { payload: { name: 'Lógica', durationSeconds: 900 } });
+    const messageAsserted = await responseJson(address, 'POST', `/api/v1/messages/approval/${message.id}/assert`, { payload: { recipient: 'Pessoa Teste', text: 'Olá, Pessoa Teste.' } });
+    assert.equal(timedAsserted.status, 'approved');
+    assert.equal(messageAsserted.status, 'approved');
+  } finally { await close(server); }
+});
+
+async function responseJson(address, method, path, body) {
+  const response = await fetch(`http://127.0.0.1:${address.port}${path}`, { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  assert.equal(response.ok, true, `${method} ${path}`);
+  return response.json();
+}
+
 function listen(server) { return new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', () => resolve(server.address())); }); }
 function close(server) { return new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())); }
