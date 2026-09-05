@@ -6,6 +6,7 @@ import { dataHora, duracao, numero } from '../core/format.mjs';
 import { read, send } from '../core/api.mjs';
 import { loadAiStatus, store } from '../core/store.mjs';
 import { executarPreparacao, salvarPlataformas } from '../core/actions.mjs';
+import { watchAiLogin } from '../core/ia-status.mjs';
 import { notice } from '../ui/messages.mjs';
 import { openDialog } from '../ui/dialog.mjs';
 import { rerender } from '../core/router.mjs';
@@ -59,7 +60,8 @@ function botaoEntrarChatGPT() {
         if (resultado.authUrl) window.open(resultado.authUrl, '_blank', 'noopener');
         notice(resultado.userCode
           ? `Conclua o login no navegador usando o código ${resultado.userCode}. Nunca cole senha ou código aqui na conversa.`
-          : 'Conclua o login do ChatGPT na janela que abriu e volte para esta tela.', 'informacao');
+          : 'Conclua o login do ChatGPT no navegador. Se ele oferecer abrir o aplicativo ChatGPT, cancele e volte para o Fluxo: eu aviso aqui quando a conexão for confirmada.', 'informacao');
+        watchAiLogin();
       } catch (error) {
         notice(error.message, 'erro');
       } finally {
