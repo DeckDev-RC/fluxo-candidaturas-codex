@@ -52,7 +52,36 @@
 
 .balao-avatar { display: block; width: 1.5rem; height: 1.5rem; margin-top: 1px; color: var(--acao); }
 
-/* Fala atual: cartão com a situação, o que ela pede e as ações possíveis. */
+/* Barra fixa da situação: aparece só quando a fala atual saiu da vista, com o
+   título e as ações do momento; "Ver detalhes" volta ao cartão. */
+.situacao-fixa {
+  display: none;
+  position: sticky;
+  /* O topo do sticky é medido a partir do conteúdo da área, abaixo do padding:
+     o deslocamento negativo encosta a barra no limite visível. */
+  top: calc(-1 * var(--area-topo, 2rem));
+  z-index: 2;
+  grid-template-columns: 1.5rem minmax(0, 1fr) auto;
+  gap: var(--e3);
+  align-items: center;
+  margin: 0 0 var(--e2);
+  padding: var(--e2) var(--e3);
+  border: 1px solid var(--linha);
+  border-radius: var(--raio-lg);
+  background: var(--superficie);
+  box-shadow: var(--elevacao-painel);
+}
+
+.situacao-fixa[data-visivel="true"] { display: grid; }
+.situacao-fixa-titulo { font-weight: var(--peso-forte); font-size: var(--texto-sm); letter-spacing: var(--traco-titulo); }
+.situacao-fixa .linha-acoes { flex-wrap: nowrap; }
+.situacao-fixa .botao { min-height: 1.875rem; padding: var(--e1) var(--e3); font-size: var(--texto-xs); }
+.situacao-fixa .ocupado { display: none; }
+
+/* Fala atual: cartão com a situação, o que ela pede e as ações possíveis.
+   Abre a coluna; o histórico começa um pouco abaixo. */
+.balao-atual { margin-top: 0; }
+.balao-atual + .balao { margin-top: var(--e6); }
 .balao-atual .balao-corpo {
   gap: var(--e2);
   padding: var(--e4) var(--e5);

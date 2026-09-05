@@ -2,6 +2,7 @@ import { PRODUCT_POLICY, campaignLimitsFrom } from './product-policy.mjs';
 import { buildSubmissionReview } from './review-service.mjs';
 import { createRecoveryGuidance } from './recovery-service.mjs';
 import { assertNoSilentFallback, resolveAiMode } from './ai-modes.mjs';
+import { MAX_RESUME_BODY_BYTES } from './routes/http-helpers.mjs';
 
 // Rotas da versão final: importação, memória, agenda, notificações, jornada,
 // revisão, recuperação, sessões, consistência e limites.
@@ -33,7 +34,7 @@ function createHandler({
   return async function handle(request, response, { path, sendJson, sendDomainError, readJsonBody }) {
     try {
       if (request.method === 'POST' && path === '/api/v1/resumes/import') {
-        sendJson(response, 201, await resumeImportService.importFile(await readJsonBody(request)));
+        sendJson(response, 201, await resumeImportService.importFile(await readJsonBody(request, { maxBytes: MAX_RESUME_BODY_BYTES })));
         return true;
       }
       if (request.method === 'POST' && path === '/api/v1/memory/answers') {

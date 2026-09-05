@@ -15,7 +15,9 @@ const ouvintes = new Set();
 const vistas = new WeakSet();
 let mensagens = null;
 let ultimaSituacao = '';
-let pendenteRolagem = true;
+// Só uma linha nova (ou o indicador de resposta) pede rolagem para o fim; ao
+// abrir a tela, a fala atual no topo é o que a pessoa deve ver primeiro.
+let pendenteRolagem = false;
 
 export function transcript() {
   if (!mensagens) mensagens = carregar();

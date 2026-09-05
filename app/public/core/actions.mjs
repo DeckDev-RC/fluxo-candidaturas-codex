@@ -6,7 +6,13 @@ import { loadState, setJourney, store } from './store.mjs';
 import { connectJourney, forgetJourney } from './stream.mjs';
 import { notice } from '../ui/messages.mjs';
 
+// Limite do serviço local para o arquivo (o corpo em base64 é ~35% maior).
+const LIMITE_CURRICULO_BYTES = 12 * 1024 * 1024;
+
 export async function importarCurriculo(file) {
+  if (file.size > LIMITE_CURRICULO_BYTES) {
+    throw new FluxoError(`O arquivo tem ${(file.size / (1024 * 1024)).toFixed(1)} MB; o limite é 12 MB. Exporte o currículo em PDF menor ou em TXT.`, 'resume_too_large');
+  }
   const conteudo = await fileToBase64(file);
   const resultado = await send('/api/v1/resumes/import', { filename: file.name, contentBase64: conteudo });
   if (resultado.extraction?.ok === false) {

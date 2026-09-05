@@ -1,5 +1,7 @@
-// Linha do tempo da conversa: histórico registrado e, por último, a fala atual
-// do Fluxo com o cartão da situação (objetivo e currículo, decisões, ações).
+// Linha do tempo da conversa. A fala atual do Fluxo (situação + cartão com
+// formulário, decisões ou vagas) abre a coluna; o histórico vem abaixo, em
+// ordem, e a mensagem mais nova fica junto da caixa de escrever. Quando a fala
+// atual sai da vista, uma barra fixa com o título e as ações a representa.
 // A fala atual é recalculada do estado persistido a cada pintura.
 
 import { badge, el, staticListItem } from '../../core/dom.mjs';
@@ -17,17 +19,16 @@ import { botaoPreparar } from './preparar-candidatura.mjs';
 // Nestas situações o motivo repete o corpo ou já aparece na ação "ocupado".
 const SEM_MOTIVO = new Set(['primeiro-uso', 'pronta-para-buscar', 'trabalhando', 'decisao-pendente', 'escolher-vaga']);
 let focoInicialDado = false;
+let observador = null;
 
 export function conversationColumn(situacao, pendentes) {
-  // A última linha registrada costuma ser a própria situação atual: fica no
-  // histórico, mas não se repete logo acima da fala atual que a mostra.
-  const historico = transcript();
-  const ultima = historico.at(-1);
-  const visiveis = ultima?.autor === 'fluxo' && ultima.texto === TEXTOS[situacao.estado]?.titulo ? historico.slice(0, -1) : historico;
+  const atual = bolhaAtual(situacao, pendentes);
+  const barra = barraFixa(situacao, pendentes);
   const coluna = el('section', { class: 'conversa-coluna', 'aria-label': 'Conversa com o Fluxo' }, [
+    barra,
     el('ol', { class: 'linha-do-tempo', id: 'linha-do-tempo' }, [
-      visiveis.map(balao),
-      bolhaAtual(situacao, pendentes),
+      atual,
+      transcript().map(balao),
       isThinking() ? el('li', { class: 'balao', dataset: { autor: 'fluxo' }, 'aria-live': 'polite' }, [avatar(), el('div', { class: 'balao-corpo' }, [el('span', { class: 'ocupado', text: 'Pensando…' })])]) : null
     ])
   ]);
@@ -36,7 +37,29 @@ export function conversationColumn(situacao, pendentes) {
     focoInicialDado = true;
     requestAnimationFrame(focarObjetivo);
   }
+  requestAnimationFrame(() => observarFalaAtual(atual, barra));
   return coluna;
+}
+
+// A barra só aparece quando a fala atual saiu da área visível.
+function observarFalaAtual(atual, barra) {
+  observador?.disconnect();
+  const raiz = document.querySelector('#conteudo');
+  if (!raiz || !atual.isConnected) return;
+  observador = new IntersectionObserver(([entrada]) => { barra.dataset.visivel = entrada.isIntersecting ? 'false' : 'true'; }, { root: raiz, threshold: 0.05 });
+  observador.observe(atual);
+}
+
+function barraFixa(situacao, pendentes) {
+  const texto = TEXTOS[situacao.estado] ?? { titulo: situacao.estado };
+  return el('div', { class: 'situacao-fixa', dataset: { visivel: 'false' } }, [
+    avatar(),
+    el('p', { class: 'situacao-fixa-titulo quebra', text: texto.titulo }),
+    el('div', { class: 'linha-acoes' }, [
+      ...acoesDaSituacao(situacao, pendentes).filter((no) => no.tagName === 'BUTTON'),
+      el('button', { type: 'button', class: 'botao botao-texto', text: 'Ver detalhes', onClick: () => document.querySelector('#painel-agora')?.scrollIntoView({ block: 'start', behavior: 'smooth' }) })
+    ])
+  ]);
 }
 
 // Falas seguidas do mesmo autor formam um grupo: avatar e horário só na

@@ -32,24 +32,38 @@ export function sendDomainError(response, error) {
 function statusFor(code = '') {
   if (['queue_item_not_found', 'run_not_found', 'approval_not_found'].includes(code)) return 404;
   if (code === 'fluxo_locked' || code === 'aggregate_blocked' || code.startsWith('queue_') || code.startsWith('approval_') || code === 'run_not_resumable') return 409;
+  if (code === 'payload_too_large') return 413;
   return 400;
 }
 
-export function readJsonBody(request) {
+// Limite padrão pequeno (formulários); rotas que recebem arquivo pedem mais.
+// Ao estourar, a leitura para de imediato e a mensagem diz o limite em MB.
+export function readJsonBody(request, { maxBytes = MAX_BODY_BYTES } = {}) {
   return new Promise((resolve, reject) => {
     let body = '';
+    let excedido = false;
     request.setEncoding('utf8');
     request.on('data', (chunk) => {
+      if (excedido) return;
       body += chunk;
-      if (body.length > MAX_BODY_BYTES) reject(Object.assign(new Error('Payload muito grande.'), { code: 'payload_too_large' }));
+      if (body.length > maxBytes) {
+        excedido = true;
+        const limite = maxBytes >= 1024 * 1024 ? `${Math.round(maxBytes / (1024 * 1024))} MB` : `${Math.round(maxBytes / 1024)} KB`;
+        reject(Object.assign(new Error(`O conteúdo enviado é maior que o limite de ${limite}.`), { code: 'payload_too_large' }));
+        request.destroy();
+      }
     });
     request.on('end', () => {
+      if (excedido) return;
       try { resolve(body ? JSON.parse(body) : {}); }
       catch { reject(Object.assign(new Error('JSON inválido.'), { code: 'invalid_json' })); }
     });
-    request.on('error', reject);
+    request.on('error', (error) => { if (!excedido) reject(error); });
   });
 }
+
+// Currículos chegam em base64: PDF de algumas páginas passa fácil de 64 KB.
+export const MAX_RESUME_BODY_BYTES = 16 * 1024 * 1024;
 
 export function queryOf(request) {
   return Object.fromEntries(new URL(request.url ?? '/', 'http://127.0.0.1').searchParams);
