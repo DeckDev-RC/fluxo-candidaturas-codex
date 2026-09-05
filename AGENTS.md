@@ -1,6 +1,6 @@
 # Instruções para o agente de candidaturas
 
-Estas instruções valem para todo o diretório `Fluxo/`.
+Estas instruções valem para o pacote PowerShell em `Fluxo/`. O app Windows oficial fica na branch `codex/fluxo-desktop` (worktree `.worktrees/fluxo-desktop`). Contratos: `docs/LINHA-DE-PRODUTO.md`, `docs/POLITICA-AUTONOMIA.md` e `docs/CHECKLIST-VERSAO-FINAL.md`. Não anunciar autonomia real sem evidência R/P.
 
 ## Missão
 

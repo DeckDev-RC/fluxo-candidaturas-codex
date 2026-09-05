@@ -1,8 +1,9 @@
 # Fluxo de candidaturas assistido por Codex
 
-Versão distribuível: **1.0.0**.
+Versão do pacote PowerShell na raiz: **1.0.0**.  
+**Linha oficial do aplicativo Windows:** branch `codex/fluxo-desktop` em `.worktrees/fluxo-desktop`.
 
-Pacote reutilizável para o próprio agente do Codex trabalhar com o usuário pelo chat, usar a habilidade Playwright no navegador e conduzir onboarding, busca, fila, formulários, candidaturas, questionários e acompanhamento. Não é um bot externo executado sem conversa.
+O produto é autonomia supervisionada: o Autopilot coordena especialistas reais, pede decisões e respeita limites. Não é um bot que aprova ou envia sozinho. Desenvolva, teste (`npm test`) e gere o instalador (`npm run build`) na worktree oficial. Esta raiz preserva o pacote PowerShell e alterações locais.
 
 ## Capacidades
 
@@ -111,6 +112,8 @@ Fluxo/
 - `docs/MONITORAMENTO.md`: revisão recorrente e notificações.
 - `docs/DISTRIBUICAO.md`: geração, teste e verificação do pacote final.
 - `docs/SEGURANCA.md`: credenciais, privacidade e limites.
+- `docs/PRD-APP-HARNESS.md`: requisitos do app harness do fluxo.
+- `docs/SDD-APP-HARNESS.md`: desenho técnico do app harness do fluxo.
 
 ## Compartilhamento
 
