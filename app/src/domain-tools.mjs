@@ -23,7 +23,7 @@ export function createDomainTools({ rootDir, readState, discoveryService, fitSer
     }],
     ['fluxo_review', 'Solicitar revisão humana do formulário atual; nunca decide a aprovação.', { runId: string }, async (input, parentRunId) => {
       const workflow = owned(input.runId, parentRunId);
-      const snapshot = await browserAdapter.snapshot();
+      const snapshot = await browserAdapter.assertContext(workflow.prepared.snapshot, workflow.prepared.item);
       const prepared = { ...workflow.prepared, snapshot };
       applicationFlow.savePrepared(input.runId, prepared);
       return applicationFlow.requestSubmissionApproval(input.runId, { queueItemId: prepared.item.id, fields: snapshot });

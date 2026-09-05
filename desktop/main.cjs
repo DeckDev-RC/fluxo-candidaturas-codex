@@ -1,5 +1,5 @@
 const { app, BrowserWindow, Menu, dialog, ipcMain, shell, utilityProcess } = require('electron');
-const { join, resolve } = require('node:path');
+const { join, resolve, dirname } = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { readFile, writeFile, mkdir } = require('node:fs/promises');
 
@@ -84,14 +84,15 @@ function showDiagnostics() {
   void diagnosticWindow.loadURL(diagnosticUrl);
 }
 
-let browserInstall;
+let browserInstall; let browserInstaller;
 function installBrowser() {
   if (browserInstall) return browserInstall;
   browserInstall = new Promise((resolve, reject) => {
-    const child = utilityProcess.fork(require.resolve('playwright/cli'), ['install', 'chromium'], { stdio: 'ignore', serviceName: 'Instalação do navegador Fluxo' });
+    const child = utilityProcess.fork(join(__dirname, 'install-browser.cjs'), [], { stdio: 'ignore', serviceName: 'Instalação do navegador Fluxo' });
+    browserInstaller = child;
     const timer = setTimeout(() => { child.kill(); reject(new Error('A instalação excedeu dez minutos. Verifique sua conexão.')); }, 600_000);
     child.once('exit', code => { clearTimeout(timer); if (code === 0) resolve({ installed: true }); else reject(new Error('Não foi possível instalar Chromium. Verifique a conexão e tente novamente.')); });
-  }).finally(() => { browserInstall = null; });
+  }).finally(() => { browserInstall = null; browserInstaller = null; });
   return browserInstall;
 }
 
@@ -107,5 +108,6 @@ app.on('window-all-closed', () => app.quit());
 app.on('before-quit', event => {
   if (quitting) return;
   event.preventDefault(); quitting = true;
+  browserInstaller?.kill();
   Promise.resolve(supervisor?.stop()).finally(() => app.quit());
 });

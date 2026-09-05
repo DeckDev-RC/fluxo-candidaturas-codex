@@ -1,12 +1,14 @@
 # Fluxo de candidaturas assistido por Codex
 
-Versão distribuível: **1.0.0**.
+Versão desktop: **1.1.0**.
+
+Abra o instalador `dist/desktop/Fluxo-1.1.0-Windows-x64.exe` ou execute `npm ci` e `npm start` nesta raiz. [Instalação, migração, diagnóstico e comandos](docs/DESKTOP.md). [Arquitetura implementada](docs/ARQUITETURA-IMPLEMENTADA.md).
 
 ## Linha de produto P0: App Harness
 
 O App Harness é a base da linha de produto P0 do Fluxo: uma interface **local-first**, **single-user** e operada em conjunto com o agente do Codex. Ele organiza onboarding, preflight, campanha, fila, candidaturas, questionários, acompanhamento e retomada sem transformar o pacote em SaaS remoto ou em um bot externo executado sem conversa.
 
-O servidor do Harness escuta somente em `127.0.0.1`. Os arquivos JSON existentes continuam sendo a fonte operacional nesta fase, e ações externas permanecem sujeitas à confirmação e aos limites definidos pelo Fluxo.
+O servidor do Harness escuta somente em `127.0.0.1`. Instalações novas usam SQLite; instalações legadas mantêm JSON até migração explícita com backup, e ações externas permanecem sujeitas à confirmação e aos limites definidos pelo Fluxo.
 
 ## Início oficial do App Harness
 

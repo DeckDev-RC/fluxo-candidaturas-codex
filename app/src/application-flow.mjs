@@ -39,6 +39,7 @@ export function createApplicationFlow({ queueService, runService, approvalServic
 
     async fillConfirmed(prepared, facts = {}) {
       if (!prepared?.run?.id || typeof browserAdapter.fillConfirmed !== 'function') throw domainError('application_form_unavailable', 'O formulário observado não aceita preenchimento guiado.');
+      if (browserAdapter.assertContext) await browserAdapter.assertContext(prepared.snapshot, prepared.item);
       const snapshot = await browserAdapter.fillConfirmed(facts);
       prepared.snapshot = snapshot;
       manager.save(prepared.run.id, { phase: 'prepared', prepared });
@@ -74,6 +75,7 @@ export function createApplicationFlow({ queueService, runService, approvalServic
       if (['submitting', 'needs_reconcile'].includes(saved?.phase)) throw domainError('submission_needs_review', 'Reconcilie o envio interrompido antes de continuar.');
       let confirmation = saved?.phase === 'confirmed' ? saved.confirmation : null;
       if (!confirmation) {
+        if (browserAdapter.assertContext) await browserAdapter.assertContext(prepared.snapshot, prepared.item);
         if (browserAdapter.validatePrepared) await browserAdapter.validatePrepared(prepared.snapshot);
         manager.save(prepared.run.id, { phase: 'submitting', prepared, approvalId, approvedPayload: payload });
         try {
@@ -91,6 +93,7 @@ export function createApplicationFlow({ queueService, runService, approvalServic
       if (!confirmation.confirmed) throw domainError('submission_not_confirmed', 'A plataforma não confirmou o recebimento.');
       const effectivePayload = { ...(saved?.effectivePayload ?? payload ?? {}) };
       if (!effectivePayload.evidencePath && browserAdapter.captureEvidence) {
+        if (browserAdapter.verifySubmission && !(await browserAdapter.verifySubmission(prepared.item)).confirmed) throw domainError('evidence_confirmation_missing', 'Reabra a confirmação da vaga correta antes de capturar a evidência. O envio não será repetido.');
         const captured = await browserAdapter.captureEvidence({ runId: prepared.run.id, item: prepared.item, confirmation });
         effectivePayload.evidencePath = typeof captured === 'string' ? captured : captured?.path;
         if (captured?.sha256) effectivePayload.evidenceSha256 = captured.sha256;

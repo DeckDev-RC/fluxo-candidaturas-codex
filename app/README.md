@@ -1,5 +1,7 @@
 # App Harness local
 
+Para a distribuição Electron 1.1.0 e a migração SQLite, consulte [DESKTOP.md](../docs/DESKTOP.md). Execute `npm start` na raiz para desktop ou nesta pasta para web local.
+
 Interface web local para operar o pacote `Fluxo/`.
 
 ## Requisitos

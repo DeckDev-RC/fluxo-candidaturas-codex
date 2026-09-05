@@ -7,6 +7,13 @@ export function createBrowserAdapter({ driver, evidenceRoot = '' }) {
   let lastSnapshot = null;
 
   return {
+    async assertContext(snapshot = {}, item = {}) {
+      const current = await this.snapshot();
+      const identity = String(current.jobUrl || current.jobId || '');
+      const expected = String(item.identifierOrUrl || '');
+      if (snapshot.url && current.url !== snapshot.url || identity && expected && !(identity === expected || expected.replace(/\/$/, '').endsWith('/' + identity))) throw domainError('checkpoint_mismatch', 'A página atual pertence a outra vaga ou etapa. Abra novamente a vaga correta.');
+      return current;
+    },
     async validatePrepared(snapshot = {}) {
       const current = await this.snapshot();
       if (snapshot.url && current.url !== snapshot.url || snapshot.formHash && current.formHash !== snapshot.formHash) throw domainError('approval_payload_changed', 'O formulário mudou desde a revisão. Revise novamente antes do envio.');

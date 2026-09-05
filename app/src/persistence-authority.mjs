@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
-import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, writeFile, rename } from 'node:fs/promises';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
@@ -132,7 +132,9 @@ export function createPersistenceAuthority({ rootDir, dbPath = join(rootDir, 'es
       for (const definition of LEGACY_DOCUMENTS) {
         const target = join(rootDir, definition.path);
         await mkdir(dirname(target), { recursive: true });
-        await writeFile(target, `${JSON.stringify(state[definition.name], null, 2)}\n`, 'utf8');
+        const temporary = `${target}.${randomUUID()}.tmp`;
+        await writeFile(temporary, `${JSON.stringify(state[definition.name], null, 2)}\n`, 'utf8');
+        await rename(temporary, target);
         hashes.push({ path: definition.path, hash: await hashIfPresent(target) });
       }
       database.exec('begin immediate');
@@ -141,6 +143,10 @@ export function createPersistenceAuthority({ rootDir, dbPath = join(rootDir, 'es
     },
     async reconcileLegacy({ strategy } = {}) {
       requireSqlite();
+      const backupDir = join(rootDir, 'estado', 'migration-backups', `reconcile-${now().toISOString().replace(/[:.]/g, '-')}`);
+      const originalFiles = [];
+      for (const definition of LEGACY_DOCUMENTS) if (existsSync(join(rootDir, definition.path))) originalFiles.push({ path: definition.path });
+      await backupLegacyDocuments(rootDir, backupDir, originalFiles);
       if (strategy === 'sqlite_wins') return this.exportCompatibility();
       if (strategy !== 'import_legacy') throw codedError('invalid_reconcile_strategy', 'Use strategy "sqlite_wins" para exportar ou "import_legacy" para importar JSON explicitamente.');
       const legacy = await readLegacyDocuments(rootDir);
@@ -152,6 +158,12 @@ export function createPersistenceAuthority({ rootDir, dbPath = join(rootDir, 'es
         database.exec('commit');
       } catch (error) { database.exec('rollback'); throw error; }
       return { reconciled: 'import_legacy', changed: LEGACY_DOCUMENTS.map((item) => item.path) };
+    },
+    async rollbackToJson() {
+      requireSqlite(); assertNoDrift();
+      await this.exportCompatibility();
+      setMeta('authority', 'json');
+      return { mode: 'json', retainedDatabase: dbPath, exportedCurrentState: true };
     },
     close() { database.close(); }
   };

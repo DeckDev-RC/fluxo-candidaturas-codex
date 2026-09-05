@@ -21,6 +21,7 @@ try {
   assert.equal(workspace.rootDir, join(userData, 'workspace'));
   const diagnostics = await window.evaluate(() => window.fluxoDesktop.diagnostics());
   assert.equal(diagnostics.capabilities.offline, true);
+  if (process.env.FLUXO_VERIFY_BROWSER_INSTALL === '1') assert.equal((await window.evaluate(() => window.fluxoDesktop.installBrowser())).installed, true);
   const url = window.url();
   assert.equal((await fetch(`${url}health`)).status, 200);
   const marker = join(workspace.rootDir, 'perfil', 'smoke-preservation.txt');

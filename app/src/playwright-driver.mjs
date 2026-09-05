@@ -12,9 +12,11 @@ export function createPlaywrightDriver({ rootDir, headless = false, browserType,
       await mkdir(join(rootDir, 'estado', 'browser-profile'), { recursive: true });
       context = await chromium.launchPersistentContext(join(rootDir, 'estado', 'browser-profile'), { headless, viewport: { width: 1280, height: 900 } });
       page = context.pages()[0] ?? await context.newPage();
+      const openedContext = context;
+      context.once('close', () => { if (context === openedContext) { context = null; page = null; starting = null; } });
       page.setDefaultTimeout(15_000);
       return page;
-    })().catch(error => { starting = null; throw error; });
+    })().finally(() => { starting = null; });
     return starting;
   }
   async function locator(ref) {

@@ -1,3 +1,4 @@
+import { createAgentEventHandler } from './agent-events.mjs';
 import { mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
@@ -107,15 +108,7 @@ export async function createLocalRuntime({ rootDir, browserDriver, headless } = 
     domainTools: createDomainTools({ rootDir, runService, readState: () => readFluxoState(rootDir), discoveryService, fitService, memoryService, applicationFlow, browserAdapter, followUpMonitor }),
     settingsService: codexSettingsService,
     transportFactory: ({ onNotification, onRequest }) => createStdioAgentTransport({ cwd: rootDir, authMode: runtimeConfig.authMode, onNotification, onRequest }),
-    onNotification(message, runId) {
-      if (!runId) return;
-      runService.appendEvent({ runId, type: message.method || 'agent.notification', payload: message.params ?? {}, actorType: 'agent' });
-      const turn = message.params?.turn;
-      if (message.method === 'turn/completed' && turn) {
-        const run = runService.getRun(runId);
-        if (run?.status === 'running') runService.finishRun(runId, turn.status === 'completed' ? 'succeeded' : turn.status === 'interrupted' ? 'cancelled' : 'failed', 'turn concluído');
-      }
-    }
+    onNotification: createAgentEventHandler(runService)
   });
   const codexHarnessService = createCodexHarnessService({ request: (method, params) => agentAdapter.request(method, params) });
   const authService = createCodexAuthService({ agentAdapter });

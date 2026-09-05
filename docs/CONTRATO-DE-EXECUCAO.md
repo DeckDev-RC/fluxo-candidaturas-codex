@@ -1,5 +1,8 @@
 # Contrato de execução do App Harness
 
+> Atualização 1.1.0: o documento abaixo preserva a especificação original. A implementação consolidada usa Electron, Playwright direto e SQLite progressivo. Consulte [arquitetura implementada](ARQUITETURA-IMPLEMENTADA.md) e [contrato desktop atual](DESKTOP.md), que prevalecem nas decisões de runtime e persistência.
+
+
 Este documento congela o contrato operacional do App Harness local no P0. O produto é
 local-first, single-user e assistido pelo Codex. Ele não é um bot remoto, um SaaS
 multiusuário ou um serviço que envia candidaturas sem confirmação.

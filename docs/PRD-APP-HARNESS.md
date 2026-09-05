@@ -1,5 +1,8 @@
 # PRD — App Harness do Fluxo de Candidaturas
 
+> Atualização 1.1.0: o documento abaixo preserva a especificação original. A implementação consolidada usa Electron, Playwright direto e SQLite progressivo. Consulte [arquitetura implementada](ARQUITETURA-IMPLEMENTADA.md) e [contrato desktop atual](DESKTOP.md), que prevalecem nas decisões de runtime e persistência.
+
+
 **Status:** rascunho para implementação  
 **Versão:** 0.3  
 **Escopo:** exclusivamente o pacote `Fluxo/`  

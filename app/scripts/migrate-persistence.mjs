@@ -9,7 +9,7 @@ if (rootIndex < 0 || !args[rootIndex + 1]) {
 } else {
   const authority = createPersistenceAuthority({ rootDir: resolve(args[rootIndex + 1]) });
   try {
-    const result = await authority.migrateLegacy();
+    const result = args.includes('--rollback') ? await authority.rollbackToJson() : await authority.migrateLegacy();
     if (args.includes('--export')) await authority.exportCompatibility();
     console.log(JSON.stringify(result));
   } catch (error) {
