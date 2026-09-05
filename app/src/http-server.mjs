@@ -41,6 +41,12 @@ import { createAuditService } from './audit-service.mjs';
 import { createCodexAuthService } from './codex-auth-service.mjs';
 import { createCodexHarnessService } from './codex-harness-service.mjs';
 import { createCodexSettingsService } from './codex-settings-service.mjs';
+import { createFinalReleaseRoutes } from './final-release-routes.mjs';
+import { createResumeImportService } from './resume-import-service.mjs';
+import { createSchedulerService } from './scheduler-service.mjs';
+import { createNotificationService } from './notification-service.mjs';
+import { createRuntimeHealth } from './runtime-health.mjs';
+import { createSessionStore } from './session-store.mjs';
 
 const PUBLIC_DIR = new URL('../public/', import.meta.url);
 const STATIC_FILES = new Map([
@@ -49,6 +55,7 @@ const STATIC_FILES = new Map([
   ['/persistence.js', ['persistence.js', 'text/javascript; charset=utf-8']],
   ['/preflight-summary.js', ['preflight-summary.js', 'text/javascript; charset=utf-8']],
   ['/oauth-window.js', ['oauth-window.js', 'text/javascript; charset=utf-8']],
+  ['/autopilot-decisions.js', ['autopilot-decisions.js', 'text/javascript; charset=utf-8']],
   ['/styles.css', ['styles.css', 'text/css; charset=utf-8']],
   ['/favicon.svg', ['favicon.svg', 'image/svg+xml']],
   ['/fixtures/ui-state.json', ['fixtures/ui-state.json', 'application/json; charset=utf-8']]
@@ -59,7 +66,7 @@ const JSON_HEADERS = {
   'cache-control': 'no-store'
 };
 
-export function createServer({ rootDir, queueService = createQueueService({ rootDir }), exportService = { createShareableExport: () => createShareableExport({ rootDir, mutationLock: false }) }, preflightService, followUpService: injectedFollowUpService, followUpMonitor: injectedFollowUpMonitor, messageService: injectedMessageService, onboardingService: injectedOnboardingService, resumeService: injectedResumeService, evidenceService: injectedEvidenceService, assessmentService: injectedAssessmentService, legacyImportService: injectedLegacyImportService, pendingService: injectedPendingService, checkpointService: injectedCheckpointService, metricsService: injectedMetricsService, agentAdapter, autopilotService: injectedAutopilotService, memoryService: injectedMemoryService, intakeService: injectedIntakeService, discoveryService: injectedDiscoveryService, fitService: injectedFitService, exceptionService: injectedExceptionService, auditService: injectedAuditService, authService: injectedAuthService, codexHarnessService: injectedCodexHarnessService, codexSettingsService: injectedCodexSettingsService, observability = createObservability(), requireSession = false, stateStore, applicationFlow, runService: injectedRunService, approvalService: injectedApprovalService, policyGateway: injectedPolicyGateway, actorResolver = ({ authorization }) => authorization.actor }) {
+export function createServer({ rootDir, queueService = createQueueService({ rootDir }), exportService = { createShareableExport: () => createShareableExport({ rootDir, mutationLock: false }) }, preflightService, followUpService: injectedFollowUpService, followUpMonitor: injectedFollowUpMonitor, messageService: injectedMessageService, onboardingService: injectedOnboardingService, resumeService: injectedResumeService, evidenceService: injectedEvidenceService, assessmentService: injectedAssessmentService, legacyImportService: injectedLegacyImportService, pendingService: injectedPendingService, checkpointService: injectedCheckpointService, metricsService: injectedMetricsService, agentAdapter, autopilotService: injectedAutopilotService, memoryService: injectedMemoryService, intakeService: injectedIntakeService, discoveryService: injectedDiscoveryService, fitService: injectedFitService, exceptionService: injectedExceptionService, auditService: injectedAuditService, authService: injectedAuthService, codexHarnessService: injectedCodexHarnessService, codexSettingsService: injectedCodexSettingsService, resumeImportService: injectedResumeImportService, schedulerService: injectedSchedulerService, notificationService: injectedNotificationService, runtimeHealth: injectedRuntimeHealth, sessionStore: injectedSessionStore, orchestrator: injectedOrchestrator, observability = createObservability(), requireSession = false, stateStore, applicationFlow, runService: injectedRunService, approvalService: injectedApprovalService, policyGateway: injectedPolicyGateway, actorResolver = ({ authorization }) => authorization.actor }) {
   mkdirSync(join(rootDir, 'estado'), { recursive: true });
   const runService = injectedRunService ?? createRunService({ dbPath: join(rootDir, 'estado', 'harness.sqlite') });
   const approvalService = injectedApprovalService ?? createApprovalService({ dbPath: join(rootDir, 'estado', 'harness.sqlite') });
@@ -93,6 +100,30 @@ export function createServer({ rootDir, queueService = createQueueService({ root
   const codexHarnessService = injectedCodexHarnessService ?? (agentAdapter?.request ? createCodexHarnessService({ request: (method, params) => agentAdapter.request(method, params) }) : createUnavailableCodexHarness());
   const codexSettingsService = injectedCodexSettingsService ?? createCodexSettingsService({ rootDir, readModels: async () => (await codexHarnessService.snapshot()).models ?? [], mutationLock: false });
   const sessionAuth = createSessionAuth({ required: requireSession });
+  const resumeImportService = injectedResumeImportService ?? createResumeImportService({ rootDir, memoryService });
+  const schedulerService = injectedSchedulerService ?? createSchedulerService({ rootDir });
+  const notificationService = injectedNotificationService ?? createNotificationService({ rootDir });
+  const runtimeHealth = injectedRuntimeHealth ?? createRuntimeHealth({ authService });
+  const sessionStore = injectedSessionStore ?? createSessionStore({ rootDir });
+  const finalReleaseRoutes = createFinalReleaseRoutes({
+    resumeImportService, memoryService, schedulerService, notificationService, runtimeHealth,
+    orchestrator: injectedOrchestrator ?? injectedAutopilotService,
+    campaignService, runtimeConfig: {}, sessionStore
+  });
+  // A revisão precisa mostrar o que será enviado: fatos confirmados no formulário observado
+  // e a variante de currículo realmente selecionada.
+  async function fillFromMemory(prepared) {
+    const summary = (await memoryService.safeSummary?.()) ?? { facts: {} };
+    const resume = summary.selectedResume ?? null;
+    if (typeof applicationFlow.fillConfirmed !== 'function') return { resume, fill: { status: 'indisponível' } };
+    try {
+      const filled = await applicationFlow.fillConfirmed(prepared, summary.facts ?? {});
+      return { snapshot: filled.snapshot ?? prepared.snapshot, resume, fill: { status: 'preenchido', values: filled.snapshot?.formValues ?? {} } };
+    } catch (error) {
+      return { resume, fill: { status: 'pendente', code: error.code ?? 'fill_failed', message: error.message } };
+    }
+  }
+
   const server = createHttpServer(async (request, response) => {
     const path = new URL(request.url ?? '/', 'http://127.0.0.1').pathname;
     const requestId = randomUUID();
@@ -145,6 +176,7 @@ export function createServer({ rootDir, queueService = createQueueService({ root
       sendJson(response, 200, { ok: true });
       return;
     }
+    if (await finalReleaseRoutes(request, response, { path, sendJson, sendDomainError, readJsonBody })) return;
 
     if (request.method === 'GET' && path === '/api/v1/observability') {
       sendJson(response, 200, observability.snapshot());
@@ -450,8 +482,9 @@ export function createServer({ rootDir, queueService = createQueueService({ root
         const input = await readJsonBody(request);
         if (!input.checkpoint) input.checkpoint = (await readFluxoState(rootDir)).checkpoint;
         const prepared = await applicationFlow.prepareNext(input);
+        const review = await fillFromMemory(prepared);
         preparedApplications.set(prepared.run.id, prepared);
-        sendJson(response, 201, prepared);
+        sendJson(response, 201, { ...prepared, ...review });
       } catch (error) {
         sendDomainError(response, error);
       }

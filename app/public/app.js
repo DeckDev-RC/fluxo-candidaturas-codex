@@ -1,6 +1,7 @@
 import { mountPersistence } from './persistence.js';
 import { summarizePreflight } from './preflight-summary.js';
 import { openOAuthWindow } from './oauth-window.js';
+import { mountAutopilotDecisions } from './autopilot-decisions.js';
 
 const refreshButton = document.querySelector('#refresh');
 const openaiAuthButton = document.querySelector('#openai-auth-button');
@@ -57,7 +58,15 @@ onboardingForm.addEventListener('submit', saveOnboarding);
 resumeTools.addEventListener('submit', (event) => runResumeOperation(event, 'fit'));
 resumeTools.querySelector('[data-operation="select"]').addEventListener('click', () => runResumeOperation(null, 'select'));
 resumeTools.querySelector('[data-operation="extract"]').addEventListener('click', () => runResumeOperation(null, 'extract'));
-document.querySelector('#resume-file').addEventListener('change', (event) => { const file = event.target.files?.[0]; if (file) { document.querySelector('#resume-source-path').value = `curriculo/${file.name}`; showToast('Arquivo selecionado. Confirme que ele está na pasta curriculo/.', 'info'); } });
+document.querySelector('#resume-file').addEventListener('change', async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  try {
+    const imported = await importResumeFile(file);
+    document.querySelector('#resume-source-path').value = imported.path;
+    showToast(imported.extraction?.ok === false ? imported.extraction.pending : 'Currículo importado e verificado.', imported.extraction?.ok === false ? 'error' : 'success');
+  } catch (error) { showToast(error.message ?? 'Não foi possível importar o currículo.', 'error'); }
+});
 connectStreamButton.addEventListener('click', connectRunStream);
 queueSearchForm.addEventListener('submit', searchQueue);
 queueSearchForm.addEventListener('input', debounce(searchQueue, 250));
@@ -201,7 +210,7 @@ async function loadState() {
       setScreenState('ready', 'Demonstração local');
       return;
     }
-    const [response, approvalsResponse, profileResponse, metricsResponse, pendingResponse, assessmentsResponse, platformsResponse, memoryResponse, exceptionsResponse, openaiResponse, codexResponse] = await Promise.all([
+    const [response, approvalsResponse, profileResponse, metricsResponse, pendingResponse, assessmentsResponse, platformsResponse, memoryResponse, exceptionsResponse] = await Promise.all([
       fetch('/api/v1/state', { cache: 'no-store' }),
       fetch('/api/v1/approvals', { cache: 'no-store' }),
       fetch('/api/v1/profile', { cache: 'no-store' }),
@@ -209,19 +218,30 @@ async function loadState() {
       fetch('/api/v1/pending', { cache: 'no-store' }),
       fetch('/api/v1/assessments', { cache: 'no-store' }),
       fetch('/api/v1/platforms', { cache: 'no-store' })
-      , fetch('/api/v1/memory', { cache: 'no-store' }), fetch('/api/v1/exceptions?status=open', { cache: 'no-store' }), fetch('/api/v1/auth/openai', { cache: 'no-store' }), fetch('/api/v1/codex', { cache: 'no-store' })
+      , fetch('/api/v1/memory', { cache: 'no-store' }), fetch('/api/v1/exceptions?status=open', { cache: 'no-store' })
     ]);
     if (!response.ok) throw new Error('state_read_failed');
     render(await response.json(), approvalsResponse.ok ? await approvalsResponse.json() : [], profileResponse.ok ? await profileResponse.json() : null,
-      metricsResponse.ok ? await metricsResponse.json() : null, pendingResponse.ok ? await pendingResponse.json() : [], assessmentsResponse.ok ? await assessmentsResponse.json() : [], platformsResponse.ok ? await platformsResponse.json() : [], memoryResponse.ok ? await memoryResponse.json() : null, exceptionsResponse.ok ? await exceptionsResponse.json() : []); renderOpenAIAuth(openaiResponse.ok ? await openaiResponse.json() : { status: 'unavailable', message: 'Login do ChatGPT indisponível.' }); renderCodexControlCenter(codexResponse.ok ? await codexResponse.json() : { status: 'unavailable', error: { message: 'Codex indisponível.' } });
+      metricsResponse.ok ? await metricsResponse.json() : null, pendingResponse.ok ? await pendingResponse.json() : [], assessmentsResponse.ok ? await assessmentsResponse.json() : [], platformsResponse.ok ? await platformsResponse.json() : [], memoryResponse.ok ? await memoryResponse.json() : null, exceptionsResponse.ok ? await exceptionsResponse.json() : []);
     setScreenState('ready', 'Dados locais atualizados');
-  } catch {
-    setScreenState('error', 'Não foi possível ler os dados locais');
+    // Os painéis que dependem do runtime de IA não podem atrasar a leitura local.
+    refreshRuntimePanels();
+  } catch (error) {
+    setScreenState('error', `Não foi possível ler os dados locais: ${error?.message ?? 'motivo desconhecido'}`);
     renderUnavailable();
   } finally {
     refreshButton.disabled = false;
     refreshButton.classList.remove('is-loading');
   }
+}
+
+async function refreshRuntimePanels() {
+  renderOpenAIAuth(await readJsonOrNull('/api/v1/auth/openai') ?? { status: 'unavailable', message: 'Login do ChatGPT indisponível.' });
+  renderCodexControlCenter(await readJsonOrNull('/api/v1/codex') ?? { status: 'unavailable', error: { message: 'Codex indisponível.' } });
+}
+
+async function readJsonOrNull(url) {
+  try { const response = await fetch(url, { cache: 'no-store' }); return response.ok ? await response.json() : null; } catch { return null; }
 }
 
 function setScreenState(state, message) { const main = document.querySelector('#app-main'); main.dataset.screenState = state; const indicator = document.querySelector('#screen-state'); if (indicator) { indicator.textContent = message; indicator.dataset.state = state; } }
@@ -238,28 +258,37 @@ function formatEpoch(value) { try { return new Date(Number(value) * 1000).toLoca
 async function startAutopilot() {
   const button = autopilotStartButton;
   return withBusyButton(button, 'Iniciando…', async () => {
+    const status = document.querySelector('#autopilot-status');
     const intent = document.querySelector('#autopilot-intent').value.trim() || (onboardingForm.elements.targetRoles?.value ?? '');
     const targetRoles = onboardingForm.elements.targetRoles?.value ?? '';
     const resumeFile = document.querySelector('#autopilot-resume').files?.[0];
-    const resumePath = resumeFile ? `curriculo/${resumeFile.name}` : '';
+    let resumePath = '';
+    let importedResume = null;
     const platforms = [...onboardingForm.querySelectorAll('input[name="platforms"]:checked')].map((field) => field.value);
-    const status = document.querySelector('#autopilot-status');
     try {
+      // Uma importação recusada precisa aparecer: sem isso o Autopilot parecia nunca ter começado.
+      if (resumeFile) {
+        importedResume = await importResumeFile(resumeFile);
+        resumePath = importedResume.path;
+      }
       if (new URLSearchParams(window.location.search).get('fixture') === 'demo') { renderAutopilot({ status: 'running', message: 'Demonstração: a IA está conduzindo a jornada.', plan: [...document.querySelectorAll('#autopilot-plan li')].map((item, index) => ({ id: item.textContent, label: item.textContent.slice(2), status: index === 0 ? 'succeeded' : index === 1 ? 'running' : 'pending' })) }); return; }
-      const response = await fetch('/api/v1/autopilot/start', { method: 'POST', headers: mutationHeaders({ 'content-type': 'application/json' }), body: JSON.stringify({ intent, targetRoles, resumePath, platforms }) });
+      const response = await fetch('/api/v1/autopilot/start', { method: 'POST', headers: mutationHeaders({ 'content-type': 'application/json' }), body: JSON.stringify({ intent, targetRoles, resumePath, platforms, importedResume }) });
       if (!response.ok) { status.textContent = 'Não foi possível iniciar. Revise o ambiente local.'; showToast('O Autopilot não pôde iniciar.', 'error'); return; }
       const result = await response.json();
       const data = result.data ?? result;
       renderAutopilot(data);
       if (data.run?.id) { localStorage.setItem('fluxo-autopilot-run', data.run.id); document.querySelector('#run-stream-id').value = data.run.id; connectRunStream(); }
       showToast('Autopilot iniciado. A IA está conduzindo a jornada.', 'success');
-    } catch { status.textContent = 'Conexão local indisponível. Tente novamente.'; showToast('Não foi possível conectar ao Autopilot.', 'error'); }
+    } catch (error) { status.textContent = error?.message || 'Conexão local indisponível. Tente novamente.'; showToast('Não foi possível iniciar o Autopilot.', 'error'); }
   });
 }
+
+const autopilotDecisions = mountAutopilotDecisions({ mutationHeaders, onContinued: (result) => { renderAutopilot(result); loadState(); } });
 
 function renderAutopilot(result = {}) {
   const status = document.querySelector('#autopilot-status');
   const exception = document.querySelector('#autopilot-exception');
+  autopilotDecisions.update(result);
   status.textContent = result.message ?? (result.status === 'running' ? 'A IA está trabalhando…' : 'Pronto para começar');
   exception.hidden = !['needs_attention', 'blocked', 'exception'].includes(result.status);
   if (!exception.hidden) exception.textContent = result.exception ?? 'A IA precisa de uma informação para continuar.';
@@ -351,7 +380,7 @@ async function prepareApplication() {
     pendingQueueItemId = '';
     const run = preparedApplication.run ?? preparedApplication.data?.run;
     const preparedItem = preparedApplication.item ?? preparedApplication.data?.item ?? {};
-    renderApplicationReview(preparedItem, preparedApplication.snapshot ?? {});
+    renderApplicationReview(preparedItem, preparedApplication.snapshot ?? {}, preparedApplication);
     feedback.textContent = `Preparada: ${run?.id ?? 'run criado'}. Revise antes da aprovação.`;
     applicationTools.querySelector('[data-application-action="approve"]').disabled = false;
     document.querySelector('#run-stream-id').value = run?.id ?? '';
@@ -364,7 +393,7 @@ async function requestApplicationApproval() {
   return withBusyButton(button, 'Solicitando aprovação…', async () => {
     const run = preparedApplication?.run ?? preparedApplication?.data?.run;
     if (!run?.id) return;
-    submissionPayload = { queueItemId: (preparedApplication.item ?? preparedApplication.data?.item)?.id, fields: preparedApplication.snapshot ?? {} };
+    submissionPayload = { queueItemId: (preparedApplication.item ?? preparedApplication.data?.item)?.id, fields: preparedApplication.snapshot ?? {}, resume: preparedApplication.resume?.path ?? '' };
     const response = await fetch(`/api/v1/applications/${encodeURIComponent(run.id)}/approval`, { method: 'POST', headers: mutationHeaders({ 'content-type': 'application/json' }), body: JSON.stringify(submissionPayload) });
     const feedback = document.querySelector('#application-feedback');
     if (!response.ok) { feedback.textContent = 'Não foi possível solicitar aprovação.'; showToast('Não foi possível solicitar aprovação.', 'error'); return; }
@@ -373,6 +402,8 @@ async function requestApplicationApproval() {
     feedback.textContent = 'Aprovação criada; decida no painel de aprovações.';
     applicationTools.querySelector('[data-application-action="submit"]').disabled = true;
     updateApplicationStepper(2); showToast('Ação pronta para sua aprovação no painel.', 'info');
+    // O painel de aprovações só mostra a decisão pendente depois de reler o estado.
+    await loadState();
   });
 }
 
@@ -395,10 +426,23 @@ async function withBusyButton(button, label, action) {
   try { return await action(); } finally { button.disabled = false; button.textContent = original; }
 }
 
-function renderApplicationReview(item, snapshot) {
+function renderApplicationReview(item, snapshot, prepared = {}) {
   const panel = document.querySelector('#application-review'); panel.hidden = false;
   document.querySelector('#application-status').textContent = 'Revise os dados observados antes de pedir aprovação.';
-  const facts = document.querySelector('#application-review-facts'); facts.replaceChildren(...[['Empresa', item.company], ['Cargo', item.role], ['Plataforma', item.platform], ['Identificador/URL', item.identifierOrUrl], ['Aderência', item.fitScore != null ? `${item.fitScore}%` : 'não calculada'], ['Tela observada', snapshot.url || 'capturada']].filter(([, value]) => value).map(([label, value]) => { const term = document.createElement('dt'); term.textContent = label; const detail = document.createElement('dd'); detail.textContent = value; return [term, detail]; }).flat());
+  const rows = [['Empresa', item.company], ['Cargo', item.role], ['Plataforma', item.platform], ['Identificador/URL', item.identifierOrUrl],
+    ['Aderência', item.fitScore != null ? `${item.fitScore}%` : 'não calculada'], ['Tela observada', snapshot.url || 'capturada'],
+    ['Currículo anexado', prepared.resume?.path ?? 'nenhuma variante selecionada'],
+    ...reviewFieldRows(prepared.fill)];
+  const facts = document.querySelector('#application-review-facts');
+  facts.replaceChildren(...rows.filter(([, value]) => value).map(([label, value]) => { const term = document.createElement('dt'); term.textContent = label; const detail = document.createElement('dd'); detail.textContent = value; return [term, detail]; }).flat());
+}
+
+function reviewFieldRows(fill) {
+  if (!fill) return [];
+  if (fill.status !== 'preenchido') return [['Preenchimento', `${fill.status}${fill.message ? `: ${fill.message}` : ''}`]];
+  const values = Object.entries(fill.values ?? {}).filter(([, value]) => String(value ?? '').trim());
+  if (!values.length) return [['Preenchimento', 'nenhum campo confirmado corresponde ao formulário observado']];
+  return values.map(([field, value]) => [`Campo ${field}`, String(value)]);
 }
 
 function render(state, approvals = [], profile = null, metrics = null, pending = [], assessments = [], registry = [], memory = null, exceptions = [], codex = null) {
@@ -454,10 +498,21 @@ function connectRunStream() {
   runEventSource = new EventSource(`/api/v1/runs/${encodeURIComponent(runId)}/events?stream=1`);
   runEventSource.onopen = () => { feedback.textContent = 'Streaming conectado.'; };
   runEventSource.onerror = () => { feedback.textContent = 'Streaming interrompido; verifique o run.'; };
-  for (const type of ['agent.notification', 'agent.thread.started', 'agent.turn.started', 'turn/completed', 'turn/started', 'item/agentMessage/delta', 'agent.turn.completed', 'autopilot.plan.created', 'autopilot.thread.started', 'autopilot.started', 'autopilot.failed', 'application.prepared', 'application.submission_confirmed', 'run.needs_reconcile', 'run.paused', 'run.resumed']) runEventSource.addEventListener(type, (event) => {
+  for (const type of ['agent.notification', 'agent.thread.started', 'agent.turn.started', 'turn/completed', 'turn/started', 'item/agentMessage/delta', 'agent.turn.completed', 'autopilot.plan.created', 'autopilot.thread.started', 'autopilot.started', 'autopilot.failed', 'autopilot.waiting_user', 'autopilot.task.completed', 'autopilot.completed', 'autopilot.exception', 'application.prepared', 'application.submission_confirmed', 'run.needs_reconcile', 'run.paused', 'run.resumed']) runEventSource.addEventListener(type, (event) => {
     output.textContent += `${event.type}: ${event.data}\n`;
-    try { const payload = JSON.parse(event.data); if (event.type === 'autopilot.plan.created') renderAutopilot(payload); if (event.type === 'autopilot.started') document.querySelector('#autopilot-status').textContent = 'A IA está trabalhando…'; if (event.type === 'autopilot.failed') { renderAutopilot({ status: 'exception', exception: payload.error ?? 'O Autopilot encontrou uma falha.' }); } } catch {}
+    try { applyAutopilotEvent(event.type, JSON.parse(event.data), runId); } catch {}
   });
+}
+
+function applyAutopilotEvent(type, payload, runId) {
+  const run = { id: payload.runId ?? runId };
+  if (type === 'autopilot.plan.created') renderAutopilot({ ...payload, run });
+  if (type === 'autopilot.started') document.querySelector('#autopilot-status').textContent = 'A IA está trabalhando…';
+  if (type === 'autopilot.waiting_user') renderAutopilot({ run, status: 'waiting_user', message: payload.message, plan: payload.plan, result: { questions: payload.questions } });
+  if (type === 'autopilot.task.completed') document.querySelector('#autopilot-status').textContent = `Etapa concluída: ${payload.task}.`;
+  if (type === 'autopilot.completed') renderAutopilot({ run, status: 'succeeded', message: 'A jornada foi concluída com resultados confirmados.' });
+  if (type === 'autopilot.exception') renderAutopilot({ run, status: 'needs_attention', exception: payload.message, plan: payload.plan });
+  if (type === 'autopilot.failed') renderAutopilot({ run, status: 'exception', exception: payload.error ?? 'O Autopilot encontrou uma falha.' });
 }
 
 function renderCompact(selector, items, toText) {
@@ -706,4 +761,32 @@ function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
 }
 
+async function importResumeFile(file) {
+  const contentBase64 = await fileToBase64(file);
+  const response = await fetch('/api/v1/resumes/import', { method: 'POST', headers: mutationHeaders({ 'content-type': 'application/json' }), body: JSON.stringify({ filename: file.name, contentBase64 }) });
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error?.message ?? 'A importação só é anunciada depois de verificar o arquivo.');
+  return payload.data ?? payload;
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Não foi possível ler o arquivo selecionado.'));
+    reader.onload = () => resolve(String(reader.result ?? ''));
+    reader.readAsDataURL(file);
+  });
+}
+
 mountPersistence(mutationHeaders);
+refreshProductPolicy();
+
+async function refreshProductPolicy() {
+  try {
+    const response = await fetch('/api/v1/product/policy', { cache: 'no-store' });
+    if (!response.ok) return;
+    const data = await response.json();
+    const banner = document.querySelector('#lifecycle-banner');
+    if (banner) banner.textContent = data.lifecycle ?? data.data?.lifecycle ?? '';
+  } catch {}
+}

@@ -30,6 +30,12 @@ export async function createRuntimeServer({ rootDir, port = 4173 } = {}) {
     authService: runtime.authService,
     codexHarnessService: runtime.codexHarnessService,
     codexSettingsService: runtime.codexSettingsService,
+    resumeImportService: runtime.resumeImportService,
+    schedulerService: runtime.schedulerService,
+    notificationService: runtime.notificationService,
+    runtimeHealth: runtime.runtimeHealth,
+    sessionStore: runtime.sessionStore,
+    orchestrator: runtime.orchestrator,
     requireSession: true
   });
   return { runtime, server, port };

@@ -1,8 +1,10 @@
 # Fluxo de candidaturas assistido por Codex
 
-Versão desktop: **1.1.0**.
+Versão desktop candidata: **1.2 (autonomia supervisionada)**.
 
-Abra o instalador `dist/desktop/Fluxo-1.1.0-Windows-x64.exe` ou execute `npm ci` e `npm start` nesta raiz. [Instalação, migração, diagnóstico e comandos](docs/DESKTOP.md). [Arquitetura implementada](docs/ARQUITETURA-IMPLEMENTADA.md).
+**Branch oficial:** `codex/fluxo-desktop`. Desenvolva, teste e gere o instalador nesta árvore. A raiz `main` preserva o pacote PowerShell e documentos locais.
+
+Abra o instalador `dist/desktop/Fluxo-1.1.0-Windows-x64.exe` ou execute `npm ci` e `npm start` nesta raiz. [Linha de produto](docs/LINHA-DE-PRODUTO.md). [Política](docs/POLITICA-AUTONOMIA.md). [Instalação](docs/DESKTOP.md).
 
 ## Linha de produto P0: App Harness
 

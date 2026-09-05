@@ -19,7 +19,12 @@ export function createBrowserAdapter({ driver, evidenceRoot = '' }) {
       if (snapshot.url && current.url !== snapshot.url || snapshot.formHash && current.formHash !== snapshot.formHash) throw domainError('approval_payload_changed', 'O formulário mudou desde a revisão. Revise novamente antes do envio.');
     },
     async open(item) {
-      if (driver.goto && /^https?:\/\//i.test(item.identifierOrUrl)) await driver.goto(item.identifierOrUrl);
+      const target = String(item?.identifierOrUrl ?? '');
+      // Recusar esquema não suportado em vez de fotografar a página que já estava aberta.
+      if (target && !/^https?:\/\//i.test(target)) {
+        throw domainError('unsupported_target_url', 'Só abro endereços http(s) da plataforma. Revise o identificador da vaga.');
+      }
+      if (driver.goto && target) await driver.goto(target);
       return this.snapshot();
     },
     async snapshot() {

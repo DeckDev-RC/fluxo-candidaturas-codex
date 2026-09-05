@@ -13,6 +13,7 @@ test('runtime config reads safe operational controls and omits credentials', asy
     'MAX_APPLICATIONS_PER_RUN=12',
     'MAX_CONSECUTIVE_FAILURES=3',
     'EVIDENCE_MODE=confirmation',
+    'INFOJOBS_URL=https://www.infojobs.com.br/vagas.aspx?palabra={q}',
     'GUPY_PASSWORD=must-not-leak'
   ].join('\n'));
 
@@ -23,12 +24,15 @@ test('runtime config reads safe operational controls and omits credentials', asy
   assert.equal(config.maxApplicationsPerRun, 12);
   assert.equal(config.maxConsecutiveFailures, 3);
   assert.equal(config.evidenceMode, 'confirmation');
+  assert.deepEqual(config.platformUrls, { INFOJOBS: 'https://www.infojobs.com.br/vagas.aspx?palabra={q}' });
   assert.equal(JSON.stringify(config).includes('must-not-leak'), false);
   assert.deepEqual(Object.keys(config).sort(), [
     'allowAutomatedSubmission', 'authMode', 'browserAutomationRequired',
     'checkpointAfterEachAction', 'cloudEnabled', 'cloudModel', 'evidenceMode',
+    'followUpMinIntervalMs',
     'localModel', 'maxApplicationsPerRun', 'maxConsecutiveFailures',
-    'modelProvider', 'playwrightHeadless', 'playwrightSession',
+    'maxRunDurationMs', 'maxRunTokens', 'maxTaskAttempts',
+    'modelProvider', 'platformUrls', 'playwrightHeadless', 'playwrightSession',
     'requireFinalConfirmation'
   ]);
 });

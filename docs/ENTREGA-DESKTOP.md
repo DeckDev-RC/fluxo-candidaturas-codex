@@ -1,4 +1,21 @@
-# Entrega Fluxo Desktop 1.1.0
+# Entrega Fluxo Desktop
+
+## Candidata 1.2.0 — jornada controlada certificada (2026-09-05)
+
+| Verificação | Resultado |
+|---|---|
+| Testes do app | 276 aprovados, 0 falhas |
+| Testes da infraestrutura desktop | 6 aprovados, 0 falhas |
+| E2E Chromium real (jornada + matriz de cenários + preflight) | 12 aprovados, 0 falhas |
+| Desktop empacotado (smoke) | Abriu, leu offline, isolou renderer, preservou dados e encerrou o backend |
+| Instalador | `dist/desktop/Fluxo-1.2.0-Windows-x64.exe`, sha256 `b9cc41c1744d7ddb1ed5e2246eb92932cef4ae18f1ef9120c1054ab5eece2409`, **não assinado** |
+| Inventário do build | `output/build-inventory.json`, 311 arquivos de origem, sem `.env` e sem bancos operacionais |
+
+**Certificado nesta candidata (evidência B, site controlado):** jornada do Autopilot conduzida pela interface com o orquestrador de produção; importação de currículo de fora do projeto; pausa de especialista respondida na tela e retomada na tarefa correta; busca na página configurada de cada plataforma; revisão com campos preenchidos e currículo anexado; aprovação humana obrigatória; envio confirmado com evidência e registro em SQLite; recusa de revisão alterada, CAPTCHA, plataforma fora do ar, vaga duplicada e página hostil.
+
+**Não certificado:** qualquer plataforma real (sem evidência R), instalação/atualização em Windows limpo (sem evidência P) e contrato do App Server com sessão autorizada (F2-02). Esta candidata **não autoriza envio real**.
+
+## Entrega anterior — 1.1.0
 
 ## Resultado das seis etapas
 

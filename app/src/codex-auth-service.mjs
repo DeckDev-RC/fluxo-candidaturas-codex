@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 
-export function createCodexAuthService({ command = 'codex', env = process.env, execute = createExecutor(command, env), spawnLogin = null, agentAdapter = null } = {}) {
+export function createCodexAuthService({ command = 'codex', env = process.env, execute = createExecutor(command, env), spawnLogin = null, agentAdapter = null, statusTimeoutMs = 8000 } = {}) {
   let last = { status: 'unknown', authenticated: false, method: 'unknown', message: 'Verificando a sessão do ChatGPT…' };
 
   return {
@@ -17,7 +17,8 @@ export function createCodexAuthService({ command = 'codex', env = process.env, e
 
     async statusFromAgent() {
       try {
-        const result = await agentAdapter.request('account/read');
+        // Consulta de status é diagnóstico: um App Server ausente ou lento não pode travar a interface.
+        const result = await withDeadline(agentAdapter.request('account/read'), statusTimeoutMs);
         const account = result?.account;
         last = account ? { status: 'authenticated', authenticated: true, method: 'chatgpt', email: String(account.email ?? ''), planType: String(account.planType ?? ''), message: 'Login do ChatGPT ativo no Codex app-server.' } : { status: 'signed_out', authenticated: false, method: 'chatgpt', message: 'O app-server precisa de um login OAuth do ChatGPT.' };
       } catch { last = { status: 'unavailable', authenticated: false, method: 'none', message: 'Não foi possível consultar o login do Codex app-server.' }; }
@@ -55,6 +56,14 @@ export function createCodexAuthService({ command = 'codex', env = process.env, e
     last = state;
     return { ...state };
   }
+}
+
+function withDeadline(promise, timeoutMs) {
+  let timer;
+  const deadline = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(Object.assign(new Error('O runtime de IA não respondeu no prazo.'), { code: 'runtime_probe_timeout' })), timeoutMs);
+  });
+  return Promise.race([promise, deadline]).finally(() => clearTimeout(timer));
 }
 
 function safeEnv(input) { const result = { ...input }; for (const key of ['OPENAI_API_KEY', 'CODEX_API_KEY', 'CODEX_ACCESS_TOKEN']) delete result[key]; return result; }

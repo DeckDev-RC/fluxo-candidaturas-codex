@@ -6,10 +6,12 @@ const DEFAULT_PLAN = [
   ['followup', 'Acompanhar respostas, testes, entrevistas e prazos']
 ];
 
-export function createAutopilotService({ runService, agentAdapter, orchestrator }) {
+export function createAutopilotService({ runService, agentAdapter, orchestrator, productionOrchestrator }) {
   return {
     async start(input = {}) {
       if (orchestrator && (input.mode === 'fixture' || input.fixture === true)) return orchestrator.start({ objective: input.intent ?? input.targetRoles ?? '', mode: 'fixture', input });
+      if (productionOrchestrator) return productionOrchestrator.start({ objective: input.intent ?? input.targetRoles ?? '', mode: 'autonomous', input });
+      if (orchestrator && input.mode !== 'fixture') return orchestrator.start({ objective: input.intent ?? input.targetRoles ?? '', mode: 'autonomous', input });
       const run = runService.startRun({ kind: 'autopilot', platform: '', goal: String(input.targetRoles ?? '').trim(), mode: 'autonomous' });
       const plan = DEFAULT_PLAN.map(([id, label], index) => ({ id, label, status: index === 0 ? 'running' : 'pending' }));
       const timeline = [

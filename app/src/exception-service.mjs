@@ -6,8 +6,10 @@ import { acquireFluxoLock, wrapMutations } from './lock.mjs';
 const TYPES = new Set(['pause', 'divergence', 'reconciliation', 'mfa', 'captcha', 'missing_data', 'access_lost', 'session_lost', 'page_lost', 'evidence_missing']);
 const HIGH_PRIORITY = new Set(['mfa', 'captcha', 'divergence', 'reconciliation', 'session_lost', 'access_lost']);
 
-export function createExceptionService({ rootDir = '', runService, now = () => new Date(), mutationLock = true, lock = () => acquireFluxoLock(rootDir) } = {}) {
+export function createExceptionService({ rootDir = '', runService, orchestrator, now = () => new Date(), mutationLock = true, lock = () => acquireFluxoLock(rootDir) } = {}) {
+  let boundOrchestrator = orchestrator;
   const service = {
+    setOrchestrator(value) { boundOrchestrator = value; },
     async create(input = {}) {
       const type = String(input.type ?? 'pause');
       if (!TYPES.has(type)) throw domainError('invalid_exception_type', 'Tipo de exceção inválido.');
@@ -33,6 +35,7 @@ export function createExceptionService({ rootDir = '', runService, now = () => n
       exception.status = 'resolved'; exception.response = String(response).trim(); exception.updatedAt = now().toISOString();
       await writeExceptions(rootDir, values);
       if (exception.runId && runService?.resumeRun) { try { runService.resumeRun(exception.runId); } catch {} }
+      if (exception.runId && boundOrchestrator?.handleHumanEvent) await boundOrchestrator.handleHumanEvent({ runId: exception.runId, kind: 'provided', taskId: exception.id, payload: { response: exception.response } });
       return safeException(exception);
     }
   };

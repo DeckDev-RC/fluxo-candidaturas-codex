@@ -1,6 +1,16 @@
 # PRD — App Harness do Fluxo de Candidaturas
 
-> Atualização 1.1.0: o documento abaixo preserva a especificação original. A implementação consolidada usa Electron, Playwright direto e SQLite progressivo. Consulte [arquitetura implementada](ARQUITETURA-IMPLEMENTADA.md) e [contrato desktop atual](DESKTOP.md), que prevalecem nas decisões de runtime e persistência.
+**Status:** contrato da versão candidata 1.2  
+**Jornada:** autonomia supervisionada com especialistas reais  
+**Documentos alinhados:** [SDD](SDD-APP-HARNESS.md), [política](POLITICA-AUTONOMIA.md), [limites](LIMITES-CAMPANHA.md), [matriz](MATRIZ-PLATAFORMAS.md), [linha de produto](LINHA-DE-PRODUTO.md)
+
+O Fluxo é um aplicativo Windows local e individual. O candidato informa um objetivo profissional. O Autopilot coordena especialistas reais de Intake, Discovery, Fit, Application e Follow-up, executa as tarefas autorizadas, pede decisões necessárias e retoma até concluir a campanha ou explicar um bloqueio.
+
+“Automático” significa continuidade dentro das permissões, com limites de campanha, consumo e tentativas. Não significa inventar respostas, aprovar pelo usuário, contornar CAPTCHA/MFA, aceitar declarações pessoais ou repetir envios incertos. A interface e este PRD descrevem a mesma jornada e os mesmos limites.
+
+A versão candidata **não certifica autonomia real** nas sete plataformas. O escopo anunciado é assistido/manual, conforme a matriz. Mensagens a recrutadores são rascunho. A agenda funciona só com o aplicativo aberto.
+
+> Histórico 1.1.0: Electron, Playwright direto e SQLite progressivo. Consulte [arquitetura implementada](ARQUITETURA-IMPLEMENTADA.md) e [contrato desktop](DESKTOP.md).
 
 
 **Status:** rascunho para implementação  
@@ -10,9 +20,7 @@
 
 ## 1. Resumo
 
-O App Harness do Fluxo de Candidaturas é uma interface local, single-user no MVP, para operar, acompanhar e retomar o fluxo que hoje depende da conversa com o Codex, dos scripts PowerShell e da habilidade Playwright. Os arquivos JSON existentes continuam sendo a fonte operacional durante a primeira fase.
-
-O app não será um bot autônomo. Ele será uma camada de controle para o agente: mostra estado, oferece fila, solicita confirmações, transmite progresso, preserva evidências e mantém o usuário no controle de dados sensíveis e ações externas.
+O App Harness é a camada local do Autopilot: orquestra especialistas reais, persiste a jornada em SQLite, pede confirmação humana nos portões e continua a campanha sem exigir um comando por etapa. JSON legado só entra por migração explícita. O produto não é um bot que aprova ou envia sozinho.
 
 ## 2. Problema
 

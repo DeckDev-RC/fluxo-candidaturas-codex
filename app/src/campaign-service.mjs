@@ -24,7 +24,7 @@ export function createCampaignService({ rootDir, persistence: injectedPersistenc
       const allowedNames = new Set(platformDefinitions.map((item) => item.name));
       const next = { ...current, ...patch };
 
-      for (const field of ['totalGoal', 'dailyGoal', 'weeklyGoal', 'maxConsecutiveFailures']) {
+      for (const field of ['totalGoal', 'dailyGoal', 'weeklyGoal', 'maxConsecutiveFailures', 'maxApplicationsPerRun', 'maxTaskAttempts', 'maxRunTokens']) {
         if (field in next && (!Number.isInteger(Number(next[field])) || Number(next[field]) < 0)) {
           throw domainError('invalid_campaign', `${field} deve ser um inteiro não negativo.`);
         }

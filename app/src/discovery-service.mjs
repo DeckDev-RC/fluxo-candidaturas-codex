@@ -13,8 +13,10 @@ export function createDiscoveryService({ rootDir = '', queueService, adapters = 
       for (const platform of platforms) {
         const adapter = criteria.mode === 'fixture' ? fixtureAdapters[platform] ?? adapters[platform] : adapters[platform];
         if (!adapter?.search) { failures.push({ platform, type: 'adapter_unavailable', message: 'A plataforma não está configurada.', retryable: true }); continue; }
+        const planned = plannedSearch(criteria, platform);
+        if (planned.unavailable) { failures.push({ platform, type: 'search_unavailable', message: planned.reason ?? 'A busca pública não está disponível nesta plataforma.', retryable: false }); continue; }
         try {
-          const found = await adapter.search({ ...criteria, platforms: [platform] });
+          const found = await adapter.search({ ...criteria, searchUrl: planned.searchUrl, platforms: [platform] });
           for (const raw of Array.isArray(found) ? found : []) {
             const item = normalizeOpportunity(raw, platform, now);
             try { const stored = await queueService.addQueueItem(item); opportunities.push(stored ?? item); }
@@ -40,6 +42,15 @@ export function createDiscoveryService({ rootDir = '', queueService, adapters = 
 
 export function createPlaywrightDiscoveryAdapter({ driver, platform, parse = parseSnapshotJobs } = {}) {
   return { async search(criteria = {}) { if (criteria.searchUrl && driver.goto) await driver.goto(criteria.searchUrl); const snapshot = await driver.snapshot({ purpose: 'discovery', criteria }); return parse(snapshot, platform); } };
+}
+
+// Cada plataforma navega para a própria página de busca; sem isso um plano multiplataforma
+// repetiria a mesma URL e atribuiria as vagas à plataforma errada.
+function plannedSearch(criteria, platform) {
+  const entry = (Array.isArray(criteria.searchPlan) ? criteria.searchPlan : [])
+    .find((item) => String(item?.platform ?? '').toUpperCase() === platform);
+  if (entry?.unavailable === true) return { unavailable: true, reason: entry.reason };
+  return { searchUrl: entry?.searchUrl || criteria.searchUrl || '' };
 }
 
 function normalizeOpportunity(raw, platform, now) {

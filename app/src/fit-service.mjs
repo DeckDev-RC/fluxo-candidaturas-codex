@@ -1,15 +1,18 @@
+import { applyCampaignFilters } from './campaign-filters.mjs';
+
 export function createFitService({ recordDecision = async () => {}, now = () => new Date() } = {}) {
   return {
-    assess({ opportunity = {}, facts = {} } = {}) {
+    assess({ opportunity = {}, facts = {}, filters = {} } = {}) {
       const required = list(opportunity.requirements);
       const eliminators = list(opportunity.eliminators);
-      const haystack = Object.values(facts).flatMap((fact) => flatten(fact?.value ?? fact)).join(' ').toLocaleLowerCase();
+      const haystack = Object.values(facts).flatMap((fact) => flatten(fact?.confirmed === false ? [] : (fact?.value ?? fact))).join(' ').toLocaleLowerCase();
       const matched = required.filter((term) => haystack.includes(term.toLocaleLowerCase()));
       const gaps = required.filter((term) => !matched.includes(term));
       const blocked = eliminators.filter((term) => haystack.includes(term.toLocaleLowerCase()));
+      const campaignFilter = applyCampaignFilters(opportunity, filters, facts);
       const score = required.length ? Math.round(matched.length * 100 / required.length) : 50;
-      const classification = blocked.length || score < 50 ? 'fraca' : score >= 80 ? 'forte' : 'possível';
-      const eligible = !blocked.length && classification !== 'fraca';
+      const classification = blocked.length || !campaignFilter.eligible || score < 50 ? 'fraca' : score >= 80 ? 'forte' : 'possível';
+      const eligible = !blocked.length && campaignFilter.eligible && classification !== 'fraca';
       const level = score >= 80 ? 'alta' : score >= 50 ? 'média' : 'baixa';
       return { opportunityId: String(opportunity.id ?? opportunity.key ?? ''), score, classification, eligible, confidence: level, matched, gaps, eliminators: blocked, explanation: explanation({ matched, gaps, blocked, classification }), evaluatedAt: now().toISOString() };
     },

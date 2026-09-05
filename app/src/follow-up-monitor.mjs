@@ -30,7 +30,11 @@ export function createFollowUpMonitor({ rootDir = '', adapters = {}, now = () =>
       state.events = [...state.events, ...newEvents].slice(-500);
       await writeState(rootDir, state);
       const alerts = newEvents.filter((event) => ['entrevista', 'teste', 'prazo', 'convite'].some((term) => `${event.type} ${event.status}`.toLocaleLowerCase().includes(term))).map((event) => ({ ...event, priority: 'alta' }));
-      return { checkedAt: state.checkedAt, newEvents, alerts, failures, instruction: String(instruction), summary: newEvents.length ? `${newEvents.length} novidade(s) encontrada(s) no acompanhamento.` : 'Nenhuma novidade desde a última consulta.', nextActions: newEvents.map((event) => ({ reference: event.reference, action: event.nextAction, deadline: event.deadline })) };
+      const missingAdapter = failures.some((item) => /não configurado/i.test(item.message));
+      const summary = missingAdapter
+        ? 'Há plataformas sem adaptador de acompanhamento; isso não significa ausência de novidades.'
+        : newEvents.length ? `${newEvents.length} novidade(s) encontrada(s) no acompanhamento.` : 'Nenhuma novidade desde a última consulta.';
+      return { checkedAt: state.checkedAt, newEvents, alerts, failures, instruction: String(instruction), summary, nextActions: newEvents.map((event) => ({ reference: event.reference, action: event.nextAction, deadline: event.deadline })) };
     }
   };
 }
