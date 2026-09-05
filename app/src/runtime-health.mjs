@@ -6,6 +6,12 @@ export const CODEX_MISSING_GUIDANCE = 'Instale o Codex CLI (npm install -g @open
 // a indisponibilidade mais comum — o Codex não está instalado ou não foi encontrado.
 export function createRuntimeHealth({ authService, codex = null, now = () => new Date() } = {}) {
   return {
+    // Cada mudança de conta vira um retrato novo da saúde, entregue a quem assinou.
+    onChange(listener) {
+      if (!authService?.onChange) return () => {};
+      return authService.onChange(async () => { listener(await this.snapshot()); });
+    },
+
     async snapshot() {
       const executable = codex ? codex() : null;
       if (executable && !executable.found) {
@@ -49,7 +55,9 @@ function normalize(status, now) {
     offlineRead: true,
     expiresAt: status?.expiresAt ?? '',
     account: status?.account ? { email: status.account.email ?? '', plan: status.account.plan ?? '' } : null,
-    message: messageFor(state)
+    message: messageFor(state),
+    // Falha de login é dita com a causa: sem isso a pessoa só vê "indisponível".
+    ...(raw === 'error' && status?.message ? { loginError: String(status.message) } : {})
   };
 }
 

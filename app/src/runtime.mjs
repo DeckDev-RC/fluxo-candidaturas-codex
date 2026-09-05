@@ -132,6 +132,10 @@ export async function createLocalRuntime({ rootDir, browserDriver, headless, sch
   // O Codex é procurado a cada início do transporte: quem instala o Codex com o
   // app aberto só precisa clicar em "Verificar novamente".
   const codex = () => resolveCodexCommand({ configured: runtimeConfig.codexCommand });
+  // Notificações de conta (login concluído, conta atualizada) não pertencem a
+  // nenhuma execução: vão para o serviço de auth, que avisa a saúde e a interface.
+  const eventosDeExecucao = createAgentEventHandler(runService, { budget: campaignBudget });
+  let authService = null;
   const agentAdapter = createAgentAdapter({
     domainTools,
     settingsService: codexSettingsService,
@@ -139,10 +143,13 @@ export async function createLocalRuntime({ rootDir, browserDriver, headless, sch
       const resolved = codex();
       return createStdioAgentTransport({ command: resolved.command || resolved.path || 'codex', shell: resolved.shell, cwd: rootDir, authMode: runtimeConfig.authMode, onNotification, onRequest });
     },
-    onNotification: createAgentEventHandler(runService, { budget: campaignBudget })
+    onNotification: (message, runId) => {
+      if (authService?.handleNotification(message)) return;
+      eventosDeExecucao(message, runId);
+    }
   });
   const codexHarnessService = createCodexHarnessService({ request: (method, params) => agentAdapter.request(method, params) });
-  const authService = createCodexAuthService({ agentAdapter });
+  authService = createCodexAuthService({ agentAdapter });
   const runtimeHealth = createRuntimeHealth({ authService, codex });
   const autopilotService = createAutopilotService({ runService, agentAdapter, orchestrator: fixtureOrchestrator, productionOrchestrator: orchestrator });
   exceptionService.setOrchestrator?.(orchestrator);

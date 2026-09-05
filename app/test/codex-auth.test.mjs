@@ -51,6 +51,69 @@ test('Codex auth starts the official app-server ChatGPT OAuth flow and returns b
   assert.equal(calls[0][1].type, 'chatgpt');
 });
 
+// Achado do teste real: o OAuth termina no navegador e a tela continuava "desconectada"
+// porque ninguém ouvia o app-server. A notificação de conta vira estado e aviso.
+test('a notificação account/login/completed atualiza o estado e avisa quem assinou', async () => {
+  let conta = null;
+  const service = createCodexAuthService({ agentAdapter: { async request(method) { return method === 'account/read' ? { account: conta } : {}; } } });
+  const mudancas = [];
+  service.onChange((estado) => mudancas.push(estado));
+
+  assert.equal(service.handleNotification({ method: 'turn/completed', params: {} }), false, 'notificação de execução não é de conta');
+
+  conta = { email: 'pessoa@example.com', planType: 'plus' };
+  assert.equal(service.handleNotification({ method: 'account/login/completed', params: { loginId: 'login-1', success: true } }), true);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(mudancas.at(-1).status, 'authenticated');
+  assert.equal(mudancas.at(-1).email, 'pessoa@example.com');
+  assert.equal(JSON.stringify(mudancas).includes('token'), false);
+
+  service.handleNotification({ method: 'account/login/completed', params: { loginId: 'login-2', success: false, error: 'negado' } });
+  assert.equal(mudancas.at(-1).status, 'error');
+  assert.match(mudancas.at(-1).message, /negado/);
+});
+
+test('a saúde do runtime acompanha a conta e a rota entrega o retrato novo por eventos', async () => {
+  const { createRuntimeHealth } = await import('../src/runtime-health.mjs');
+  let conta = null;
+  const authService = createCodexAuthService({ agentAdapter: { async request(method) { return method === 'account/read' ? { account: conta } : {}; } } });
+  const health = createRuntimeHealth({ authService });
+  const retratos = [];
+  const cancelar = health.onChange((retrato) => retratos.push(retrato));
+
+  assert.equal((await health.snapshot()).available, false);
+  conta = { email: 'pessoa@example.com' };
+  authService.handleNotification({ method: 'account/updated', params: {} });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(retratos.at(-1).available, true, 'a mudança de conta vira retrato disponível');
+  cancelar();
+
+  const { mkdtemp } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { createServer } = await import('../src/http-server.mjs');
+  const server = createServer({ rootDir: await mkdtemp(join(tmpdir(), 'fluxo-health-stream-')), requireSession: false, authService, runtimeHealth: health });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const controle = new AbortController();
+    const resposta = await fetch(`http://127.0.0.1:${server.address().port}/api/v1/runtime/health?stream=1`, { signal: controle.signal });
+    assert.match(resposta.headers.get('content-type'), /^text\/event-stream/);
+    const leitor = resposta.body.getReader();
+    const ler = async () => new TextDecoder().decode((await leitor.read()).value);
+    const primeiro = await ler();
+    assert.match(primeiro, /event: runtime\.health/);
+    assert.match(primeiro, /"available":true/);
+    assert.match(primeiro, /"mode":"codex-app-server"/);
+
+    conta = null;
+    await authService.logout();
+    const segundo = await ler();
+    assert.match(segundo, /"available":false/);
+    assert.match(segundo, /"mode":"offline-read"/);
+    controle.abort();
+  } finally { await new Promise((resolve) => server.close(resolve)); }
+});
+
 // Achado do teste de usabilidade: um login que espera o navegador não pode segurar a
 // trava de dados — enquanto ele esperava, qualquer outra ação recebia "fluxo_locked".
 test('login do ChatGPT em andamento não bloqueia outras mutações do Fluxo', async () => {

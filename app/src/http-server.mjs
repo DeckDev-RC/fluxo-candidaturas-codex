@@ -127,7 +127,24 @@ export function createServer(options) {
   });
 
   server.once('close', () => { for (const service of s.owned) service.close?.(); });
+  encerrarFluxosComEducacao(server);
   return server;
+}
+
+// Respostas em fluxo (SSE) ficam abertas por design. Derrubar o socket no
+// encerramento faz o navegador registrar erro de rede; terminar a resposta
+// primeiro entrega o fim do fluxo e só então as conexões são fechadas.
+function encerrarFluxosComEducacao(server) {
+  const abertas = new Set();
+  server.on('request', (_request, response) => {
+    abertas.add(response);
+    response.once('close', () => abertas.delete(response));
+  });
+  const fecharTudo = server.closeAllConnections.bind(server);
+  server.closeAllConnections = () => {
+    for (const response of abertas) if (!response.writableEnded) response.end();
+    setImmediate(fecharTudo);
+  };
 }
 
 // Rota que existe mas não aceita o método recebe 405, não 404.

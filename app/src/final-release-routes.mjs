@@ -46,6 +46,7 @@ function createHandler({
         return true;
       }
       if (request.method === 'GET' && path === '/api/v1/runtime/health') {
+        if (new URL(request.url ?? '/', 'http://127.0.0.1').searchParams.get('stream') === '1') return transmitirSaude(request, response, runtimeHealth);
         sendJson(response, 200, await runtimeHealth.snapshot());
         return true;
       }
@@ -137,4 +138,24 @@ function createHandler({
 function readJsonQuery(request) {
   const url = new URL(request.url ?? '/', 'http://127.0.0.1');
   return Object.fromEntries(url.searchParams);
+}
+
+// Saúde do runtime em tempo real: retrato atual primeiro e, a cada mudança de
+// conta (login concluído, logout), um retrato novo. Um comentário periódico
+// mantém a conexão viva sem inventar estado.
+const BATIMENTO_MS = 25_000;
+
+async function transmitirSaude(request, response, runtimeHealth) {
+  response.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache', connection: 'keep-alive' });
+  const escrever = (saude) => response.write(`event: runtime.health\ndata: ${JSON.stringify(comModo(saude))}\n\n`);
+  escrever(await runtimeHealth.snapshot());
+  const cancelar = runtimeHealth.onChange?.(escrever) ?? (() => {});
+  const batimento = setInterval(() => response.write(': vivo\n\n'), BATIMENTO_MS);
+  request.on('close', () => { cancelar(); clearInterval(batimento); });
+  return true;
+}
+
+// O modo anunciado acompanha a disponibilidade, como em GET /api/v1/ai/mode.
+function comModo(saude) {
+  return { ...saude, mode: saude.available ? 'codex-app-server' : 'offline-read' };
 }

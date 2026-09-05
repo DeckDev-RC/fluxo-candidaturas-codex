@@ -1,9 +1,36 @@
 import { spawn } from 'node:child_process';
 
+// Notificações do app-server que dizem respeito à conta, não a uma execução.
+const NOTIFICACOES_DE_CONTA = new Set(['account/login/completed', 'account/updated']);
+
 export function createCodexAuthService({ command = 'codex', env = process.env, execute = createExecutor(command, env), spawnLogin = null, agentAdapter = null, statusTimeoutMs = 8000 } = {}) {
   let last = { status: 'unknown', authenticated: false, method: 'unknown', message: 'Verificando a sessão do ChatGPT…' };
+  const ouvintes = new Set();
+  const avisar = () => { for (const ouvinte of ouvintes) { try { ouvinte({ ...last }); } catch {} } };
 
   return {
+    // Quem precisa reagir à conta (saúde do runtime, interface) assina aqui.
+    onChange(listener) {
+      ouvintes.add(listener);
+      return () => ouvintes.delete(listener);
+    },
+
+    // O login termina fora do processo: o app-server avisa por notificação e
+    // esta é a única fonte que permite refletir a conexão sem que alguém pergunte.
+    handleNotification(message) {
+      const method = String(message?.method ?? '');
+      if (!NOTIFICACOES_DE_CONTA.has(method)) return false;
+      const params = message.params ?? {};
+      if (method === 'account/login/completed' && params.success === false) {
+        last = { status: 'error', authenticated: false, method: 'chatgpt', message: `Não foi possível concluir o login do ChatGPT${params.error ? `: ${params.error}` : '.'}` };
+        avisar();
+        return true;
+      }
+      // Sucesso ou conta atualizada: a verdade vem de uma leitura fresca da conta.
+      Promise.resolve(this.status()).then(avisar, avisar);
+      return true;
+    },
+
     async status() {
       if (agentAdapter?.request) return this.statusFromAgent();
       try {
@@ -44,7 +71,7 @@ export function createCodexAuthService({ command = 'codex', env = process.env, e
       return state;
     },
 
-    async logout() { if (agentAdapter?.request) await agentAdapter.request('account/logout', null); else await execute(['logout']); last = { status: 'signed_out', authenticated: false, method: 'none', message: 'Sessão do ChatGPT removida do Codex local.' }; return { ...last }; }
+    async logout() { if (agentAdapter?.request) await agentAdapter.request('account/logout', null); else await execute(['logout']); last = { status: 'signed_out', authenticated: false, method: 'none', message: 'Sessão do ChatGPT removida do Codex local.' }; avisar(); return { ...last }; }
   };
 
   async function startAgentLogin(device) {
