@@ -34,6 +34,7 @@ export async function createRuntimeServer({ rootDir, port = 4173 } = {}) {
     schedulerService: runtime.schedulerService,
     notificationService: runtime.notificationService,
     runtimeHealth: runtime.runtimeHealth,
+    conversationService: runtime.conversationService,
     sessionStore: runtime.sessionStore,
     orchestrator: runtime.orchestrator,
     consistencyService: runtime.consistencyService,

@@ -12,6 +12,7 @@ import { createKnowledgeRoutes } from './routes/knowledge-routes.mjs';
 import { createCampaignRoutes } from './routes/campaign-routes.mjs';
 import { createExecutionRoutes } from './routes/execution-routes.mjs';
 import { createCodexRoutes } from './routes/codex-routes.mjs';
+import { createConversationRoutes } from './routes/conversation-routes.mjs';
 import { readJsonBody, sendDomainError, sendJson } from './routes/http-helpers.mjs';
 
 // O servidor cuida só de transporte: origem local, sessão, trava de mutação,
@@ -56,6 +57,7 @@ export function createServer(options) {
     }),
     createStateRoutes({ rootDir, checkpointService: s.checkpointService, preflightService: s.preflightService, metricsService: s.metricsService, pendingService: s.pendingService, observability: s.observability, stateStore: s.stateStore }),
     createCodexRoutes({ sessionAuth: s.sessionAuth, authService: s.authService, codexHarnessService: s.codexHarnessService, codexSettingsService: s.codexSettingsService }),
+    createConversationRoutes({ conversationService: s.conversationService }),
     createKnowledgeRoutes(s),
     createCampaignRoutes({ rootDir, queueService: s.queueService, campaignService: s.campaignService, exportService: s.exportService, stateStore: s.stateStore }),
     createExecutionRoutes({ rootDir, runService: s.runService, approvalService: s.approvalService, applicationFlow: s.applicationFlow, autopilotService: s.autopilotService, agentAdapter: s.agentAdapter, followUpService: s.followUpService, memoryService: s.memoryService, actorResolver: s.actorResolver })
@@ -64,7 +66,9 @@ export function createServer(options) {
   // Serviços que já tratam a própria trava de mutação não passam pela trava do servidor.
   // Login e logout do Codex não tocam os dados do Fluxo e podem esperar o usuário no
   // navegador: segurar a trava aqui bloquearia todo o resto durante o login.
+  // A conversa não toca dados do Fluxo e pode levar segundos: não segura a trava.
   const travaDoServico = (path) => path.startsWith('/api/v1/auth/openai/')
+    || path.startsWith('/api/v1/conversation/')
     || (path.startsWith('/api/v1/queue/') && s.queueService.handlesMutationLock)
     || (path === '/api/v1/campaign' && s.campaignService.handlesMutationLock)
     || (path === '/api/v1/onboarding' && s.onboardingService.handlesMutationLock)

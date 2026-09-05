@@ -40,9 +40,17 @@ export function createAgentAdapter({ transport, transportFactory, onNotification
       return initialization;
     },
 
+    // Toda thread nasce sem shell, sem edição de arquivos e sem busca na web. A
+    // de operação recebe as ferramentas fluxo_*; a de conversa (`conversation`)
+    // não recebe ferramenta nenhuma e usa as próprias instruções.
     async startThread(params = {}) {
       await this.initialize();
-      return (await getTransport()).request('thread/start', { ...params, ...(domainTools ? { dynamicTools: domainTools.definitions, sandbox: 'read-only', approvalPolicy: 'never', config: { 'features.shell_tool': false, 'features.unified_exec': false, 'features.apply_patch_freeform': false, 'web_search': 'disabled' }, developerInstructions: 'Use exclusivamente ferramentas fluxo_* para operar candidaturas. Nunca altere arquivos diretamente. Aprovação humana é obrigatória e não pode ser decidida pelo agente. Um turn concluído não significa uma candidatura enviada.' } : {}) });
+      const { conversation = false, ...resto } = params;
+      const restricoes = { sandbox: 'read-only', approvalPolicy: 'never', config: { 'features.shell_tool': false, 'features.unified_exec': false, 'features.apply_patch_freeform': false, 'web_search': 'disabled' } };
+      const operacao = domainTools && !conversation
+        ? { dynamicTools: domainTools.definitions, developerInstructions: 'Use exclusivamente ferramentas fluxo_* para operar candidaturas. Nunca altere arquivos diretamente. Aprovação humana é obrigatória e não pode ser decidida pelo agente. Um turn concluído não significa uma candidatura enviada.' }
+        : {};
+      return (await getTransport()).request('thread/start', { ...resto, ...restricoes, ...operacao });
     },
 
     async request(method, params) {

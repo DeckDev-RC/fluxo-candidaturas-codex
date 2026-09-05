@@ -6,7 +6,7 @@ import { badge, el, staticListItem } from '../../core/dom.mjs';
 import { hora } from '../../core/format.mjs';
 import { nivelAderencia } from '../../core/aderencia.mjs';
 import { store } from '../../core/store.mjs';
-import { takeScrollRequest, transcript } from '../../core/conversa.mjs';
+import { isThinking, takeScrollRequest, transcript } from '../../core/conversa.mjs';
 import { disponivel, TEXTOS } from '../agora-estados.mjs';
 import { firstRunPanel } from '../primeiro-uso.mjs';
 import { decisionList } from '../decisoes.mjs';
@@ -27,7 +27,8 @@ export function conversationColumn(situacao, pendentes) {
   const coluna = el('section', { class: 'conversa-coluna', 'aria-label': 'Conversa com o Fluxo' }, [
     el('ol', { class: 'linha-do-tempo', id: 'linha-do-tempo' }, [
       visiveis.map(balao),
-      bolhaAtual(situacao, pendentes)
+      bolhaAtual(situacao, pendentes),
+      isThinking() ? el('li', { class: 'balao', dataset: { autor: 'fluxo' }, 'aria-live': 'polite' }, [avatar(), el('div', { class: 'balao-corpo' }, [el('span', { class: 'ocupado', text: 'Pensando…' })])]) : null
     ])
   ]);
   if (takeScrollRequest()) requestAnimationFrame(rolarParaOFim);
@@ -38,13 +39,19 @@ export function conversationColumn(situacao, pendentes) {
   return coluna;
 }
 
-function balao(mensagem) {
-  const dataset = mensagem.tom ? { autor: mensagem.autor, tom: mensagem.tom } : { autor: mensagem.autor };
+// Falas seguidas do mesmo autor formam um grupo: avatar e horário só na
+// primeira, para a leitura seguir o fio sem repetição.
+const MESMO_GRUPO_MS = 3 * 60 * 1000;
+
+function balao(mensagem, indice, lista) {
+  const anterior = lista[indice - 1];
+  const continuacao = Boolean(anterior && anterior.autor === mensagem.autor && Date.parse(mensagem.em) - Date.parse(anterior.em) < MESMO_GRUPO_MS);
+  const dataset = { autor: mensagem.autor, ...(mensagem.tom ? { tom: mensagem.tom } : {}), ...(continuacao ? { continuacao: 'true' } : {}) };
   return el('li', { class: 'balao', dataset }, [
     mensagem.autor === 'fluxo' ? avatar() : null,
     el('div', { class: 'balao-corpo' }, [
-      el('p', { class: 'quebra', text: mensagem.texto }),
-      el('time', { class: 'balao-hora', datetime: mensagem.em, text: hora(mensagem.em) })
+      continuacao ? null : el('time', { class: 'balao-hora', datetime: mensagem.em, text: hora(mensagem.em) }),
+      el('p', { class: 'quebra', text: mensagem.texto })
     ])
   ]);
 }

@@ -14,15 +14,20 @@
 }
 
 .conversa-coluna { min-width: 0; width: 100%; max-width: 46rem; margin-inline: auto; }
-.linha-do-tempo { display: flex; flex-direction: column; gap: var(--e4); padding-bottom: var(--e4); }
+.linha-do-tempo { display: flex; flex-direction: column; padding-bottom: var(--e4); }
 
-/* Balões: o Fluxo fala sem moldura, com a marca; a pessoa fala em tinta. */
+/* Balões: o Fluxo fala sem moldura, com a marca; a pessoa fala em tinta.
+   Falas seguidas do mesmo autor se aproximam e repetem só o texto. */
 .balao {
   display: grid;
   grid-template-columns: 1.5rem minmax(0, 1fr);
   gap: var(--e3);
   align-items: start;
+  margin-top: var(--e4);
 }
+
+.balao[data-continuacao="true"] { margin-top: var(--e1); }
+.balao[data-continuacao="true"] .balao-avatar { visibility: hidden; }
 
 .balao-corpo { display: flex; flex-direction: column; gap: 2px; min-width: 0; line-height: var(--altura-leitura); }
 .balao-hora { font-size: var(--texto-xs); color: var(--texto-3); font-variant-numeric: tabular-nums; }
@@ -43,7 +48,7 @@
   color: var(--texto-inverso);
 }
 
-.balao[data-autor="voce"] .balao-hora { color: inherit; opacity: 0.7; align-self: flex-end; }
+.balao[data-autor="voce"] .balao-hora { color: inherit; opacity: 0.7; align-self: flex-end; order: 2; }
 
 .balao-avatar { display: block; width: 1.5rem; height: 1.5rem; margin-top: 1px; color: var(--acao); }
 

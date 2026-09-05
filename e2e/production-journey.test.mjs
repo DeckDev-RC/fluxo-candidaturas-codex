@@ -49,12 +49,12 @@ async function journey({ page, runtime, fixture, board, url, resumePath }) {
   assert.match(imported, /fixture@example\.test/, 'o conteúdo do arquivo externo precisa ter sido transferido');
   await page.locator('#comecar').click();
 
-  // O currículo importado não declara cargo-alvo: o Intake precisa parar e perguntar.
+  // O currículo importado não declara localização: o Intake precisa parar e perguntar.
   await page.locator('#lista-decisoes').waitFor({ timeout: 60_000 });
   await page.screenshot({ path: join(artifacts, 'ui-lacuna.png'), fullPage: true });
   assert.match(await page.locator('#indicador-decisoes-texto').textContent(), /decis/i);
   await page.getByRole('button', { name: 'Responder' }).first().click();
-  await page.locator('#lacuna-targetRoles').fill('Engenharia de software');
+  await page.locator('#lacuna-location').fill('São Paulo');
   await page.getByRole('button', { name: 'Responder e continuar' }).click();
 
   // A jornada retomada só pode voltar a parar na revisão humana da candidatura.
@@ -72,7 +72,7 @@ async function journey({ page, runtime, fixture, board, url, resumePath }) {
   assert.ok(workflow.outputs.fit.items.length >= 2, 'a shortlist real precisa conter as vagas observadas');
 
   // A lacuna respondida virou fato confirmado: uma nova jornada não repete a pergunta.
-  const repeated = await runtime.orchestrator.start({ objective: 'segunda jornada', mode: 'autonomous', input: { targetRoles: 'Engenharia de software' } });
+  const repeated = await runtime.orchestrator.start({ objective: 'segunda jornada', mode: 'autonomous', input: { targetRoles: 'conduzir candidaturas de engenharia de software remotas' } });
   await repeated.completion;
   assert.ok(
     eventsOf(runtime, repeated.run.id).some((event) => event.type === 'autopilot.task.completed' && event.payload.task === 'intake'),
@@ -174,6 +174,7 @@ async function appServer(runtime, rootDir) {
     schedulerService: runtime.schedulerService,
     notificationService: runtime.notificationService,
     runtimeHealth: runtime.runtimeHealth,
+    conversationService: runtime.conversationService,
     sessionStore: runtime.sessionStore,
     metricsService: runtime.metricsService
   });

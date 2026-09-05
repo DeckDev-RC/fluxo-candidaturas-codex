@@ -4,6 +4,7 @@
 
 import { el, replace } from '../core/dom.mjs';
 import { notice } from './messages.mjs';
+import { rerender } from '../core/router.mjs';
 
 export function openDialog({ title, body, actions = [] }) {
   const dialogo = document.querySelector('#dialogo');
@@ -32,7 +33,9 @@ export function openDialog({ title, body, actions = [] }) {
     }
   }));
   replace(document.querySelector('#dialogo-acoes'), botoes);
-  dialogo.addEventListener('close', () => { if (anterior?.isConnected) anterior.focus?.(); }, { once: true });
+  // Ao fechar: foco de volta ao gatilho e repintura, porque a tela não repinta
+  // enquanto o diálogo está aberto e pode ter novidade acumulada.
+  dialogo.addEventListener('close', () => { if (anterior?.isConnected) anterior.focus?.(); rerender(); }, { once: true });
   dialogo.showModal();
   dialogo.querySelector('input, textarea, select, button')?.focus();
   return dialogo;
