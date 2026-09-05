@@ -2,11 +2,12 @@ import { randomUUID } from 'node:crypto';
 import { copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { acquireFluxoLock, wrapMutations } from './lock.mjs';
+import { openAuthoritativePersistence } from './persistence-authority.mjs';
 
-export function createCampaignService({ rootDir, mutationLock = true, lock = () => acquireFluxoLock(rootDir) }) {
+export function createCampaignService({ rootDir, persistence = openAuthoritativePersistence({ rootDir }), mutationLock = true, lock = () => acquireFluxoLock(rootDir) }) {
   const service = {
     async getCampaign() {
-      return readJson(join(rootDir, 'campanha', 'config.json'), { platforms: [] });
+      return await sqlite(persistence) ? persistence.getCampaign() : readJson(join(rootDir, 'campanha', 'config.json'), { platforms: [] });
     },
 
     async listPlatforms() {
@@ -15,7 +16,7 @@ export function createCampaignService({ rootDir, mutationLock = true, lock = () 
     },
 
     async updateCampaign(patch) {
-      const current = await readJson(join(rootDir, 'campanha', 'config.json'), { platforms: [] });
+      const current = await sqlite(persistence) ? await persistence.getCampaign() : await readJson(join(rootDir, 'campanha', 'config.json'), { platforms: [] });
       const platformDefinitions = await this.listPlatforms();
       const allowedNames = new Set(platformDefinitions.map((item) => item.name));
       const next = { ...current, ...patch };
@@ -36,12 +37,15 @@ export function createCampaignService({ rootDir, mutationLock = true, lock = () 
         }
       }
 
-      await writeJsonAtomic(join(rootDir, 'campanha', 'config.json'), next);
+      if (await sqlite(persistence)) await persistence.saveCampaign(next);
+      else await writeJsonAtomic(join(rootDir, 'campanha', 'config.json'), next);
       return next;
     }
   };
   return wrapMutations(service, ['updateCampaign'], { rootDir, mutationLock, lock });
 }
+
+async function sqlite(persistence) { return Boolean(persistence?.isSqliteAuthority && await persistence.isSqliteAuthority()); }
 
 async function readJson(path, fallback) {
   try {

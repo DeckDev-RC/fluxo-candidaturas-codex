@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { acquireFluxoLock, wrapMutations } from './lock.mjs';
+import { openAuthoritativePersistence } from './persistence-authority.mjs';
 
 const REQUIRED_FIELDS = [
   'name', 'email', 'phone', 'location', 'targetRoles', 'seniority', 'technicalFocus', 'workModes',
@@ -21,7 +22,7 @@ export function validateOnboarding(input = {}) {
   return { valid: missing.length === 0, missing, errors: [] };
 }
 
-export function createOnboardingService({ rootDir, mutationLock = true, lock = () => acquireFluxoLock(rootDir), memoryService } = {}) {
+export function createOnboardingService({ rootDir, persistence = openAuthoritativePersistence({ rootDir }), mutationLock = true, lock = () => acquireFluxoLock(rootDir), memoryService } = {}) {
   const service = {
     async saveOnboarding(input) {
       const validation = validateOnboarding(input);
@@ -33,16 +34,23 @@ export function createOnboardingService({ rootDir, mutationLock = true, lock = (
         if (!Number.isInteger(Number(platform.goal)) || Number(platform.goal) < 0) throw domainError('invalid_onboarding', `Meta inválida: ${platform.name}`);
       }
 
+      const sqliteAuthority = await useSqlite(persistence);
       await mkdir(join(rootDir, 'perfil'), { recursive: true });
-      await mkdir(join(rootDir, 'campanha'), { recursive: true });
-      await mkdir(join(rootDir, 'candidaturas'), { recursive: true });
-      await mkdir(join(rootDir, 'fila'), { recursive: true });
+      if (!sqliteAuthority) {
+        await mkdir(join(rootDir, 'campanha'), { recursive: true });
+        await mkdir(join(rootDir, 'candidaturas'), { recursive: true });
+        await mkdir(join(rootDir, 'fila'), { recursive: true });
+      }
       const profilePath = join(rootDir, 'perfil', 'candidato.md');
       await copyFile(profilePath, `${profilePath}.bak`).catch((error) => { if (error?.code !== 'ENOENT') throw error; });
       await writeFile(profilePath, renderProfile(input), 'utf8');
-      await writeJsonAtomic(join(rootDir, 'campanha', 'config.json'), normalizeCampaign(input.campaign));
-      await ensureJson(join(rootDir, 'candidaturas', 'candidaturas.json'), []);
-      await ensureJson(join(rootDir, 'fila', 'vagas.json'), []);
+      const campaign = normalizeCampaign(input.campaign);
+      if (sqliteAuthority) await persistence.saveCampaign(campaign);
+      else {
+        await writeJsonAtomic(join(rootDir, 'campanha', 'config.json'), campaign);
+        await ensureJson(join(rootDir, 'candidaturas', 'candidaturas.json'), []);
+        await ensureJson(join(rootDir, 'fila', 'vagas.json'), []);
+      }
       if (memoryService?.upsertFacts) {
         const facts = REQUIRED_FIELDS.map((key) => ({ key, value: input[key], source: 'onboarding', sourceLabel: 'Configuração inicial', confirmed: true, sensitive: ['workAuthorization', 'pcd'].includes(key) }));
         await memoryService.upsertFacts(facts);
@@ -53,6 +61,8 @@ export function createOnboardingService({ rootDir, mutationLock = true, lock = (
   };
   return wrapMutations(service, ['saveOnboarding'], { rootDir, mutationLock, lock });
 }
+
+async function useSqlite(persistence) { return Boolean(persistence?.isSqliteAuthority && await persistence.isSqliteAuthority()); }
 
 function renderProfile(input) {
   const value = (field) => String(input[field] ?? '').replace(/\r?\n/g, '<br>');

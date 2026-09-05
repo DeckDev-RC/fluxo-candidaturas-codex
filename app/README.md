@@ -17,6 +17,21 @@ npm test
 npm start
 ```
 
+## Autoridade SQLite
+
+Uma raiz existente continua usando JSON até uma migração deliberada. Faça backup
+normal do diretório e então execute:
+
+```powershell
+npm run migrate:persistence -- --root ..
+```
+
+A migração cria uma cópia dos três JSONs operacionais em
+`estado/migration-backups/`, mantém IDs, campos extras, datas, histórico e
+evidências, e torna `estado/fluxo.sqlite` a autoridade. Depois disso, JSON não
+é importado na inicialização: use a ação explícita de exportação/reconciliação
+da persistência para resolver qualquer divergência detectada.
+
 Abra `http://127.0.0.1:4173`.
 
 O contrato completo de instalação, modos (`chatgpt`, `api-key`, fixture e offline),

@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { access } from 'node:fs/promises';
 import { join } from 'node:path';
+import { openAuthoritativePersistence } from './persistence-authority.mjs';
 
 const ALLOWED_SCRIPTS = new Set([
   'adicionar-vaga.ps1', 'calcular-aderencia.ps1', 'exportar-compartilhavel.ps1', 'extrair-curriculo.ps1',
@@ -11,16 +12,23 @@ const ALLOWED_SCRIPTS = new Set([
   'selecionar-curriculo.ps1', 'testar-distribuicao.ps1', 'validar.ps1', 'verificar-playwright.ps1'
 ]);
 const SENSITIVE_OUTPUT = /((?:password|token|cookie|secret|mfa|authorization|credential)\s*["']?\s*[:=]\s*["']?)([^"'\s,}\]]+)/gi;
+const SQLITE_BLOCKED_SCRIPTS = new Set(['adicionar-vaga.ps1', 'inicializar-campanha.ps1', 'nova-candidatura.ps1', 'onboarding.ps1', 'registrar-evento.ps1', 'registrar-falha-fila.ps1']);
 
-export async function runAllowedScript(name, args = [], { rootDir, executable = 'pwsh', timeoutMs = 30_000 } = {}) {
+export async function runAllowedScript(name, args = [], { rootDir, persistence, executable = 'pwsh', timeoutMs = 30_000 } = {}) {
   if (!ALLOWED_SCRIPTS.has(name)) throw domainError('script_not_allowed', `Script não permitido: ${name}`);
   if (!Array.isArray(args) || args.some((arg) => typeof arg !== 'string' || /[\0\r\n]/.test(arg))) {
     throw domainError('invalid_script_arguments', 'Argumentos inválidos para script.');
   }
-  const scriptPath = join(rootDir, 'scripts', name);
-  await access(scriptPath);
+  const ownedPersistence = persistence ? null : openAuthoritativePersistence({ rootDir });
+  const effectivePersistence = persistence ?? ownedPersistence;
+  try {
+    if (SQLITE_BLOCKED_SCRIPTS.has(name) && effectivePersistence?.isSqliteAuthority && await effectivePersistence.isSqliteAuthority()) {
+      throw domainError('legacy_script_blocked', `O script ${name} altera JSON legado, mas SQLite é a autoridade. Use o serviço da aplicação ou reconcilie explicitamente.`);
+    }
+    const scriptPath = join(rootDir, 'scripts', name);
+    await access(scriptPath);
 
-  return new Promise((resolve, reject) => {
+    return await new Promise((resolve, reject) => {
     const child = spawn(executable, ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', scriptPath, ...args], {
       cwd: rootDir,
       shell: false,
@@ -47,7 +55,8 @@ export async function runAllowedScript(name, args = [], { rootDir, executable = 
       clearTimeout(timeout);
       resolve({ ...result, stdout: redact(result.stdout), stderr: redact(result.stderr) });
     }
-  });
+    });
+  } finally { ownedPersistence?.close(); }
 }
 
 function redact(value) {

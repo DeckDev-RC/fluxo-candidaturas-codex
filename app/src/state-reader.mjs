@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { openAuthoritativePersistence } from './persistence-authority.mjs';
 
 const CONFIRMED_APPLICATION_STATUSES = new Set([
   'enviada',
@@ -14,12 +15,16 @@ const CONFIRMED_APPLICATION_STATUSES = new Set([
 
 const SENSITIVE_KEY = /(password|token|cookie|secret|mfa|authorization|credential)/i;
 
-export async function readFluxoState(rootDir) {
+export async function readFluxoState(rootDir, { persistence } = {}) {
+  const ownedPersistence = persistence ? null : openAuthoritativePersistence({ rootDir });
+  const effectivePersistence = persistence ?? ownedPersistence;
+  try {
+  const operational = await sqliteOperationalState(effectivePersistence);
   const [preflight, campaign, queue, applications, checkpoint, memory, discovery, followup, exceptions] = await Promise.all([
     readJson(join(rootDir, 'estado', 'preflight.json'), { ready: false, checks: [] }),
-    readJson(join(rootDir, 'campanha', 'config.json'), { platforms: [] }),
-    readJson(join(rootDir, 'fila', 'vagas.json'), []),
-    readJson(join(rootDir, 'candidaturas', 'candidaturas.json'), []),
+    operational ? Promise.resolve(operational.campaign) : readJson(join(rootDir, 'campanha', 'config.json'), { platforms: [] }),
+    operational ? Promise.resolve(operational.queue) : readJson(join(rootDir, 'fila', 'vagas.json'), []),
+    operational ? Promise.resolve(operational.applications) : readJson(join(rootDir, 'candidaturas', 'candidaturas.json'), []),
     readJson(join(rootDir, 'estado', 'checkpoint.json'), null),
     readJson(join(rootDir, 'estado', 'memoria.json'), { facts: {}, resumes: [], executions: [] }),
     readJson(join(rootDir, 'estado', 'discovery.json'), { opportunities: [], failures: [], duplicates: 0 }),
@@ -60,6 +65,12 @@ export async function readFluxoState(rootDir) {
     followup: redact(followup),
     exceptions: Array.isArray(exceptions) ? exceptions.map((item) => redactException(redact(item))) : []
   };
+  } finally { ownedPersistence?.close(); }
+}
+
+async function sqliteOperationalState(persistence) {
+  if (!persistence?.isSqliteAuthority || !await persistence.isSqliteAuthority()) return null;
+  return persistence.getOperationalState();
 }
 
 async function readJson(path, fallback) {

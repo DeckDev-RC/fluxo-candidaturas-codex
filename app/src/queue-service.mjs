@@ -2,21 +2,22 @@ import { randomUUID } from 'node:crypto';
 import { copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { acquireFluxoLock, wrapMutations } from './lock.mjs';
+import { openAuthoritativePersistence } from './persistence-authority.mjs';
 
 const CONFIRMED_STATUSES = new Set([
   'enviada', 'triagem', 'teste pendente', 'teste concluído', 'entrevista', 'proposta', 'rejeitada', 'encerrada'
 ]);
 const PRIORITY_RANK = { A: 1, B: 2, C: 3 };
 
-export function createQueueService({ rootDir, now = () => new Date(), checkpointAfterEachAction = true, maxConsecutiveFailures = null, mutationLock = true, lock = () => acquireFluxoLock(rootDir) }) {
+export function createQueueService({ rootDir, persistence = openAuthoritativePersistence({ rootDir }), now = () => new Date(), checkpointAfterEachAction = true, maxConsecutiveFailures = null, mutationLock = true, lock = () => acquireFluxoLock(rootDir) }) {
   const service = {
     async listQueue() {
-      const queue = await readJson(join(rootDir, 'fila', 'vagas.json'), []);
+      const queue = await readQueue(rootDir, persistence);
       return { items: asArray(queue), counts: countByStatus(asArray(queue)) };
     },
 
     async search({ query = '', platform = '', status = '', minFit = 0 } = {}) {
-      const queue = asArray(await readJson(join(rootDir, 'fila', 'vagas.json'), []));
+      const queue = await readQueue(rootDir, persistence);
       const needle = String(query).trim().toLocaleLowerCase();
       const minimum = Number(minFit) || 0;
       return queue.filter((item) => (!needle || `${item.company ?? ''} ${item.role ?? ''} ${item.identifierOrUrl ?? ''}`.toLocaleLowerCase().includes(needle)) && (!platform || item.platform === normalizePlatform(platform)) && (!status || item.status === status) && Number(item.fitScore ?? 0) >= minimum);
@@ -25,9 +26,8 @@ export function createQueueService({ rootDir, now = () => new Date(), checkpoint
     async addQueueItem(input) {
       const item = normalizeInput(input, now);
       const queuePath = join(rootDir, 'fila', 'vagas.json');
-      const applicationsPath = join(rootDir, 'candidaturas', 'candidaturas.json');
-      const queue = asArray(await readJson(queuePath, []));
-      const applications = asArray(await readJson(applicationsPath, []));
+      const queue = await readQueue(rootDir, persistence);
+      const applications = await readApplications(rootDir, persistence);
 
       if (queue.some((entry) => entry.key === item.key) || applications.some((entry) => entry.key === item.key)) {
         throw domainError('queue_duplicate', `A vaga já existe: ${item.identifierOrUrl}`);
@@ -37,15 +37,15 @@ export function createQueueService({ rootDir, now = () => new Date(), checkpoint
       }
 
       queue.push(item);
-      await writeJsonAtomic(queuePath, queue);
+      await saveQueue(queuePath, queue, persistence);
       return item;
     },
 
     async claimNext({ id = '', platform = '' } = {}) {
-      const campaign = await readJson(join(rootDir, 'campanha', 'config.json'), { platforms: [] });
+      const campaign = await readCampaign(rootDir, persistence);
       const queuePath = join(rootDir, 'fila', 'vagas.json');
-      const queue = asArray(await readJson(queuePath, []));
-      const applications = asArray(await readJson(join(rootDir, 'candidaturas', 'candidaturas.json'), []));
+      const queue = await readQueue(rootDir, persistence);
+      const applications = await readApplications(rootDir, persistence);
       const eligible = eligiblePlatforms(campaign, applications);
       const normalizedPlatform = platform ? normalizePlatform(platform) : '';
       const candidate = queue
@@ -56,7 +56,7 @@ export function createQueueService({ rootDir, now = () => new Date(), checkpoint
       candidate.status = 'em andamento';
       candidate.attempts = numberOrZero(candidate.attempts) + 1;
       candidate.updatedAt = now().toISOString();
-      await writeJsonAtomic(queuePath, queue);
+      await saveQueue(queuePath, queue, persistence);
       if (checkpointAfterEachAction) await writeJsonAtomic(join(rootDir, 'estado', 'checkpoint.json'), {
         updatedAt: candidate.updatedAt,
         phase: 'vaga selecionada',
@@ -71,9 +71,9 @@ export function createQueueService({ rootDir, now = () => new Date(), checkpoint
     },
 
     async recordQueueFailure(reference, errorMessage) {
-      const campaign = await readJson(join(rootDir, 'campanha', 'config.json'), { maxConsecutiveFailures: 3 });
+      const campaign = await readCampaign(rootDir, persistence);
       const queuePath = join(rootDir, 'fila', 'vagas.json');
-      const queue = asArray(await readJson(queuePath, []));
+      const queue = await readQueue(rootDir, persistence);
       const item = queue.find((entry) => entry.id === reference || entry.key === reference || entry.identifierOrUrl === reference);
       if (!item) throw domainError('queue_item_not_found', `Item da fila não encontrado: ${reference}`);
 
@@ -83,7 +83,7 @@ export function createQueueService({ rootDir, now = () => new Date(), checkpoint
       item.lastError = String(errorMessage ?? 'Falha sem descrição');
       item.updatedAt = now().toISOString();
       item.status = attempts >= maximum ? 'bloqueada' : 'na fila';
-      await writeJsonAtomic(queuePath, queue);
+      await saveQueue(queuePath, queue, persistence);
       if (checkpointAfterEachAction) await writeJsonAtomic(join(rootDir, 'estado', 'checkpoint.json'), {
         updatedAt: item.updatedAt,
         phase: 'falha',
@@ -99,6 +99,12 @@ export function createQueueService({ rootDir, now = () => new Date(), checkpoint
   };
   return wrapMutations(service, ['addQueueItem', 'claimNext', 'recordQueueFailure'], { rootDir, mutationLock, lock });
 }
+
+async function useSqlite(persistence) { return Boolean(persistence?.isSqliteAuthority && await persistence.isSqliteAuthority()); }
+async function readCampaign(rootDir, persistence) { return await useSqlite(persistence) ? persistence.getCampaign() : readJson(join(rootDir, 'campanha', 'config.json'), { platforms: [] }); }
+async function readQueue(rootDir, persistence) { return asArray(await useSqlite(persistence) ? await persistence.getQueue() : await readJson(join(rootDir, 'fila', 'vagas.json'), [])); }
+async function readApplications(rootDir, persistence) { return asArray(await useSqlite(persistence) ? await persistence.getApplications() : await readJson(join(rootDir, 'candidaturas', 'candidaturas.json'), [])); }
+async function saveQueue(path, value, persistence) { if (await useSqlite(persistence)) return persistence.replaceQueue(value); return writeJsonAtomic(path, value); }
 
 function isExcluded(item, exclusions = []) {
   const text = `${item.company ?? ''} ${item.role ?? ''}`.toLocaleLowerCase();

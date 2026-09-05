@@ -1,8 +1,9 @@
 import { readFluxoState } from './state-reader.mjs';
+import { openAuthoritativePersistence } from './persistence-authority.mjs';
 
-export function createMetricsService({ rootDir, readOperations = async () => [], readRuns = async () => [], readExceptions = async () => [], readTraces = async () => [] }) {
+export function createMetricsService({ rootDir, persistence = openAuthoritativePersistence({ rootDir }), readOperations = async () => [], readRuns = async () => [], readExceptions = async () => [], readTraces = async () => [] }) {
   return { async get() {
-    const state = await readFluxoState(rootDir);
+    const state = await readFluxoState(rootDir, { persistence });
     const applications = state.applications.items;
     const confirmed = state.applications.confirmedCount;
     const assessments = applications.filter((item) => item.assessment).length;

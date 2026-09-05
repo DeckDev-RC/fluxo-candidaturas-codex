@@ -1,7 +1,11 @@
 import { runAllowedScript } from './script-adapter.mjs';
 import { acquireFluxoLock, wrapMutations } from './lock.mjs';
+import { createHash, randomUUID } from 'node:crypto';
+import { readFile, stat } from 'node:fs/promises';
+import { resolve, relative } from 'node:path';
+import { openAuthoritativePersistence } from './persistence-authority.mjs';
 
-export function createApplicationService({ rootDir = '', scriptRunner = (name, args) => runAllowedScript(name, args, { rootDir }), mutationLock = true, lock = () => acquireFluxoLock(rootDir) }) {
+export function createApplicationService({ rootDir = '', persistence = openAuthoritativePersistence({ rootDir }), now = () => new Date(), scriptRunner = (name, args) => runAllowedScript(name, args, { rootDir, persistence }), mutationLock = true, lock = () => acquireFluxoLock(rootDir) }) {
   const service = {
     async recordConfirmedApplication({ item, confirmation, evidencePath = '', resume = '', applicationId = '', nextAction = 'Aguardar retorno', notes = '' }) {
       if (confirmation?.confirmed !== true) throw domainError('submission_not_confirmed', 'A plataforma não confirmou o recebimento.');
@@ -10,6 +14,43 @@ export function createApplicationService({ rootDir = '', scriptRunner = (name, a
       if (resume && !isSafeRelativePath(resume, 'curriculo')) throw domainError('invalid_resume_path', 'Currículo deve ficar em curriculo/.');
       for (const field of ['platform', 'company', 'role', 'identifierOrUrl']) {
         if (!String(item?.[field] ?? '').trim()) throw domainError('invalid_application', `${field} é obrigatório.`);
+      }
+
+      if (await useSqlite(persistence)) {
+        const applications = await persistence.getApplications();
+        const key = item.key ?? `${item.platform}|${item.identifierOrUrl}`;
+        const evidenceMetadata = await verifyEvidence(rootDir, evidencePath, now);
+        const existing = applications.find((entry) => entry.key === key);
+        if (existing) {
+          if (hasEvidence(existing, evidencePath)) return { record: existing, commandResult: { ok: true, bridge: 'sqlite', idempotent: true } };
+          throw domainError('application_duplicate', 'Esta candidatura já está registrada com outra evidência; reconcilie antes de registrar novamente.');
+        }
+        const timestamp = now().toISOString();
+        const record = {
+          ...item,
+          id: randomUUID().replaceAll('-', ''),
+          queueItemId: item.id ?? '',
+          key,
+          status: 'enviada',
+          submittedAt: timestamp,
+          appliedAt: timestamp,
+          applicationId: String(applicationId ?? ''),
+          resume: String(resume ?? ''),
+          evidencePath,
+          evidence: [evidencePath],
+          evidenceMetadata: [evidenceMetadata],
+          nextAction: String(nextAction ?? ''),
+          notes: String(notes ?? ''),
+          history: Array.isArray(item.history) ? item.history : [],
+          createdAt: timestamp,
+          updatedAt: timestamp
+        };
+        applications.push(record);
+        const queue = await persistence.getQueue();
+        const queueItem = queue.find((entry) => entry.id === item.id || entry.key === key);
+        if (queueItem) { queueItem.status = 'enviada'; queueItem.updatedAt = timestamp; queueItem.lastError = ''; }
+        await persistence.replaceQueueAndApplications({ queue, applications });
+        return { record, commandResult: { ok: true, bridge: 'sqlite' } };
       }
 
       const args = [
@@ -28,6 +69,23 @@ export function createApplicationService({ rootDir = '', scriptRunner = (name, a
   };
   return wrapMutations(service, ['recordConfirmedApplication'], { rootDir, mutationLock, lock });
 }
+
+async function useSqlite(persistence) { return Boolean(persistence?.isSqliteAuthority && await persistence.isSqliteAuthority()); }
+
+async function verifyEvidence(rootDir, evidencePath, now) {
+  const root = resolve(rootDir);
+  const absolute = resolve(root, evidencePath);
+  if (relative(root, absolute).startsWith('..')) throw domainError('invalid_evidence_path', 'Evidência deve ficar no diretório Fluxo.');
+  try {
+    const [content, info] = await Promise.all([readFile(absolute), stat(absolute)]);
+    if (!info.isFile()) throw domainError('evidence_unavailable', 'A evidência informada não é um arquivo.');
+    return { path: evidencePath, sha256: createHash('sha256').update(content).digest('hex'), size: info.size, verifiedAt: now().toISOString() };
+  } catch (error) {
+    if (error.code === 'evidence_unavailable') throw error;
+    throw domainError('evidence_unavailable', `A evidência precisa existir antes do registro SQLite: ${evidencePath}`);
+  }
+}
+function hasEvidence(record, evidencePath) { return record.evidencePath === evidencePath || (Array.isArray(record.evidence) && record.evidence.includes(evidencePath)); }
 
 function parseRecord(stdout) {
   try {

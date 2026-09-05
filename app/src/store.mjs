@@ -3,6 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { readFluxoState } from './state-reader.mjs';
+import { openAuthoritativePersistence } from './persistence-authority.mjs';
 
 const OPERATIONAL_FILES = [
   'estado/preflight.json',
@@ -142,6 +143,17 @@ export function createStore({ rootDir, dbPath }) {
 
   return {
     async syncFromFiles() {
+      const authority = openAuthoritativePersistence({ rootDir });
+      if (authority) {
+        try {
+          const state = await readFluxoState(rootDir, { persistence: authority });
+          const divergences = await authority.detectLegacyDrift();
+          const now = new Date().toISOString();
+          database.prepare(`insert into state_documents (name, payload_json, updated_at) values ('snapshot', ?, ?)
+            on conflict(name) do update set payload_json=excluded.payload_json, updated_at=excluded.updated_at`).run(JSON.stringify(state), now);
+          return { state: this.getSnapshot(), divergences };
+        } finally { authority.close(); }
+      }
       const state = await readFluxoState(rootDir);
       const revisions = await readRevisions(rootDir);
       const previous = database.prepare('select path, content_hash from file_revisions').all();
