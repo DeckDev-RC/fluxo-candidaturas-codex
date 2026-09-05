@@ -2,7 +2,36 @@
 
 Versão distribuível: **1.0.0**.
 
-Pacote reutilizável para o próprio agente do Codex trabalhar com o usuário pelo chat, usar a habilidade Playwright no navegador e conduzir onboarding, busca, fila, formulários, candidaturas, questionários e acompanhamento. Não é um bot externo executado sem conversa.
+## Linha de produto P0: App Harness
+
+O App Harness é a base da linha de produto P0 do Fluxo: uma interface **local-first**, **single-user** e operada em conjunto com o agente do Codex. Ele organiza onboarding, preflight, campanha, fila, candidaturas, questionários, acompanhamento e retomada sem transformar o pacote em SaaS remoto ou em um bot externo executado sem conversa.
+
+O servidor do Harness escuta somente em `127.0.0.1`. Os arquivos JSON existentes continuam sendo a fonte operacional nesta fase, e ações externas permanecem sujeitas à confirmação e aos limites definidos pelo Fluxo.
+
+## Início oficial do App Harness
+
+Na pasta `app/`, execute:
+
+```powershell
+npm start
+```
+
+Abra `http://127.0.0.1:4173`. Para validar a instalação antes de operar:
+
+```powershell
+npm test
+```
+
+O comando oficial de preparação de uma instalação continua sendo `.\scripts\primeiro-uso.ps1`, executado a partir da raiz do repositório.
+
+## Organização do repositório
+
+- **Código do produto:** `app/src/`, `app/public/`, `scripts/`, `templates/` e `config/`.
+- **Dados privados e operacionais locais:** `.env`, `perfil/`, `curriculo/`, `campanha/`, `fila/`, `estado/`, `candidaturas/`, `evidencias/` e `mensagens/`. Não entram em compartilhamentos.
+- **Artefatos gerados:** relatórios como `candidaturas/controle-candidaturas.md` e `candidaturas/painel.md`, além do pacote sanitizado produzido em `dist/`. Devem ser regenerados pelos comandos oficiais.
+- **Fixtures e testes:** `app/test/` e seus dados de teste locais; não usam contas reais nem enviam candidaturas reais.
+
+O pacote é reutilizável para o próprio agente do Codex trabalhar com o usuário pelo chat, usar a habilidade Playwright no navegador e conduzir onboarding, busca, fila, formulários, candidaturas, questionários e acompanhamento.
 
 ## Capacidades
 
@@ -83,6 +112,7 @@ Fluxo/
 ├── AGENTS.md
 ├── README.md
 ├── .env.example
+├── app/                # App Harness local: código, UI e testes/fixtures
 ├── config/plataformas.json
 ├── perfil/             # perfil privado criado no onboarding
 ├── curriculo/          # PDF, DOCX e textos privados

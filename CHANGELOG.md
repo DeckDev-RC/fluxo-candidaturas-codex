@@ -1,5 +1,11 @@
 # Histórico de versões
 
+## P0 — consolidação do App Harness — 2026-09-04
+
+- consolidado o App Harness como linha de produto P0 local-first e single-user;
+- documentados o início local oficial, a escuta exclusiva em loopback e a separação entre código, dados privados, artefatos gerados e fixtures;
+- mantida a compatibilidade com os arquivos operacionais e scripts existentes.
+
 ## 1.0.0 — 2026-09-01
 
 Primeira versão final distribuível.
