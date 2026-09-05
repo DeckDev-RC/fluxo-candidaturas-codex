@@ -72,6 +72,10 @@ test('domain application rejects unconfirmed, unevidenced and invalidly approved
 
 test('domain application preserves legacy review and withdrawal transitions', () => {
   assert.deepEqual(
+    canTransitionApplication(APPLICATION_STATUS.DRAFT, APPLICATION_STATUS.WITHDRAWN),
+    { allowed: true }
+  );
+  assert.deepEqual(
     canTransitionApplication(APPLICATION_STATUS.DRAFT, APPLICATION_STATUS.READY_FOR_REVIEW),
     { allowed: true }
   );
@@ -81,6 +85,10 @@ test('domain application preserves legacy review and withdrawal transitions', ()
   );
   assert.deepEqual(
     canTransitionApplication(APPLICATION_STATUS.INTERVIEW, APPLICATION_STATUS.WITHDRAWN),
+    { allowed: true }
+  );
+  assert.deepEqual(
+    canTransitionApplication(APPLICATION_STATUS.OFFER, APPLICATION_STATUS.WITHDRAWN),
     { allowed: true }
   );
 });
