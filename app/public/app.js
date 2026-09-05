@@ -2,11 +2,11 @@
 // jornada. A lógica de cada área vive no módulo da própria área (U9-03).
 
 import { bootstrapSession, describeError } from './core/api.mjs';
-import { isDemo, loadAiStatus, loadState, decisions, store, subscribe } from './core/store.mjs';
+import { isDemo, loadState, decisions, store, subscribe } from './core/store.mjs';
 import { rerender, startRouter, go, currentRoute } from './core/router.mjs';
 import { restoreJourney } from './core/stream.mjs';
 import { onTranscript, startTranscript } from './core/conversa.mjs';
-import { refreshAiOnFocus } from './core/ia-status.mjs';
+import { connectAiStatus, refreshAiOnFocus } from './core/ia-status.mjs';
 import { notice } from './ui/messages.mjs';
 import { agoraScreen } from './screens/agora.mjs';
 import { oportunidadesScreen } from './screens/oportunidades.mjs';
@@ -68,7 +68,7 @@ async function start() {
   startRouter({ routes: rotas, onChange: aoTrocarRota });
   if (!isDemo()) {
     restoreJourney();
-    loadAiStatus();
+    connectAiStatus();
     refreshAiOnFocus();
   }
   pintarCabecalho();

@@ -1,38 +1,38 @@
-// Acompanhamento da conexão com a IA. O login termina fora do app (navegador),
-// então ninguém avisa a tela: aqui o estado é reconsultado enquanto o login
-// está em curso e sempre que a janela volta ao foco.
+// Conexão com a IA em tempo real. O login termina fora do app (navegador); o
+// serviço local ouve o app-server e empurra cada mudança por SSE. Ninguém
+// precisa perguntar de novo. O foco da janela é só uma reserva para o caso de
+// a conexão de eventos ter caído.
 
-import { loadAiStatus, store } from './store.mjs';
+import { loadAiStatus, setAiHealth, store } from './store.mjs';
 import { notice } from '../ui/messages.mjs';
 
-const INTERVALO_MS = 3000;
-const LIMITE_MS = 5 * 60 * 1000;
-let espera = null;
+const INTERVALO_FOCO_MS = 3000;
+let fonte = null;
 
-// Chamado logo depois de abrir o login: consulta até a IA responder conectada.
-export function watchAiLogin() {
-  stopWatching();
-  const inicio = Date.now();
-  const verificar = async () => {
-    await loadAiStatus();
-    if (store.ia.disponivel) {
-      stopWatching();
-      notice('Automação de IA conectada. A busca automática já pode começar.', 'sucesso');
-      return;
+export function connectAiStatus() {
+  if (fonte) return;
+  // O primeiro evento de cada conexão é o retrato atual, não uma mudança: só a
+  // transição para conectado (ou uma falha de login) merece aviso.
+  let retratoInicial = true;
+  fonte = new EventSource('/api/v1/runtime/health?stream=1');
+  fonte.addEventListener('runtime.health', (evento) => {
+    const saude = parse(evento.data);
+    if (!saude) return;
+    const disponivelAntes = store.ia.disponivel;
+    setAiHealth(saude);
+    if (!retratoInicial) {
+      if (saude.available && !disponivelAntes) notice('Automação de IA conectada. A busca automática já pode começar.', 'sucesso');
+      if (saude.loginError && !saude.available) notice(saude.loginError, 'erro');
     }
-    if (Date.now() - inicio >= LIMITE_MS) {
-      stopWatching();
-      notice('O login não foi confirmado em cinco minutos. Se você concluiu no navegador, clique em "Verificar novamente".', 'atencao');
-      return;
-    }
-    espera = setTimeout(verificar, INTERVALO_MS);
-  };
-  espera = setTimeout(verificar, INTERVALO_MS);
+    retratoInicial = false;
+  });
+  // O navegador reconecta sozinho; o primeiro evento da nova conexão volta a ser retrato.
+  fonte.onerror = () => { retratoInicial = true; };
 }
 
-export function stopWatching() {
-  clearTimeout(espera);
-  espera = null;
+export function disconnectAiStatus() {
+  fonte?.close();
+  fonte = null;
 }
 
 // Voltar ao app depois do navegador é o momento em que o estado costuma ter mudado.
@@ -40,10 +40,14 @@ export function refreshAiOnFocus() {
   let ultimo = 0;
   const atualizar = () => {
     if (document.visibilityState !== 'visible') return;
-    if (Date.now() - ultimo < INTERVALO_MS) return;
+    if (Date.now() - ultimo < INTERVALO_FOCO_MS) return;
     ultimo = Date.now();
     void loadAiStatus();
   };
   window.addEventListener('focus', atualizar);
   document.addEventListener('visibilitychange', atualizar);
+}
+
+function parse(data) {
+  try { return JSON.parse(data); } catch { return null; }
 }

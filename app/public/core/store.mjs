@@ -97,14 +97,20 @@ export async function loadAiStatus() {
   if (isDemo()) return store.ia;
   const saude = await read('/api/v1/runtime/health', { fallback: null });
   const modo = await read('/api/v1/ai/mode', { fallback: null });
+  return setAiHealth(saude, modo?.mode ?? '');
+}
+
+// Um retrato da saúde do runtime, venha de consulta ou de evento, vira o mesmo estado.
+export function setAiHealth(saude, modo = saude?.mode ?? '') {
   store.ia = {
     disponivel: saude?.available === true,
     estado: saude?.state ?? '',
     motivo: saude?.reason ?? '',
+    erroLogin: saude?.loginError ?? '',
     mensagem: saude?.available === true
       ? 'Automação de IA conectada.'
-      : saude?.message ?? 'A automação de IA não está conectada. Você continua podendo revisar e decidir.',
-    modo: modo?.mode ?? ''
+      : saude?.loginError ?? saude?.message ?? 'A automação de IA não está conectada. Você continua podendo revisar e decidir.',
+    modo: modo ?? ''
   };
   notify();
   return store.ia;
