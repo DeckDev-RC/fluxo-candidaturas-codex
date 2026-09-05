@@ -73,7 +73,7 @@ test('agent turn API connects local App Server output to run events', async () =
   try {
     const response = await fetch(`http://127.0.0.1:${address.port}/api/v1/runs/run-1/agent-turn`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ threadId: 'thread-1', text: 'continue' }) });
     assert.equal(response.status, 200);
-    assert.equal(events[0].type, 'agent.turn.completed');
+    assert.equal(events[0].type, 'agent.turn.started');
     assert.match(response.headers.get('x-request-id'), /^[0-9a-f-]{36}$/);
   } finally { await close(server); }
 });

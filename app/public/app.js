@@ -1,3 +1,4 @@
+import { mountPersistence } from './persistence.js';
 import { summarizePreflight } from './preflight-summary.js';
 import { openOAuthWindow } from './oauth-window.js';
 
@@ -453,7 +454,7 @@ function connectRunStream() {
   runEventSource = new EventSource(`/api/v1/runs/${encodeURIComponent(runId)}/events?stream=1`);
   runEventSource.onopen = () => { feedback.textContent = 'Streaming conectado.'; };
   runEventSource.onerror = () => { feedback.textContent = 'Streaming interrompido; verifique o run.'; };
-  for (const type of ['agent.notification', 'agent.thread.started', 'agent.turn.completed', 'autopilot.plan.created', 'autopilot.thread.started', 'autopilot.started', 'autopilot.failed', 'application.prepared', 'application.submission_confirmed', 'run.needs_reconcile', 'run.paused', 'run.resumed']) runEventSource.addEventListener(type, (event) => {
+  for (const type of ['agent.notification', 'agent.thread.started', 'agent.turn.started', 'turn/completed', 'turn/started', 'item/agentMessage/delta', 'agent.turn.completed', 'autopilot.plan.created', 'autopilot.thread.started', 'autopilot.started', 'autopilot.failed', 'application.prepared', 'application.submission_confirmed', 'run.needs_reconcile', 'run.paused', 'run.resumed']) runEventSource.addEventListener(type, (event) => {
     output.textContent += `${event.type}: ${event.data}\n`;
     try { const payload = JSON.parse(event.data); if (event.type === 'autopilot.plan.created') renderAutopilot(payload); if (event.type === 'autopilot.started') document.querySelector('#autopilot-status').textContent = 'A IA está trabalhando…'; if (event.type === 'autopilot.failed') { renderAutopilot({ status: 'exception', exception: payload.error ?? 'O Autopilot encontrou uma falha.' }); } } catch {}
   });
@@ -704,3 +705,5 @@ function renderUnavailable() {
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
 }
+
+mountPersistence(mutationHeaders);

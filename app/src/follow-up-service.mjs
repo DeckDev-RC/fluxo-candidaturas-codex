@@ -1,11 +1,15 @@
 import { runAllowedScript } from './script-adapter.mjs';
 import { acquireFluxoLock, wrapMutations } from './lock.mjs';
-import { openAuthoritativePersistence } from './persistence-authority.mjs';
+import { createAutoPersistence } from './persistence-authority.mjs';
+import { canTransitionApplication } from './domain/application-status.mjs';
 
 const EVENT_TYPES = new Set(['status', 'verificação', 'mensagem', 'entrevista', 'teste', 'observação', 'erro']);
 
-export function createFollowUpService({ rootDir = '', persistence = openAuthoritativePersistence({ rootDir }), now = () => new Date(), scriptRunner = (name, args) => runAllowedScript(name, args, { rootDir, persistence }), mutationLock = true, lock = () => acquireFluxoLock(rootDir) }) {
-  const service = {
+export function createFollowUpService({ rootDir = '', persistence: injectedPersistence, now = () => new Date(), scriptRunner = (name, args) => runAllowedScript(name, args, { rootDir, persistence }), mutationLock = true, lock = () => acquireFluxoLock(rootDir) }) {
+  const ownedPersistence = injectedPersistence ? null : createAutoPersistence({ rootDir });
+  const persistence = injectedPersistence ?? ownedPersistence;
+  const close = () => ownedPersistence?.close();
+  const service = { close,
     async recordEvent({ reference, type, status = '', nextAction = '', deadline = '', note = '', evidence = '' }) {
       if (!EVENT_TYPES.has(type)) throw domainError('invalid_event_type', `Tipo de evento inválido: ${type}`);
       if (!String(reference ?? '').trim()) throw domainError('invalid_event', 'Reference é obrigatório.');
@@ -14,6 +18,10 @@ export function createFollowUpService({ rootDir = '', persistence = openAuthorit
         const item = applications.find((entry) => entry.id === reference || entry.key === reference || entry.identifierOrUrl === reference || entry.applicationId === reference);
         if (!item) throw domainError('application_not_found', `Candidatura não encontrada: ${reference}`);
         const timestamp = now().toISOString();
+        if (status && status !== item.status) {
+          const decision = canTransitionApplication(item.status, status);
+          if (!decision.allowed) throw domainError(decision.reason, 'Transição de candidatura não permitida.');
+        }
         item.status = status || item.status;
         item.nextAction = nextAction || item.nextAction || '';
         item.deadline = deadline || item.deadline || '';

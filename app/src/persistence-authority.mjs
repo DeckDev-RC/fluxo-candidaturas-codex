@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 const LEGACY_DOCUMENTS = [
@@ -38,6 +38,7 @@ export function createPersistenceAuthority({ rootDir, dbPath = join(rootDir, 'es
   }
   function saveDocument(name, payload) {
     requireSqlite();
+    assertNoDrift();
     validatePayload(document(name), payload);
     database.prepare(`insert into operational_documents (name, payload_json, updated_at) values (?, ?, ?)
       on conflict(name) do update set payload_json = excluded.payload_json, updated_at = excluded.updated_at`)
@@ -52,9 +53,17 @@ export function createPersistenceAuthority({ rootDir, dbPath = join(rootDir, 'es
       database.exec('commit');
     } catch (error) { database.exec('rollback'); throw error; }
   }
+  function assertNoDrift() {
+    for (const definition of LEGACY_DOCUMENTS) {
+      const path = join(rootDir, definition.path);
+      const actual = existsSync(path) ? createHash('sha256').update(readFileSync(path)).digest('hex') : null;
+      if (meta(`legacy_hash:${definition.path}`) !== actual) throw codedError('legacy_drift', 'Um JSON de compatibilidade foi alterado. Reconcilie explicitamente antes de continuar.');
+    }
+  }
 
   return {
     dbPath,
+    assertNoDrift,
     async getMode() { return isSqlite() ? 'sqlite' : 'json'; },
     isSqliteAuthoritySync() { return isSqlite(); },
     async isSqliteAuthority() { return isSqlite(); },
@@ -160,6 +169,21 @@ export function openAuthoritativePersistence({ rootDir, dbPath = join(rootDir, '
   if (authority.isSqliteAuthoritySync()) return authority;
   authority.close();
   return null;
+}
+
+// Resolve authority per operation: a live server adopts an explicitly migrated root without reopening services.
+export function createAutoPersistence(options) {
+  return new Proxy({ close() {} }, {
+    get(target, name) {
+      if (name in target) return target[name];
+      return async (...args) => {
+        const authority = openAuthoritativePersistence(options);
+        if (!authority && name === 'isSqliteAuthority') return false;
+        if (!authority) throw codedError('persistence_not_initialized', 'Esta raiz ainda usa JSON.');
+        try { return await authority[name](...args); } finally { authority.close(); }
+      };
+    }
+  });
 }
 
 function applyMigrations(database) {

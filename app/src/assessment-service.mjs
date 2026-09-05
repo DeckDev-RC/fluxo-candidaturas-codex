@@ -3,8 +3,9 @@ import { join } from 'node:path';
 import { runAllowedScript } from './script-adapter.mjs';
 import { acquireFluxoLock, wrapMutations } from './lock.mjs';
 import { createPolicyGateway } from './policy.mjs';
+import { readFluxoState } from './state-reader.mjs';
 
-export function createAssessmentService({ rootDir = '', scriptRunner = (name, args) => runAllowedScript(name, args, { rootDir }), readApplications = () => readJson(join(rootDir, 'candidaturas', 'candidaturas.json'), []), policyGateway: injectedPolicyGateway, mutationLock = true, lock = () => acquireFluxoLock(rootDir) } = {}) {
+export function createAssessmentService({ rootDir = '', scriptRunner = (name, args) => runAllowedScript(name, args, { rootDir }), readApplications = async () => (await readFluxoState(rootDir)).applications.items, policyGateway: injectedPolicyGateway, mutationLock = true, lock = () => acquireFluxoLock(rootDir) } = {}) {
   const policyGateway = injectedPolicyGateway ?? createPolicyGateway();
   const service = { async record({ reference, testName, provider = '', url = '', status = 'concluído', score = '', total = '', evidence = '', notes = '' } = {}) {
     if (!String(reference ?? '').trim() || !String(testName ?? '').trim()) throw domainError('invalid_assessment', 'Referência e nome do teste são obrigatórios.');

@@ -7,7 +7,7 @@ export function createLegacyImportService({ rootDir = '', scriptRunner = (name, 
     const args = []; if (directory) args.push('-Directory', directory); if (pattern) args.push('-Pattern', pattern);
     const result = await scriptRunner('importar-controles-legados.ps1', args);
     if (!result?.ok) throw domainError('legacy_import_failed', 'Não foi possível importar os controles legados.');
-    return { output: String(result.stdout ?? '').trim(), commandResult: result };
+    return { output: String(result.stdout ?? '').trim(), ...(result.imported === undefined ? {} : { imported: result.imported }), commandResult: result };
   } };
   return wrapMutations(service, ['import'], { rootDir, mutationLock, lock });
 }

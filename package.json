@@ -1,0 +1,36 @@
+{
+  "name": "fluxo-desktop",
+  "version": "1.1.0",
+  "description": "Fluxo local de candidaturas assistidas",
+  "author": "Fluxo",
+  "private": true,
+  "type": "module",
+  "main": "desktop/main.cjs",
+  "engines": { "node": ">=24.0.0" },
+  "scripts": {
+    "start": "electron .",
+    "start:web": "npm --prefix app start",
+    "test": "npm --prefix app test && node --test desktop/test/*.test.mjs",
+    "test:e2e": "node --disable-warning=ExperimentalWarning --test e2e/*.test.mjs",
+    "test:desktop": "node desktop/smoke.mjs",
+    "migrate": "node app/scripts/migrate-persistence.mjs",
+    "diagnose": "node desktop/diagnostics.mjs",
+    "browser:install": "playwright install chromium",
+    "build:dir": "electron-builder --win --x64 --dir --publish never",
+    "build": "electron-builder --win nsis --x64 --publish never"
+  },
+  "dependencies": { "playwright": "1.63.0" },
+  "devDependencies": { "electron": "44.2.0", "electron-builder": "26.15.3" },
+  "build": {
+    "appId": "br.fluxo.desktop",
+    "productName": "Fluxo",
+    "directories": { "app": ".", "output": "dist/desktop" },
+    "files": ["package.json", "desktop/*.cjs", "desktop/*.mjs", "desktop/*.html", "desktop/*.css", "app/src/**/*", "app/public/**/*", "!app/public/fixtures/**/*"],
+    "extraResources": [{ "from": ".", "to": "fluxo-runtime", "filter": ["scripts/**/*", "config/**/*", "templates/**/*", "docs/**/*.md", "AGENTS.md", "README.md", "VERSION", ".env.example", ".gitignore", ".gitattributes", "CHANGELOG.md"] }],
+    "asar": true,
+    "win": { "target": "nsis", "signAndEditExecutable": false },
+    "nsis": { "oneClick": false, "perMachine": false, "allowToChangeInstallationDirectory": true, "deleteAppDataOnUninstall": false, "runAfterFinish": false },
+    "artifactName": "Fluxo-${version}-Windows-${arch}.${ext}",
+    "publish": null
+  }
+}

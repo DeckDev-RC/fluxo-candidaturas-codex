@@ -2,15 +2,19 @@ import { randomUUID } from 'node:crypto';
 import { copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { acquireFluxoLock, wrapMutations } from './lock.mjs';
-import { openAuthoritativePersistence } from './persistence-authority.mjs';
+import { createAutoPersistence } from './persistence-authority.mjs';
+import { canTransitionQueue, QUEUE_STATUS } from './domain/queue-status.mjs';
 
 const CONFIRMED_STATUSES = new Set([
   'enviada', 'triagem', 'teste pendente', 'teste concluído', 'entrevista', 'proposta', 'rejeitada', 'encerrada'
 ]);
 const PRIORITY_RANK = { A: 1, B: 2, C: 3 };
 
-export function createQueueService({ rootDir, persistence = openAuthoritativePersistence({ rootDir }), now = () => new Date(), checkpointAfterEachAction = true, maxConsecutiveFailures = null, mutationLock = true, lock = () => acquireFluxoLock(rootDir) }) {
-  const service = {
+export function createQueueService({ rootDir, persistence: injectedPersistence, now = () => new Date(), checkpointAfterEachAction = true, maxConsecutiveFailures = null, mutationLock = true, lock = () => acquireFluxoLock(rootDir) }) {
+  const ownedPersistence = injectedPersistence ? null : createAutoPersistence({ rootDir });
+  const persistence = injectedPersistence ?? ownedPersistence;
+  const close = () => ownedPersistence?.close();
+  const service = { close,
     async listQueue() {
       const queue = await readQueue(rootDir, persistence);
       return { items: asArray(queue), counts: countByStatus(asArray(queue)) };
@@ -53,7 +57,9 @@ export function createQueueService({ rootDir, persistence = openAuthoritativePer
         .sort(compareQueueItems)[0];
 
       if (!candidate) throw domainError('queue_empty', 'Nenhuma vaga elegível na fila.');
-      candidate.status = 'em andamento';
+      const decision = canTransitionQueue(candidate.status, QUEUE_STATUS.IN_PROGRESS, { targetEligible: eligible.has(candidate.platform) });
+      if (!decision.allowed) throw domainError(decision.reason, 'Transição de fila não permitida.');
+      candidate.status = QUEUE_STATUS.IN_PROGRESS;
       candidate.attempts = numberOrZero(candidate.attempts) + 1;
       candidate.updatedAt = now().toISOString();
       await saveQueue(queuePath, queue, persistence);

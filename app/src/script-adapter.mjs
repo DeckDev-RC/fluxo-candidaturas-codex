@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { openAuthoritativePersistence } from './persistence-authority.mjs';
+import { runLegacyBridge } from './legacy-bridge.mjs';
 
 const ALLOWED_SCRIPTS = new Set([
   'adicionar-vaga.ps1', 'calcular-aderencia.ps1', 'exportar-compartilhavel.ps1', 'extrair-curriculo.ps1',
@@ -12,7 +13,8 @@ const ALLOWED_SCRIPTS = new Set([
   'selecionar-curriculo.ps1', 'testar-distribuicao.ps1', 'validar.ps1', 'verificar-playwright.ps1'
 ]);
 const SENSITIVE_OUTPUT = /((?:password|token|cookie|secret|mfa|authorization|credential)\s*["']?\s*[:=]\s*["']?)([^"'\s,}\]]+)/gi;
-const SQLITE_BLOCKED_SCRIPTS = new Set(['adicionar-vaga.ps1', 'inicializar-campanha.ps1', 'nova-candidatura.ps1', 'onboarding.ps1', 'registrar-evento.ps1', 'registrar-falha-fila.ps1']);
+const SQLITE_BLOCKED_SCRIPTS = new Set(['adicionar-vaga.ps1', 'inicializar-campanha.ps1', 'nova-candidatura.ps1', 'onboarding.ps1', 'primeiro-uso.ps1', 'registrar-evento.ps1', 'registrar-falha-fila.ps1']);
+const SQLITE_BRIDGED_SCRIPTS = new Set(['importar-controles-legados.ps1', 'registrar-evidencia.ps1', 'registrar-resultado-teste.ps1', 'proxima-acao.ps1', 'preflight.ps1', 'gerar-painel.ps1', 'monitorar-pendencias.ps1', 'retomar-fluxo.ps1']);
 
 export async function runAllowedScript(name, args = [], { rootDir, persistence, executable = 'pwsh', timeoutMs = 30_000 } = {}) {
   if (!ALLOWED_SCRIPTS.has(name)) throw domainError('script_not_allowed', `Script não permitido: ${name}`);
@@ -24,6 +26,9 @@ export async function runAllowedScript(name, args = [], { rootDir, persistence, 
   try {
     if (SQLITE_BLOCKED_SCRIPTS.has(name) && effectivePersistence?.isSqliteAuthority && await effectivePersistence.isSqliteAuthority()) {
       throw domainError('legacy_script_blocked', `O script ${name} altera JSON legado, mas SQLite é a autoridade. Use o serviço da aplicação ou reconcilie explicitamente.`);
+    }
+    if (SQLITE_BRIDGED_SCRIPTS.has(name) && effectivePersistence?.isSqliteAuthority && await effectivePersistence.isSqliteAuthority()) {
+      return await runLegacyBridge({ rootDir, persistence: effectivePersistence, name, args, execute: (stage, stagedArgs) => runAllowedScript(name, stagedArgs, { rootDir: stage, executable, timeoutMs }) });
     }
     const scriptPath = join(rootDir, 'scripts', name);
     await access(scriptPath);
@@ -46,7 +51,7 @@ export async function runAllowedScript(name, args = [], { rootDir, persistence, 
     child.stderr.setEncoding('utf8');
     child.stdout.on('data', (chunk) => { stdout += chunk; });
     child.stderr.on('data', (chunk) => { stderr += chunk; });
-    child.on('error', reject);
+    child.on('error', error => { clearTimeout(timeout); settled = true; reject(error); });
     child.on('close', (exitCode) => finish({ exitCode, stdout, stderr, ok: exitCode === 0, timedOut: false }));
 
     function finish(result) {

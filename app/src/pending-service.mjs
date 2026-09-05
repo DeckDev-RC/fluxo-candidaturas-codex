@@ -1,8 +1,11 @@
 import { runAllowedScript } from './script-adapter.mjs';
-import { openAuthoritativePersistence } from './persistence-authority.mjs';
+import { createAutoPersistence } from './persistence-authority.mjs';
 
-export function createPendingService({ rootDir = '', persistence = openAuthoritativePersistence({ rootDir }), now = () => new Date(), scriptRunner = (name, args) => runAllowedScript(name, args, { rootDir, persistence }) } = {}) {
-  return { async list({ dueWithinDays = 7 } = {}) {
+export function createPendingService({ rootDir = '', persistence: injectedPersistence, now = () => new Date(), scriptRunner = (name, args) => runAllowedScript(name, args, { rootDir, persistence }) } = {}) {
+  const ownedPersistence = injectedPersistence ? null : createAutoPersistence({ rootDir });
+  const persistence = injectedPersistence ?? ownedPersistence;
+  const close = () => ownedPersistence?.close();
+  return { close, async list({ dueWithinDays = 7 } = {}) {
     const days = Number(dueWithinDays); if (!Number.isInteger(days) || days < 0 || days > 365) throw domainError('invalid_pending_window', 'Janela de pendências inválida.');
     if (persistence?.isSqliteAuthority && await persistence.isSqliteAuthority()) {
       const limit = now().getTime() + days * 24 * 60 * 60 * 1000;

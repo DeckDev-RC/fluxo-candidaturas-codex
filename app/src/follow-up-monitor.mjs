@@ -1,12 +1,13 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
+import { readFluxoState } from './state-reader.mjs';
 
 export function createFollowUpMonitor({ rootDir = '', adapters = {}, now = () => new Date() } = {}) {
   return {
     async check({ applications = [], platforms = [], instruction = '' } = {}) {
       const state = await readState(rootDir);
-      const requestedApplications = applications.length ? applications : await readApplications(rootDir);
+      const requestedApplications = applications.length ? applications : (await readFluxoState(rootDir)).applications.items;
       const selected = platforms.length ? platforms.map((value) => String(value).toUpperCase()) : [...new Set(requestedApplications.map((item) => String(item.platform ?? '').toUpperCase()).filter(Boolean))];
       const newEvents = []; const failures = [];
       for (const application of requestedApplications) {

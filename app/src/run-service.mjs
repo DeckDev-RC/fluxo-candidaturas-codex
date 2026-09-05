@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
+import { canTransitionRun } from './domain/run-status.mjs';
 
 export function createRunService({ dbPath, maxApplicationsPerRun = 30, now = () => new Date() }) {
   const database = new DatabaseSync(dbPath);
   const subscribers = new Map();
+  database.exec('create table if not exists application_workflows (run_id text primary key, payload_json text not null); create table if not exists recorded_submissions (run_id text not null, submission_key text not null, primary key(run_id, submission_key))');
   database.exec(`
     create table if not exists runs (
       id text primary key,
@@ -43,6 +45,12 @@ export function createRunService({ dbPath, maxApplicationsPerRun = 30, now = () 
   database.exec(`create table if not exists run_subtasks (id text primary key, run_id text not null, parent_task text, status text not null, result_json text, created_at text not null)`);
 
   return {
+    getWorkflow(runId) { const row = database.prepare('select payload_json from application_workflows where run_id = ?').get(runId); return row ? JSON.parse(row.payload_json) : null; },
+    saveWorkflow(runId, workflow) {
+      const safe = redactEventPayload(workflow);
+      database.prepare('insert into application_workflows values (?, ?) on conflict(run_id) do update set payload_json=excluded.payload_json').run(runId, JSON.stringify(safe));
+      return safe;
+    },
     startRun({ kind, platform = '', queueReference = '', goal = '', mode = 'manual' }) {
       const timestamp = now().toISOString();
       const run = {
@@ -64,17 +72,24 @@ export function createRunService({ dbPath, maxApplicationsPerRun = 30, now = () 
     assertCanSubmit(id, submittedCount) {
       const run = this.getRun(id);
       if (!run) throw domainError('run_not_found', 'Execução não encontrada.');
+      if (run.status !== 'running') throw domainError('run_not_running', 'Retome e reconcilie a execução antes de enviar.');
       if (Number(submittedCount ?? run.submittedCount) >= maxApplicationsPerRun) {
         throw domainError('run_application_limit_reached', 'O limite de candidaturas desta execução foi atingido.');
       }
       return true;
     },
 
-    recordSubmission(id) {
+    recordSubmission(id, submissionKey = '') {
       const run = this.getRun(id);
       if (!run) throw domainError('run_not_found', 'Execução não encontrada.');
+      if (submissionKey && database.prepare('select 1 from recorded_submissions where run_id = ? and submission_key = ?').get(id, submissionKey)) return run;
       this.assertCanSubmit(id, run.submittedCount);
-      database.prepare('update runs set submitted_count = submitted_count + 1, updated_at = ? where id = ?').run(now().toISOString(), id);
+      database.exec('begin immediate');
+      try {
+        if (submissionKey) database.prepare('insert into recorded_submissions values (?, ?)').run(id, submissionKey);
+        database.prepare('update runs set submitted_count = submitted_count + 1, updated_at = ? where id = ?').run(now().toISOString(), id);
+        database.exec('commit');
+      } catch (error) { database.exec('rollback'); throw error; }
       return this.getRun(id);
     },
 
@@ -118,11 +133,11 @@ export function createRunService({ dbPath, maxApplicationsPerRun = 30, now = () 
       return updateRun(id, 'paused', reason);
     },
 
-    resumeRun(id) {
+    resumeRun(id, context = {}) {
       const run = this.getRun(id);
       if (!run) throw domainError('run_not_found', 'Execução não encontrada.');
-      if (run.status !== 'paused') throw domainError('run_not_resumable', 'A execução não está pausada.');
-      return updateRun(id, 'running', 'retomada pelo usuário');
+      if (!['paused', 'needs_reconcile', 'needs_attention'].includes(run.status)) throw domainError('run_not_resumable', 'A execução não está pausada.');
+      return updateRun(id, 'running', 'retomada pelo usuário', context);
     },
 
     reconcile() {
@@ -140,11 +155,14 @@ export function createRunService({ dbPath, maxApplicationsPerRun = 30, now = () 
     }
   };
 
-  function updateRun(id, status, reason) {
+  function updateRun(id, status, reason, context = {}) {
     const run = database.prepare('select * from runs where id = ?').get(id);
     if (!run) throw domainError('run_not_found', 'Execução não encontrada.');
+    const transition = canTransitionRun(run.status, status, context);
+    if (!transition.allowed) throw domainError(transition.reason, 'Transição da execução não permitida.');
     const updatedAt = now().toISOString();
-    database.prepare('update runs set status = ?, updated_at = ? where id = ?').run(status, updatedAt, id);
+    const finishedAt = ['succeeded', 'failed', 'cancelled'].includes(status) ? updatedAt : null;
+    database.prepare('update runs set status = ?, updated_at = ?, finished_at = ? where id = ?').run(status, updatedAt, finishedAt, id);
     return { ...toRun(run), status, updatedAt, reason };
   }
 

@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { join } from 'node:path';
 
-export function createStdioAgentTransport({ command = 'codex', args = ['app-server', '--listen', 'stdio://'], cwd, env = process.env, authMode = 'chatgpt', onNotification = () => {} }) {
+export function createStdioAgentTransport({ command = 'codex', args = ['app-server', '--listen', 'stdio://'], cwd, env = process.env, authMode = 'chatgpt', onNotification = () => {}, onRequest, timeoutMs = 60_000 }) {
   const childEnv = { ...env };
   if (authMode === 'chatgpt') {
     for (const key of ['OPENAI_API_KEY', 'CODEX_API_KEY', 'CODEX_ACCESS_TOKEN']) delete childEnv[key];
@@ -22,9 +22,15 @@ export function createStdioAgentTransport({ command = 'codex', args = ['app-serv
     if (!line.trim()) return;
     let message;
     try { message = JSON.parse(line); } catch { return; }
-    if (message.id !== undefined && pending.has(message.id)) {
+    if (message.id !== undefined && message.method) {
+      Promise.resolve().then(() => {
+        if (!onRequest) throw new Error('Solicitação não autorizada.');
+        return onRequest(message);
+      }).then(result => child.stdin.write(`${JSON.stringify({ id: message.id, result })}\n`), () => child.stdin.write(`${JSON.stringify({ id: message.id, error: { code: -32601, message: 'Solicitação não autorizada pelo Fluxo.' } })}\n`));
+    } else if (message.id !== undefined && pending.has(message.id)) {
       const request = pending.get(message.id);
       pending.delete(message.id);
+      clearTimeout(request.timer);
       if (message.error) request.reject(Object.assign(new Error(message.error.message), { code: message.error.code }));
       else request.resolve(message.result);
     } else if (message.method) {
@@ -42,7 +48,8 @@ export function createStdioAgentTransport({ command = 'codex', args = ['app-serv
       if (closed) return Promise.reject(Object.assign(new Error('Transporte encerrado.'), { code: 'transport_closed' }));
       const id = nextId++;
       return new Promise((resolve, reject) => {
-        pending.set(id, { resolve, reject });
+        const timer = setTimeout(() => { pending.delete(id); reject(Object.assign(new Error('O App Server não respondeu no prazo.'), { code: 'agent_timeout' })); }, timeoutMs);
+        pending.set(id, { resolve, reject, timer });
         child.stdin.write(`${JSON.stringify({ method, id, params })}\n`);
       });
     },
@@ -62,7 +69,7 @@ export function createStdioAgentTransport({ command = 'codex', args = ['app-serv
   };
 
   function rejectPending(error) {
-    for (const request of pending.values()) request.reject(error);
+    for (const request of pending.values()) { clearTimeout(request.timer); request.reject(error); }
     pending.clear();
   }
 }

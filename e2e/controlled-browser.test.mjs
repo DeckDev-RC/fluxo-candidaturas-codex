@@ -84,7 +84,7 @@ test('real Chromium: onboarding to confirmed SQLite application, restart and fol
   runtime = await createLocalRuntime({ rootDir: fixture.root, headless: true });
   const state = await readFluxoState(fixture.root);
   assert.equal(state.applications.confirmedCount, 1);
-  assert.equal(state.queue.items.find(entry => entry.id === item.id).status, 'enviada');
+  assert.equal(state.queue.items.find(entry => entry.id === item.id).status, 'processada');
   assert.equal(runtime.runService.getRun(prepared.run.id).submittedCount, 1);
   assert.equal(runtime.applicationFlow.getWorkflow(prepared.run.id).phase, 'recorded');
   const replay = await runtime.applicationFlow.submitApproved(prepared, approval.id, payload);

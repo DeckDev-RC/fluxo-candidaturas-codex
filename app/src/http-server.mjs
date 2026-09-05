@@ -27,6 +27,7 @@ import { acquireFluxoLock } from './lock.mjs';
 import { isLocalRequest } from './local-auth.mjs';
 import { createObservability } from './observability.mjs';
 import { createHash, randomUUID } from 'node:crypto';
+import { createPersistenceAuthority } from './persistence-authority.mjs';
 import { createSessionAuth } from './session-auth.mjs';
 import { createPolicyGateway } from './policy.mjs';
 import { createAutopilotService } from './autopilot-service.mjs';
@@ -45,6 +46,7 @@ const PUBLIC_DIR = new URL('../public/', import.meta.url);
 const STATIC_FILES = new Map([
   ['/', ['index.html', 'text/html; charset=utf-8']],
   ['/app.js', ['app.js', 'text/javascript; charset=utf-8']],
+  ['/persistence.js', ['persistence.js', 'text/javascript; charset=utf-8']],
   ['/preflight-summary.js', ['preflight-summary.js', 'text/javascript; charset=utf-8']],
   ['/oauth-window.js', ['oauth-window.js', 'text/javascript; charset=utf-8']],
   ['/styles.css', ['styles.css', 'text/css; charset=utf-8']],
@@ -240,6 +242,20 @@ export function createServer({ rootDir, queueService = createQueueService({ root
       sendJson(response, 200, await readRuntimeConfig(rootDir));
       return;
     }
+    if (path.startsWith('/api/v1/persistence') && ['GET', 'POST'].includes(request.method)) {
+      const persistence = createPersistenceAuthority({ rootDir });
+      try {
+        const input = request.method === 'POST' ? await readJsonBody(request) : {};
+        let result;
+        if (request.method === 'GET' && path === '/api/v1/persistence') result = { mode: await persistence.getMode(), divergences: await persistence.detectLegacyDrift() };
+        else if (path === '/api/v1/persistence/migrate') result = await persistence.migrateLegacy();
+        else if (path === '/api/v1/persistence/reconcile') result = await persistence.reconcileLegacy(input);
+        else if (path === '/api/v1/persistence/export') { persistence.assertNoDrift(); result = await persistence.exportCompatibility(); }
+        else throw domainError('not_found', 'Operação de persistência desconhecida.');
+        sendJson(response, 200, result);
+      } catch (error) { sendDomainError(response, error); } finally { persistence.close(); }
+      return;
+    }
 
     if (request.method === 'GET' && path === '/api/v1/codex') { try { sendJson(response, 200, await codexSnapshot(codexHarnessService, codexSettingsService)); } catch (error) { sendDomainError(response, error); } return; }
     if (request.method === 'POST' && path === '/api/v1/codex/refresh') { try { sendJson(response, 200, await codexSnapshot(codexHarnessService, codexSettingsService, true)); } catch (error) { sendDomainError(response, error); } return; }
@@ -390,7 +406,7 @@ export function createServer({ rootDir, queueService = createQueueService({ root
         const input = await readJsonBody(request);
         const result = await (agentAdapter.runTurnForRun ? agentAdapter.runTurnForRun(runId, String(input.threadId ?? ''), String(input.text ?? '')) : agentAdapter.runTurn(String(input.threadId ?? ''), String(input.text ?? '')));
         if (runService.setCurrentTurn && result?.turn?.id) runService.setCurrentTurn(runId, result.turn.id);
-        const event = runService.appendEvent({ runId, type: 'agent.turn.completed', payload: result });
+        const event = runService.appendEvent({ runId, type: 'agent.turn.started', payload: result });
         sendJson(response, 200, { result, event });
       } catch (error) { sendDomainError(response, error); }
       return;
@@ -454,7 +470,7 @@ export function createServer({ rootDir, queueService = createQueueService({ root
         if (applicationRunMatch[2] === 'approval') {
           sendJson(response, 201, applicationFlow.requestSubmissionApproval(runId, input));
         } else {
-          const prepared = preparedApplications.get(runId);
+          const prepared = applicationFlow.getPrepared?.(runId) ?? preparedApplications.get(runId);
           if (!prepared) throw domainError('application_context_missing', 'Contexto de candidatura não está disponível para esta execução.');
           const { approvalId, ...payload } = input;
           const result = await applicationFlow.submitApproved(prepared, approvalId, payload);
@@ -521,9 +537,11 @@ export function createServer({ rootDir, queueService = createQueueService({ root
     if (request.method === 'POST' && runActionMatch) {
       try {
         const id = decodeURIComponent(runActionMatch[1]);
-        const run = runActionMatch[2] === 'interrupt'
-          ? runService.pauseRun(id, 'interrompido pelo usuário')
-          : runService.resumeRun(id);
+        let run;
+        if (runActionMatch[2] === 'interrupt') {
+          run = runService.pauseRun(id, 'interrompido pelo usuário');
+          if (run.agentThreadId && run.currentTurnId && agentAdapter?.request) await agentAdapter.request('turn/interrupt', { threadId: run.agentThreadId, turnId: run.currentTurnId });
+        } else run = applicationFlow?.getPrepared?.(id) ? await applicationFlow.reconcileRun(id) : runService.resumeRun(id);
         sendJson(response, 200, run);
       } catch (error) {
         sendDomainError(response, error);
@@ -602,6 +620,8 @@ export function createServer({ rootDir, queueService = createQueueService({ root
     sendJson(response, 404, { error: { code: 'not_found', message: 'Recurso não encontrado.' } });
   });
   server.once('close', () => {
+    for (const service of [followUpService, onboardingService, metricsService, pendingService]) service.close?.();
+    if (typeof campaignService !== 'undefined') campaignService.close?.();
     if (ownsStateStore) effectiveStateStore.close();
     if (ownsApprovalService) approvalService.close();
     if (ownsRunService) runService.close();

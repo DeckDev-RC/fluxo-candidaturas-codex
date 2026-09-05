@@ -31,7 +31,7 @@ test('SQLite authority routes campaign, queue, confirmed application and follow-
     assert.equal(state.applications.items[0].evidenceMetadata[0].sha256.length, 64);
     assert.equal((await persistence.getApplications()).length, 1);
     assert.equal(repeated.commandResult.idempotent, true);
-    assert.equal((await persistence.getQueue())[0].status, 'enviada');
+    assert.equal((await persistence.getQueue())[0].status, 'processada');
   } finally { persistence.close(); }
 });
 

@@ -1,4 +1,4 @@
-import { mkdir, open, unlink } from 'node:fs/promises';
+import { mkdir, open, unlink, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 export async function acquireFluxoLock(rootDir) {
@@ -12,6 +12,21 @@ export async function acquireFluxoLock(rootDir) {
   } catch (error) {
     if (handle) await handle.close();
     if (error?.code === 'EEXIST') {
+      let recovery;
+      try {
+        recovery = await open(`${lockPath}.recovery`, 'wx');
+        const owner = JSON.parse(await readFile(lockPath, 'utf8'));
+        if (Number.isInteger(owner.pid) && owner.pid > 0) {
+          let dead = false;
+          try { process.kill(owner.pid, 0); } catch (error) { dead = error.code === 'ESRCH'; }
+          if (dead) {
+            await unlink(lockPath);
+            return await acquireFluxoLock(rootDir);
+          }
+        }
+      } catch (recoveryError) {
+        if (!['EEXIST', 'ENOENT'].includes(recoveryError.code) && !(recoveryError instanceof SyntaxError)) throw recoveryError;
+      } finally { if (recovery) { await recovery.close(); await unlink(`${lockPath}.recovery`).catch(() => {}); } }
       const locked = new Error('Outra execução do Fluxo já está usando esta raiz.');
       locked.code = 'fluxo_locked';
       throw locked;

@@ -7,6 +7,14 @@ export function createBrowserAdapter({ driver, evidenceRoot = '' }) {
   let lastSnapshot = null;
 
   return {
+    async validatePrepared(snapshot = {}) {
+      const current = await this.snapshot();
+      if (snapshot.url && current.url !== snapshot.url || snapshot.formHash && current.formHash !== snapshot.formHash) throw domainError('approval_payload_changed', 'O formulário mudou desde a revisão. Revise novamente antes do envio.');
+    },
+    async open(item) {
+      if (driver.goto && /^https?:\/\//i.test(item.identifierOrUrl)) await driver.goto(item.identifierOrUrl);
+      return this.snapshot();
+    },
     async snapshot() {
       const state = await driver.snapshot();
       if (state?.challenge) throw manualIntervention(state.challenge);
@@ -36,23 +44,33 @@ export function createBrowserAdapter({ driver, evidenceRoot = '' }) {
       return lastSnapshot;
     },
 
-    async submitWithRetry(ref, { maxAttempts = 2 } = {}) {
+    async submitWithRetry(ref, { expected = {} } = {}) {
       if (!lastSnapshot) await this.snapshot();
-      for (let attempt = 1; attempt <= Math.max(1, Number(maxAttempts) || 1); attempt += 1) {
-        const before = await this.verifySubmission();
-        if (before.confirmed) return { ...before, attempts: attempt - 1 };
-        try { await driver.click(ref); } catch (error) { if (error?.retryable !== true || attempt >= maxAttempts) throw error; continue; }
-        const confirmation = await this.verifySubmission();
-        if (confirmation.confirmed) return { ...confirmation, attempts: attempt };
+      const before = await this.verifySubmission(expected);
+      if (before.confirmed) return { ...before, attempts: 0 };
+      try { await driver.click(ref); }
+      catch (error) {
+        const observed = await this.verifySubmission(expected);
+        if (observed.confirmed) return { ...observed, attempts: 1 };
+        throw domainError('submission_not_confirmed', 'O clique teve resultado incerto; reconciliação necessária.');
       }
-      throw domainError('submission_not_confirmed', 'A plataforma não confirmou o recebimento após as tentativas permitidas.');
+      const confirmation = await this.verifySubmission(expected);
+      if (confirmation.confirmed) return { ...confirmation, attempts: 1 };
+      throw domainError('submission_not_confirmed', 'Resultado do envio incerto. Reconcilie a tela antes de qualquer nova tentativa.');
     },
 
-    async verifySubmission() {
+    async verifySubmission(expected = {}) {
       const state = redact(await driver.state());
       if (state?.challenge) throw manualIntervention(state.challenge);
-      const text = String(state?.text ?? '').toLowerCase();
-      return { confirmed: /candidatura|application/.test(text) && /enviada|submitted|recebida|received/.test(text), state };
+      lastSnapshot = state;
+      const text = String(state?.confirmationText ?? state?.text ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      const negative = /\b(nao|not|never|failed|falhou|erro|error)\b|\b(quando|quando for|sera enviada|will be|if you)\b/.test(text);
+      const positive = /(?:sua |your )?(?:candidatura|application)\s+(?:(?:foi|was|has been)\s+)?(?:enviada|recebida|submitted|received)\b/.test(text);
+      const identity = String(expected.identifierOrUrl ?? expected.jobId ?? '');
+      const observedIdentity = String(state.jobUrl || state.jobId || '');
+      const matching = !identity || Boolean(observedIdentity && (observedIdentity === identity || identity.replace(/\/$/, '').endsWith('/' + observedIdentity)));
+      const confirmed = positive && !negative && matching;
+      return { confirmed, confirmedAt: confirmed ? new Date().toISOString() : null, state };
     },
 
     async captureEvidence({ runId = 'run' } = {}) {

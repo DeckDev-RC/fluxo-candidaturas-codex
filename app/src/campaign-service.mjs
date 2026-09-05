@@ -2,10 +2,13 @@ import { randomUUID } from 'node:crypto';
 import { copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { acquireFluxoLock, wrapMutations } from './lock.mjs';
-import { openAuthoritativePersistence } from './persistence-authority.mjs';
+import { createAutoPersistence } from './persistence-authority.mjs';
 
-export function createCampaignService({ rootDir, persistence = openAuthoritativePersistence({ rootDir }), mutationLock = true, lock = () => acquireFluxoLock(rootDir) }) {
-  const service = {
+export function createCampaignService({ rootDir, persistence: injectedPersistence, mutationLock = true, lock = () => acquireFluxoLock(rootDir) }) {
+  const ownedPersistence = injectedPersistence ? null : createAutoPersistence({ rootDir });
+  const persistence = injectedPersistence ?? ownedPersistence;
+  const close = () => ownedPersistence?.close();
+  const service = { close,
     async getCampaign() {
       return await sqlite(persistence) ? persistence.getCampaign() : readJson(join(rootDir, 'campanha', 'config.json'), { platforms: [] });
     },

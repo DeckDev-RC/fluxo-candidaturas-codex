@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { acquireFluxoLock, wrapMutations } from './lock.mjs';
-import { openAuthoritativePersistence } from './persistence-authority.mjs';
+import { createAutoPersistence } from './persistence-authority.mjs';
 
 const REQUIRED_FIELDS = [
   'name', 'email', 'phone', 'location', 'targetRoles', 'seniority', 'technicalFocus', 'workModes',
@@ -22,8 +22,11 @@ export function validateOnboarding(input = {}) {
   return { valid: missing.length === 0, missing, errors: [] };
 }
 
-export function createOnboardingService({ rootDir, persistence = openAuthoritativePersistence({ rootDir }), mutationLock = true, lock = () => acquireFluxoLock(rootDir), memoryService } = {}) {
-  const service = {
+export function createOnboardingService({ rootDir, persistence: injectedPersistence, mutationLock = true, lock = () => acquireFluxoLock(rootDir), memoryService } = {}) {
+  const ownedPersistence = injectedPersistence ? null : createAutoPersistence({ rootDir });
+  const persistence = injectedPersistence ?? ownedPersistence;
+  const close = () => ownedPersistence?.close();
+  const service = { close,
     async saveOnboarding(input) {
       const validation = validateOnboarding(input);
       if (!validation.valid) throw domainError('invalid_onboarding', `Campos ausentes: ${validation.missing.join(', ')}`);

@@ -60,7 +60,12 @@ function normalizeOpportunity(raw, platform, now) {
   };
 }
 
-function parseSnapshotJobs(snapshot, platform) { return Array.isArray(snapshot?.jobs) ? snapshot.jobs : []; }
+function parseSnapshotJobs(snapshot, platform) {
+  if (Array.isArray(snapshot?.jobs)) return snapshot.jobs;
+  const jobs = (snapshot?.links ?? []).filter(link => link.company && link.text && /^https?:\/\//i.test(link.href)).map(link => ({ title: link.text, company: link.company, url: link.href, source: platform }));
+  if (!jobs.length && snapshot?.emptyResults !== true) throw Object.assign(new Error('A página observada não contém vagas reconhecíveis. Revise a página ou configure o adaptador.'), { code: 'discovery_page_unsupported' });
+  return jobs;
+}
 function safeCriteria(criteria) { return { roles: list(criteria.roles ?? criteria.targetRoles), locations: list(criteria.locations), workModes: list(criteria.workModes), salary: String(criteria.salary ?? criteria.minimumSalary ?? ''), seniority: list(criteria.seniority), exclusions: list(criteria.exclusions), platforms: normalizePlatforms(criteria.platforms) }; }
 function normalizePlatforms(value) { return list(value).map((item) => String(item).toUpperCase()); }
 function list(value) { return Array.isArray(value) ? value.map((item) => String(item).trim()).filter(Boolean) : String(value ?? '').split(/,|;/).map((item) => item.trim()).filter(Boolean); }

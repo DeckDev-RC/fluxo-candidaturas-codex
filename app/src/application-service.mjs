@@ -3,10 +3,13 @@ import { acquireFluxoLock, wrapMutations } from './lock.mjs';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import { resolve, relative } from 'node:path';
-import { openAuthoritativePersistence } from './persistence-authority.mjs';
+import { createAutoPersistence } from './persistence-authority.mjs';
 
-export function createApplicationService({ rootDir = '', persistence = openAuthoritativePersistence({ rootDir }), now = () => new Date(), scriptRunner = (name, args) => runAllowedScript(name, args, { rootDir, persistence }), mutationLock = true, lock = () => acquireFluxoLock(rootDir) }) {
-  const service = {
+export function createApplicationService({ rootDir = '', persistence: injectedPersistence, now = () => new Date(), scriptRunner = (name, args) => runAllowedScript(name, args, { rootDir, persistence }), mutationLock = true, lock = () => acquireFluxoLock(rootDir) }) {
+  const ownedPersistence = injectedPersistence ? null : createAutoPersistence({ rootDir });
+  const persistence = injectedPersistence ?? ownedPersistence;
+  const close = () => ownedPersistence?.close();
+  const service = { close,
     async recordConfirmedApplication({ item, confirmation, evidencePath = '', resume = '', applicationId = '', nextAction = 'Aguardar retorno', notes = '' }) {
       if (confirmation?.confirmed !== true) throw domainError('submission_not_confirmed', 'A plataforma não confirmou o recebimento.');
       if (!String(evidencePath).trim()) throw domainError('evidence_required', 'Evidência de confirmação é obrigatória.');
@@ -48,7 +51,7 @@ export function createApplicationService({ rootDir = '', persistence = openAutho
         applications.push(record);
         const queue = await persistence.getQueue();
         const queueItem = queue.find((entry) => entry.id === item.id || entry.key === key);
-        if (queueItem) { queueItem.status = 'enviada'; queueItem.updatedAt = timestamp; queueItem.lastError = ''; }
+        if (queueItem) { queueItem.status = 'processada'; queueItem.updatedAt = timestamp; queueItem.lastError = ''; }
         await persistence.replaceQueueAndApplications({ queue, applications });
         return { record, commandResult: { ok: true, bridge: 'sqlite' } };
       }
