@@ -20,7 +20,8 @@ const DEFAULTS = {
   localModel: '',
   cloudEnabled: false,
   cloudModel: '',
-  authMode: 'chatgpt'
+  authMode: 'chatgpt',
+  codexCommand: ''
 };
 
 const FIELDS = {
@@ -41,7 +42,8 @@ const FIELDS = {
   LOCAL_MODEL: ['localModel', 'string'],
   CLOUD_ENABLED: ['cloudEnabled', 'boolean'],
   CLOUD_MODEL: ['cloudModel', 'string'],
-  AUTH_MODE: ['authMode', 'string']
+  AUTH_MODE: ['authMode', 'string'],
+  CODEX_COMMAND: ['codexCommand', 'string']
 };
 
 export async function readRuntimeConfig(rootDir) {

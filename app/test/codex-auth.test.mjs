@@ -50,3 +50,34 @@ test('Codex auth starts the official app-server ChatGPT OAuth flow and returns b
   assert.deepEqual(calls.map(([method]) => method), ['account/login/start', 'account/login/start']);
   assert.equal(calls[0][1].type, 'chatgpt');
 });
+
+// Achado do teste de usabilidade: um login que espera o navegador não pode segurar a
+// trava de dados — enquanto ele esperava, qualquer outra ação recebia "fluxo_locked".
+test('login do ChatGPT em andamento não bloqueia outras mutações do Fluxo', async () => {
+  const { mkdtemp } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { createServer } = await import('../src/http-server.mjs');
+  const rootDir = await mkdtemp(join(tmpdir(), 'fluxo-login-lock-'));
+  let liberarLogin;
+  const authService = {
+    status: async () => ({ status: 'signed_out', authenticated: false }),
+    startLogin: () => new Promise((resolve) => { liberarLogin = () => resolve({ status: 'awaiting_user', authUrl: 'https://auth.openai.com/oauth' }); }),
+    logout: async () => ({ status: 'signed_out' })
+  };
+  const server = createServer({ rootDir, authService });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const login = fetch(`${base}/api/v1/auth/openai/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const outra = await fetch(`${base}/api/v1/state/checkpoint`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ stage: 'teste' }) });
+    assert.notEqual(outra.status, 409, 'o login em andamento não pode travar o resto do Fluxo');
+    liberarLogin();
+    const resposta = await login;
+    assert.equal(resposta.status, 202);
+    assert.equal((await resposta.json()).authUrl, 'https://auth.openai.com/oauth');
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
