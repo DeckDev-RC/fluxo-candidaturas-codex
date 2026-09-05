@@ -2,23 +2,31 @@
 // do Fluxo com o cartão da situação (objetivo e currículo, decisões, ações).
 // A fala atual é recalculada do estado persistido a cada pintura.
 
-import { el } from '../../core/dom.mjs';
+import { badge, el, staticListItem } from '../../core/dom.mjs';
 import { hora } from '../../core/format.mjs';
+import { nivelAderencia } from '../../core/aderencia.mjs';
+import { store } from '../../core/store.mjs';
 import { takeScrollRequest, transcript } from '../../core/conversa.mjs';
-import { TEXTOS } from '../agora-estados.mjs';
+import { disponivel, TEXTOS } from '../agora-estados.mjs';
 import { firstRunPanel } from '../primeiro-uso.mjs';
 import { decisionList } from '../decisoes.mjs';
 import { marcaFluxo } from '../../ui/marca.mjs';
 import { acoesDaSituacao } from './situacao-acoes.mjs';
+import { botaoPreparar } from './preparar-candidatura.mjs';
 
 // Nestas situações o motivo repete o corpo ou já aparece na ação "ocupado".
-const SEM_MOTIVO = new Set(['primeiro-uso', 'pronta-para-buscar', 'trabalhando', 'decisao-pendente']);
+const SEM_MOTIVO = new Set(['primeiro-uso', 'pronta-para-buscar', 'trabalhando', 'decisao-pendente', 'escolher-vaga']);
 let focoInicialDado = false;
 
 export function conversationColumn(situacao, pendentes) {
+  // A última linha registrada costuma ser a própria situação atual: fica no
+  // histórico, mas não se repete logo acima da fala atual que a mostra.
+  const historico = transcript();
+  const ultima = historico.at(-1);
+  const visiveis = ultima?.autor === 'fluxo' && ultima.texto === TEXTOS[situacao.estado]?.titulo ? historico.slice(0, -1) : historico;
   const coluna = el('section', { class: 'conversa-coluna', 'aria-label': 'Conversa com o Fluxo' }, [
     el('ol', { class: 'linha-do-tempo', id: 'linha-do-tempo' }, [
-      transcript().map(balao),
+      visiveis.map(balao),
       bolhaAtual(situacao, pendentes)
     ])
   ]);
@@ -46,7 +54,7 @@ function bolhaAtual(situacao, pendentes) {
   return el('li', { class: 'balao balao-atual', id: 'painel-agora', dataset: { autor: 'fluxo', estadoAgora: situacao.estado } }, [
     avatar(),
     el('div', { class: 'balao-corpo' }, [
-      el('h2', { text: texto.titulo }),
+      el('h1', { text: texto.titulo }),
       texto.corpo && el('p', { class: 'leitura secundario', text: texto.corpo }),
       !SEM_MOTIVO.has(situacao.estado) && situacao.motivo ? el('p', { class: 'apoio', text: situacao.motivo }) : null,
       cartao(situacao, pendentes),
@@ -59,8 +67,24 @@ function bolhaAtual(situacao, pendentes) {
 function cartao(situacao, pendentes) {
   return [
     situacao.estado === 'primeiro-uso' ? el('div', { class: 'balao-cartao' }, [firstRunPanel()]) : null,
-    pendentes.length ? el('div', { class: 'balao-cartao' }, [decisionList(pendentes.slice(0, 3))]) : null
+    pendentes.length ? el('div', { class: 'balao-cartao' }, [decisionList(pendentes.slice(0, 3))]) : null,
+    situacao.estado === 'escolher-vaga' ? el('div', { class: 'balao-cartao' }, [vagasParaEscolher()]) : null
   ];
+}
+
+// As melhores oportunidades da fila, prontas para preparar; o resto fica na área própria.
+function vagasParaEscolher() {
+  const itens = (store.estado?.queue?.items ?? []).filter(disponivel)
+    .sort((a, b) => Number(b.fitScore ?? 0) - Number(a.fitScore ?? 0))
+    .slice(0, 3);
+  return el('ul', { class: 'lista', id: 'vagas-para-escolher' }, itens.map((item) => staticListItem({
+    title: item.role ?? 'Cargo não informado',
+    support: `${item.company ?? 'Empresa não informada'} · ${item.platform ?? 'origem não informada'}`,
+    right: [
+      badge(nivelAderencia(item).rotulo, nivelAderencia(item).tom),
+      botaoPreparar(item)
+    ]
+  })));
 }
 
 function avatar() {

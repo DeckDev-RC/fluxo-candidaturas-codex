@@ -16,7 +16,7 @@ export function platformChooser() {
     campos.set(plataforma.name, { habilitada, meta });
     return el('div', { class: 'plataforma-linha' }, [
       el('label', { class: 'escolha' }, [habilitada, el('span', { text: plataforma.name })]),
-      el('label', { class: 'escolha plataforma-meta' }, [el('span', { class: 'apoio', text: 'meta' }), meta])
+      el('label', { class: 'escolha plataforma-meta' }, [el('span', { class: 'apoio', 'aria-hidden': 'true', text: 'meta' }), meta])
     ]);
   }));
 

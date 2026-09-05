@@ -30,10 +30,6 @@ export function connectAiStatus() {
   fonte.onerror = () => { retratoInicial = true; };
 }
 
-export function disconnectAiStatus() {
-  fonte?.close();
-  fonte = null;
-}
 
 // Voltar ao app depois do navegador é o momento em que o estado costuma ter mudado.
 export function refreshAiOnFocus() {

@@ -1,15 +1,20 @@
 // Acompanhamento da jornada em curso. A conexão é automática e a reconexão
 // aparece quando falha: ninguém precisa apertar "conectar" (U9-05).
+// O histórico reenviado a cada conexão reconstrói o estado, mas não gera
+// linha nova na conversa: cada evento é reconhecido pelo identificador.
 
-import { addJourneyUpdate, setJourney } from './store.mjs';
+import { addJourneyUpdate, loadState, setJourney } from './store.mjs';
 
 const TIPOS = [
   'autopilot.plan.created', 'autopilot.task.started', 'autopilot.task.completed',
-  'autopilot.waiting_user', 'autopilot.completed', 'autopilot.exception', 'autopilot.retry',
+  'autopilot.waiting_user', 'autopilot.completed', 'autopilot.exception', 'autopilot.failed', 'autopilot.retry',
   'autopilot.human.rejected', 'autopilot.turn.completed',
   'application.prepared', 'application.fields.filled', 'application.submission_confirmed',
   'run.paused', 'run.resumed', 'run.needs_reconcile'
 ];
+
+// Eventos que mudam o que está persistido: o retrato do estado é relido.
+const RELER_ESTADO = new Set(['autopilot.waiting_user', 'autopilot.completed', 'autopilot.exception', 'autopilot.failed', 'application.prepared', 'application.submission_confirmed', 'run.needs_reconcile']);
 
 const ROTULOS = {
   intake: 'Entender seu perfil',
@@ -19,23 +24,30 @@ const ROTULOS = {
   followup: 'Acompanhar processos'
 };
 
+const CHAVE_RUN = 'fluxo-jornada';
+const CHAVE_VISTOS = 'fluxo-jornada-eventos';
+const LIMITE_VISTOS = 400;
+const TENTATIVAS_ANTES_DE_CONFERIR = 3;
+
 let fonte = null;
 let runAtual = '';
 let tentativas = 0;
 let reconexao = null;
+let vistos = carregarVistos();
+let releitura = null;
 
 export function connectJourney(runId) {
   const id = String(runId ?? '');
   if (!id || id === runAtual && fonte) return;
   disconnectJourney();
   runAtual = id;
-  try { window.localStorage.setItem('fluxo-jornada', id); } catch {}
+  try { window.localStorage.setItem(CHAVE_RUN, id); } catch {}
   abrir();
 }
 
 export function restoreJourney() {
   let salvo = '';
-  try { salvo = window.localStorage.getItem('fluxo-jornada') ?? ''; } catch {}
+  try { salvo = window.localStorage.getItem(CHAVE_RUN) ?? ''; } catch {}
   if (salvo) connectJourney(salvo);
   return salvo;
 }
@@ -46,33 +58,51 @@ export function disconnectJourney() {
   fonte = null;
 }
 
+// Jornada encerrada de propósito não volta como "trabalhando" ao reabrir.
+export function forgetJourney() {
+  disconnectJourney();
+  runAtual = '';
+  tentativas = 0;
+  try { window.localStorage.removeItem(CHAVE_RUN); } catch {}
+  setJourney({ conexao: '' });
+}
+
 function abrir() {
   fonte = new EventSource(`/api/v1/runs/${encodeURIComponent(runAtual)}/events?stream=1`);
   fonte.onopen = () => { tentativas = 0; setJourney({ conexao: 'conectada' }); };
-  fonte.onerror = () => {
+  fonte.onerror = async () => {
     fonte?.close();
     fonte = null;
     tentativas += 1;
+    // Depois de algumas falhas, conferir se a execução ainda existe: uma que
+    // sumiu do serviço não justifica tentar para sempre.
+    if (tentativas >= TENTATIVAS_ANTES_DE_CONFERIR && !(await execucaoExiste())) { forgetJourney(); return; }
     const espera = Math.min(1000 * 2 ** (tentativas - 1), 15000);
     setJourney({ conexao: 'reconectando', esperaMs: espera });
     reconexao = setTimeout(abrir, espera);
   };
-  for (const tipo of TIPOS) fonte.addEventListener(tipo, (evento) => aplicar(tipo, parse(evento.data)));
+  for (const tipo of TIPOS) fonte.addEventListener(tipo, (evento) => receber(tipo, evento));
 }
 
-function aplicar(tipo, payload) {
+function receber(tipo, evento) {
+  const id = String(evento.lastEventId ?? '');
+  const repetido = Boolean(id) && vistos.has(id);
+  aplicar(tipo, parse(evento.data), { repetido });
+  if (id && !repetido) lembrar(id);
+  if (!repetido && RELER_ESTADO.has(tipo)) agendarReleitura();
+}
+
+function aplicar(tipo, payload, { repetido }) {
+  const linha = (tom, texto) => { if (!repetido) addJourneyUpdate({ tom, texto }); };
+  const tarefa = ROTULOS[payload.task] ?? payload.task ?? 'tarefa';
   if (tipo === 'autopilot.plan.created') {
     setJourney({ runId: runAtual, status: 'trabalhando', plano: comRotulos(payload.plan), perguntas: [], mensagem: 'A jornada começou.' });
   }
-  if (tipo === 'autopilot.task.started') {
-    addJourneyUpdate({ tom: 'informacao', texto: `Começou: ${ROTULOS[payload.task] ?? payload.task}.` });
-  }
-  if (tipo === 'autopilot.retry') {
-    addJourneyUpdate({ tom: 'atencao', texto: `Nova tentativa em ${ROTULOS[payload.task] ?? payload.task}.` });
-  }
+  if (tipo === 'autopilot.task.started') linha('informacao', `Começou: ${tarefa}.`);
+  if (tipo === 'autopilot.retry') linha('atencao', `Nova tentativa em ${tarefa}.`);
   if (tipo === 'autopilot.task.completed') {
-    setJourney({ status: 'trabalhando', mensagem: descreveResultado(payload) });
-    addJourneyUpdate({ tom: 'sucesso', texto: descreveResultado(payload) });
+    setJourney({ status: 'trabalhando', mensagem: descreveResultado(payload, tarefa) });
+    linha('sucesso', descreveResultado(payload, tarefa));
   }
   if (tipo === 'autopilot.waiting_user') {
     setJourney({
@@ -82,34 +112,53 @@ function aplicar(tipo, payload) {
       plano: comRotulos(payload.plan),
       perguntas: Array.isArray(payload.questions) ? payload.questions : []
     });
-    addJourneyUpdate({ tom: 'atencao', texto: payload.message ?? 'Uma decisão espera por você.' });
+    linha('atencao', payload.message ?? 'Uma decisão espera por você.');
   }
-  if (tipo === 'autopilot.exception') {
-    setJourney({ status: 'bloqueio', mensagem: payload.message ?? 'A jornada parou por uma falha.', plano: comRotulos(payload.plan) });
-    addJourneyUpdate({ tom: 'erro', texto: payload.message ?? 'A jornada parou por uma falha.' });
+  if (tipo === 'autopilot.exception' || tipo === 'autopilot.failed') {
+    const mensagem = payload.message ?? (payload.error ? `A jornada parou por uma falha: ${payload.error}` : 'A jornada parou por uma falha.');
+    setJourney({ status: 'bloqueio', mensagem, plano: comRotulos(payload.plan) });
+    linha('erro', mensagem);
   }
   if (tipo === 'autopilot.completed') {
     setJourney({ status: 'concluida', mensagem: 'A jornada terminou com resultados confirmados.', perguntas: [] });
   }
-  if (tipo === 'autopilot.turn.completed') {
-    addJourneyUpdate({ tom: 'informacao', texto: 'Etapa concluída; a campanha continua na próxima tarefa autorizada.' });
-  }
+  if (tipo === 'autopilot.turn.completed') linha('informacao', 'Etapa concluída; a campanha continua na próxima tarefa autorizada.');
   if (tipo === 'run.paused') setJourney({ status: 'pausada', mensagem: payload.reason ?? 'A jornada está pausada.' });
   if (tipo === 'run.resumed') setJourney({ status: 'trabalhando', mensagem: 'A jornada foi retomada.' });
   if (tipo === 'run.needs_reconcile') setJourney({ status: 'incerto', mensagem: 'Um envio ficou com resultado incerto e precisa de conferência.' });
-  if (tipo === 'application.prepared') addJourneyUpdate({ tom: 'informacao', texto: 'Candidatura preparada para sua revisão.' });
-  if (tipo === 'application.fields.filled') addJourneyUpdate({ tom: 'informacao', texto: 'Campos preenchidos com informações confirmadas.' });
-  if (tipo === 'application.submission_confirmed') addJourneyUpdate({ tom: 'sucesso', texto: 'A plataforma confirmou o recebimento da candidatura.' });
+  if (tipo === 'application.prepared') linha('informacao', 'Candidatura preparada para sua revisão.');
+  if (tipo === 'application.fields.filled') linha('informacao', 'Campos preenchidos com informações confirmadas.');
+  if (tipo === 'application.submission_confirmed') linha('sucesso', 'A plataforma confirmou o recebimento da candidatura.');
 }
 
-function descreveResultado(payload) {
-  const tarefa = ROTULOS[payload.task] ?? payload.task;
+function descreveResultado(payload, tarefa) {
   const observacao = payload.result?.observation;
-  return observacao ? `${tarefa}: ${observacao}` : `${tarefa} concluída.`;
+  return observacao ? `${tarefa}: ${observacao}` : `Etapa concluída: ${tarefa}.`;
 }
 
 function comRotulos(plano) {
   return (Array.isArray(plano) ? plano : []).map((etapa) => ({ ...etapa, label: ROTULOS[etapa.id] ?? etapa.label ?? etapa.id }));
+}
+
+// Vários eventos chegam juntos; uma releitura basta.
+function agendarReleitura() {
+  clearTimeout(releitura);
+  releitura = setTimeout(() => { loadState().catch(() => {}); }, 300);
+}
+
+async function execucaoExiste() {
+  try { return (await fetch(`/api/v1/runs/${encodeURIComponent(runAtual)}/events`, { cache: 'no-store' })).status !== 404; }
+  catch { return true; }
+}
+
+function lembrar(id) {
+  vistos.add(id);
+  if (vistos.size > LIMITE_VISTOS) vistos = new Set([...vistos].slice(-LIMITE_VISTOS));
+  try { window.localStorage.setItem(CHAVE_VISTOS, JSON.stringify([...vistos])); } catch {}
+}
+
+function carregarVistos() {
+  try { return new Set(JSON.parse(window.localStorage.getItem(CHAVE_VISTOS) ?? '[]')); } catch { return new Set(); }
 }
 
 function parse(data) {

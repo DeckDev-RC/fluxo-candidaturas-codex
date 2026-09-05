@@ -59,7 +59,6 @@
 }
 
 .mesa[data-estado-agora="decisao-pendente"] .balao-atual .balao-corpo { border-color: var(--acento); box-shadow: 0 0 0 3px var(--acento-fraco); }
-.balao-atual .balao-hora { display: none; }
 
 .balao-cartao { margin-top: var(--e2); }
 .balao-cartao .painel { border: 0; padding: 0; box-shadow: none; }
@@ -82,7 +81,6 @@
 .acompanhamento-cabecalho { display: flex; justify-content: space-between; align-items: baseline; gap: var(--e2); }
 .acompanhamento-cabecalho h3 { font-size: var(--texto-xs); font-weight: var(--peso-medio); color: var(--texto-3); letter-spacing: var(--traco-etiqueta); }
 .acompanhamento-cabecalho .botao-texto { font-size: var(--texto-xs); padding: 0 var(--e1); }
-.acompanhamento-estado { font-weight: var(--peso-forte); letter-spacing: var(--traco-titulo); }
 .acompanhamento-lista { display: flex; flex-direction: column; gap: var(--e2); }
 .acompanhamento-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--e2); align-items: start; }
 .acompanhamento-item .item-titulo { font-size: var(--texto-sm); }
@@ -90,16 +88,6 @@
 .acompanhamento .percurso li { padding-bottom: var(--e2); }
 .acompanhamento .percurso li > div { flex-direction: column; align-items: flex-start; gap: 2px; }
 
-/* Metas por plataforma: barra proporcional a confirmações reais. */
-.meta { display: flex; flex-direction: column; gap: var(--e1); }
-.meta-linha { display: flex; justify-content: space-between; gap: var(--e2); font-size: var(--texto-sm); }
-.meta-rotulo { color: var(--texto-2); }
-.meta-valor { color: var(--texto-2); }
-.meta[data-destaque="true"] .meta-rotulo,
-.meta[data-destaque="true"] .meta-valor { color: var(--texto); font-weight: var(--peso-medio); }
-.meta-barra { height: 6px; border-radius: 999px; background: var(--superficie-2); border: 1px solid var(--linha); overflow: hidden; }
-.meta-barra span { display: block; height: 100%; border-radius: inherit; background: var(--acento); transition: width var(--duracao-media) var(--curva); }
-.meta[data-completa="true"] .meta-barra span { background: var(--sucesso); }
 
 /* A barra de escrita pertence à coluna da conversa: mesma margem e sem
    avançar sob o acompanhamento (19rem + intervalo). */

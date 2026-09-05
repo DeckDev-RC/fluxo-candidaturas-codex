@@ -3,14 +3,16 @@
 // prazos e fila. Nenhum número é estimado e seção vazia não ocupa lugar.
 
 import { badge, button, el } from '../../core/dom.mjs';
-import { numero } from '../../core/format.mjs';
+import { dataLonga, numero } from '../../core/format.mjs';
 import { store } from '../../core/store.mjs';
 import { go } from '../../core/router.mjs';
 import { disponivel } from '../agora-estados.mjs';
-import { journeySteps } from './percurso.mjs';
+import { nivelAderencia } from '../../core/aderencia.mjs';
+import { exportarEvidencias, journeySteps } from './percurso.mjs';
 
 const ENCERRADAS = new Set(['rejeitada', 'encerrada', 'desistência']);
-const NAO_CONFIRMADAS = new Set(['rascunho', 'pronta para revisão']);
+// Mesmo critério do serviço para 'confirmada': sem rascunho, revisão pendente ou desistência.
+const NAO_CONFIRMADAS = new Set(['rascunho', 'pronta para revisão', 'desistência']);
 const PLANO_PADRAO = [
   { id: 'intake', label: 'Entender seu perfil' },
   { id: 'discovery', label: 'Encontrar oportunidades' },
@@ -38,16 +40,15 @@ export function trackingPanel(situacao) {
     Object.assign(titulo, { id: 'acompanhamento-titulo' }),
     andamento(situacao, jornada),
     metas(dados),
-    jornada.plano?.length ? secao('Percurso', journeySteps(jornada)) : null,
+    jornada.plano?.length ? secao('Percurso', journeySteps(jornada), button('Exportar evidências', { variant: 'texto', 'aria-label': 'Exportar evidências desta jornada', onClick: exportarEvidencias })) : null,
     prazos(dados),
     fila(dados)
   ]);
 }
 
-// Só o que a fala atual não diz: a tarefa em curso e a saúde da conexão.
-function andamento(situacao, jornada) {
+// Só o que a fala atual não diz: a saúde da conexão com a execução.
+function andamento(_situacao, jornada) {
   const itens = [
-    situacao.estado === 'trabalhando' ? el('span', { class: 'ocupado', text: jornada.mensagem || 'Executando a próxima tarefa autorizada.' }) : null,
     jornada.conexao === 'reconectando'
       ? el('p', { class: 'apoio', text: `Conexão com a execução caiu. Tentando de novo em ${Math.round((jornada.esperaMs ?? 1000) / 1000)}s.` })
       : null
@@ -68,7 +69,7 @@ function metas(dados) {
       candidaturas.filter((item) => (item.platform ?? '').toLocaleLowerCase() === plataforma.name.toLocaleLowerCase()).length,
       Number(plataforma.goal ?? 0)
     ))
-  ], acaoSecao('Ajustar', 'configuracoes'));
+  ], acaoSecao('Ajustar', 'configuracoes', 'Ajustar plataformas e metas'));
 }
 
 // Barra baseada em confirmações reais. Sem meta, mostra só a contagem.
@@ -91,12 +92,12 @@ function prazos(dados) {
   const compromissos = (dados.applications?.items ?? [])
     .filter((item) => !ENCERRADAS.has(item.status) && (item.nextAction || item.deadline))
     .slice(0, 4)
-    .map((item) => linha(`${item.role ?? 'Vaga'} — ${item.company ?? 'empresa não informada'}`, item.nextAction ?? 'Revisar o processo', item.deadline ? badge(`prazo ${item.deadline}`, 'atencao') : null));
+    .map((item) => linha(`${item.role ?? 'Vaga'} — ${item.company ?? 'empresa não informada'}`, item.nextAction ?? 'Revisar o processo', item.deadline ? badge(`prazo ${dataLonga(item.deadline)}`, 'atencao') : null));
   const pendentes = (store.pendencias ?? []).slice(0, 3)
     .map((item) => linha(item.nextAction ?? 'Pendência', item.reference ?? '', item.urgency ? badge(item.urgency, 'atencao') : null));
   const itens = [...compromissos, ...pendentes];
   if (!itens.length) return null;
-  return secao('Prazos e próximos passos', el('ul', { class: 'acompanhamento-lista' }, itens), acaoSecao('Candidaturas', 'candidaturas'));
+  return secao('Prazos e próximos passos', el('ul', { class: 'acompanhamento-lista' }, itens), acaoSecao('Candidaturas', 'candidaturas', 'Abrir todas as candidaturas'));
 }
 
 function fila(dados) {
@@ -106,8 +107,8 @@ function fila(dados) {
   return secao(`Fila · ${numero(itens.length)}`, el('ul', { class: 'acompanhamento-lista' }, principais.map((item) => linha(
     item.role ?? 'Vaga',
     `${item.company ?? 'empresa não informada'} · ${item.platform ?? 'origem não informada'}`,
-    item.fitScore != null ? badge(`${numero(item.fitScore)}%`, item.fitScore >= 75 ? 'sucesso' : '') : null
-  ))), acaoSecao('Oportunidades', 'oportunidades'));
+    badge(nivelAderencia(item).rotulo, nivelAderencia(item).tom)
+  ))), acaoSecao('Oportunidades', 'oportunidades', 'Abrir todas as oportunidades'));
 }
 
 function linha(titulo, apoio, selo) {
@@ -127,6 +128,6 @@ function secao(titulo, conteudo, acao) {
   ]);
 }
 
-function acaoSecao(rotulo, rota) {
-  return button(rotulo, { variant: 'texto', onClick: () => go(rota) });
+function acaoSecao(rotulo, rota, descricao = rotulo) {
+  return button(rotulo, { variant: 'texto', 'aria-label': descricao, onClick: () => go(rota) });
 }

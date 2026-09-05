@@ -1,40 +1,36 @@
 // Ajuda: o que o Fluxo faz, o que ele não promete e como resolver bloqueios.
 // Fica em local previsível e também aparece no contexto da tarefa (U2-05).
 
-import { button, el, panel } from '../core/dom.mjs';
+import { button, el, panel, screen } from '../core/dom.mjs';
 import { store } from '../core/store.mjs';
 import { go } from '../core/router.mjs';
 
 export function ajudaScreen() {
-  return el('div', { class: 'area', style: 'padding:0' }, [
-    el('div', { class: 'area-titulo' }, [
-      el('p', { class: 'etiqueta', text: 'ajuda' }),
-      el('h1', { text: 'Como o Fluxo trabalha com você' })
-    ]),
+  return screen({ title: 'Como o Fluxo trabalha com você', children: [
     panel({
       title: 'O que ele faz sozinho',
       children: [
-        el('ul', { class: 'leitura' }, [
+        el('ul', { class: 'leitura marcadores' }, [
           'Lê seu currículo, mostra o que entendeu e pergunta apenas o que faltar.',
           'Procura vagas nas plataformas que você habilitou, usando os seus critérios.',
           'Compara aderência, descarta duplicadas e explica por que recomendou cada vaga.',
           'Preenche o formulário só com informações que você confirmou.',
           'Para e chama você antes de enviar, aceitar declaração ou iniciar teste cronometrado.',
           'Acompanha as candidaturas e registra novidades no histórico.'
-        ].map((item) => el('li', { class: 'quebra', text: `• ${item}` })))
+        ].map((item) => el('li', { class: 'quebra', text: item })))
       ]
     }),
     panel({
       title: 'O que ele não promete',
       children: [
-        el('ul', { class: 'leitura' }, [
+        el('ul', { class: 'leitura marcadores' }, [
           'Não trabalha com o computador desligado nem com o aplicativo fechado.',
           'Não contorna CAPTCHA, verificação em duas etapas nem antiautomação.',
           'Não inventa experiência, resposta eliminatória ou dado pessoal.',
           'Não garante contratação nem estima probabilidade de sucesso.',
           'Não envia mensagem a recrutador nesta versão: apenas prepara rascunho.',
           'Nenhuma plataforma está certificada para envio totalmente automático nesta versão.'
-        ].map((item) => el('li', { class: 'quebra', text: `• ${item}` })))
+        ].map((item) => el('li', { class: 'quebra', text: item })))
       ]
     }),
     panel({
@@ -53,7 +49,7 @@ export function ajudaScreen() {
       children: [
         el('p', { class: 'leitura apoio', text: 'O pacote de suporte reúne informações técnicas sem senhas nem dados sensíveis, para você compartilhar quando pedir ajuda.' }),
         el('div', { class: 'linha-acoes' }, [
-          button('Abrir configurações de dados', { variant: 'secundario', onClick: () => go('configuracoes') })
+          button('Abrir cópias e exportação', { variant: 'secundario', onClick: () => { go('configuracoes'); requestAnimationFrame(() => document.querySelector('#painel-dados')?.scrollIntoView({ block: 'start' })); } })
         ]),
         el('details', { class: 'suporte' }, [
           el('summary', { text: 'Informações técnicas desta instalação' }),
@@ -61,7 +57,7 @@ export function ajudaScreen() {
         ])
       ]
     })
-  ]);
+  ] });
 }
 
 function detalhesTecnicos() {

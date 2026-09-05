@@ -1,11 +1,10 @@
 // Ações do candidato. Cada uma explica o efeito, atualiza o estado persistido
 // e nunca anuncia sucesso que o serviço local não confirmou.
 
-import { fileToBase64, read, send } from './api.mjs';
+import { FluxoError, fileToBase64, send } from './api.mjs';
 import { loadState, setJourney, store } from './store.mjs';
-import { connectJourney } from './stream.mjs';
+import { connectJourney, forgetJourney } from './stream.mjs';
 import { notice } from '../ui/messages.mjs';
-import { rerender } from './router.mjs';
 
 export async function importarCurriculo(file) {
   const conteudo = await fileToBase64(file);
@@ -91,6 +90,7 @@ export async function encerrarCampanha() {
   const runId = store.jornada.runId;
   if (!runId) return null;
   const resultado = await send(`/api/v1/autopilot/${encodeURIComponent(runId)}/cancel`, {});
+  forgetJourney();
   setJourney({ status: 'encerrada', mensagem: 'Campanha encerrada. Tarefas filhas foram interrompidas.' });
   notice('Campanha encerrada. Candidaturas já confirmadas continuam no histórico.', 'atencao');
   await loadState();
@@ -108,7 +108,8 @@ export async function prepararCandidatura({ itemId = '', platform = '' } = {}) {
 const revisoesPendentes = new Map();
 
 export async function pedirAprovacao(preparada) {
-  const runId = preparada.run?.id;
+  const runId = preparada?.run?.id;
+  if (!runId) throw new FluxoError('A preparação não devolveu uma execução. Prepare a candidatura novamente.', 'run_missing');
   const payload = {
     queueItemId: preparada.item?.id,
     fields: preparada.snapshot ?? {},
@@ -157,6 +158,7 @@ export async function enviarCandidatura({ preparada, aprovacao, payload }) {
 // Retomar uma candidatura preparada reconcilia o resultado observado na
 // plataforma. Nunca repete o clique de envio.
 export async function conferirEnvio(runId) {
+  if (!runId) throw new FluxoError('Esta candidatura não tem execução associada para conferir. Abra a vaga na plataforma e verifique manualmente.', 'run_missing');
   const resultado = await send(`/api/v1/runs/${encodeURIComponent(runId)}/resume`, {});
   notice('Conferência concluída com a página da plataforma. O envio não foi repetido.', 'sucesso');
   await loadState();
@@ -178,7 +180,9 @@ export async function consultarNovidades() {
 
 export async function agendarAcompanhamento(intervaloMinutos) {
   const resultado = await send('/api/v1/scheduler/jobs', { id: 'followup', intervalMs: Number(intervaloMinutos) * 60000 });
-  notice(`Acompanhamento agendado a cada ${intervaloMinutos} minutos, enquanto o Fluxo estiver aberto.`, 'sucesso');
+  // O serviço pode elevar o intervalo ao mínimo permitido: o aviso diz o valor real.
+  const minutos = Math.round(Number(resultado?.intervalMs ?? intervaloMinutos * 60000) / 60000);
+  notice(`Acompanhamento agendado a cada ${minutos} minutos, enquanto o Fluxo estiver aberto.`, 'sucesso');
   await loadState();
   return resultado;
 }
@@ -187,7 +191,6 @@ export async function corrigirFato(chave, valor) {
   await send('/api/v1/memory/answers', { answers: { [chave]: valor } });
   notice('Informação atualizada no seu perfil. Novas candidaturas usam o valor corrigido.', 'sucesso');
   await loadState();
-  rerender();
 }
 
 // Resolver divergência é escolha da pessoa: grava o valor escolhido e fecha o conflito.
@@ -195,14 +198,12 @@ export async function resolverConflito(chave, valor) {
   await send(`/api/v1/memory/conflicts/${encodeURIComponent(chave)}/resolve`, { value: valor });
   notice('Divergência resolvida com o valor que você escolheu.', 'sucesso');
   await loadState();
-  rerender();
 }
 
 export async function removerFato(chave) {
   await send(`/api/v1/memory/facts/${encodeURIComponent(chave)}`, {}, { method: 'DELETE' });
   notice('Informação removida do perfil. O histórico de candidaturas não muda.', 'atencao');
   await loadState();
-  rerender();
 }
 
 export async function atualizarObjetivo(objetivo) {
@@ -217,9 +218,6 @@ export async function executarPreparacao() {
   return resultado;
 }
 
-export async function lerDiagnostico() {
-  return read('/api/v1/state/preflight', { fallback: null });
-}
 
 function mapaStatus(status) {
   return { waiting_user: 'decisao', running: 'trabalhando', succeeded: 'concluida', needs_attention: 'bloqueio' }[status] ?? status;

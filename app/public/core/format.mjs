@@ -75,6 +75,8 @@ export function listaLegivel(valores) {
 
 function paraData(valor) {
   if (!valor) return null;
-  const data = valor instanceof Date ? valor : new Date(valor);
+  // Data sem hora ("2026-09-10") é local, não UTC: senão vira o dia anterior no Brasil.
+  const bruto = typeof valor === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(valor) ? `${valor}T00:00:00` : valor;
+  const data = bruto instanceof Date ? bruto : new Date(bruto);
   return Number.isNaN(data.getTime()) ? null : data;
 }

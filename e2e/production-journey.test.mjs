@@ -110,7 +110,7 @@ async function journey({ page, runtime, fixture, board, url, resumePath }) {
 // até a confirmação da plataforma, sem um segundo clique de "enviar".
 async function submitThroughUi(page) {
   await page.locator('#lista-decisoes, .lista').first().waitFor({ timeout: 30_000 });
-  await page.getByRole('option').filter({ hasText: 'Engenharia de software' }).first().click();
+  await page.locator('.item-lista').filter({ hasText: 'Engenharia de software' }).first().click();
   await page.locator('#preparar-candidatura').click();
   const dialogo = page.locator('#dialogo');
   await dialogo.waitFor({ state: 'visible', timeout: 60_000 });

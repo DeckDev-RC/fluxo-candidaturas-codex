@@ -6,6 +6,7 @@ import { el } from '../../core/dom.mjs';
 import { describeError } from '../../core/api.mjs';
 import { corrigirFato } from '../../core/actions.mjs';
 import { ask, say } from '../../core/conversa.mjs';
+import { store } from '../../core/store.mjs';
 import { currentRoute, go } from '../../core/router.mjs';
 import { openDialog } from '../../ui/dialog.mjs';
 import { abrirMudancaDeObjetivo } from './objetivo.mjs';
@@ -45,19 +46,26 @@ async function interpretar(texto) {
   say('Ainda não sei atender esse pedido pela conversa. Consigo ajustar objetivo e modalidade, abrir decisões, oportunidades, candidaturas, perfil e configurações. Para o resto, use as áreas na lateral.', { tom: 'atencao' });
 }
 
+// "só remoto" substitui as modalidades aceitas; "também híbrido" acrescenta.
 function propostaDeModalidade(normalizado) {
   const modalidade = /remot/.test(normalizado) ? 'Remoto' : /presencia/.test(normalizado) ? 'Presencial' : 'Híbrido';
-  say(`Entendi que você quer priorizar vagas ${modalidade.toLocaleLowerCase()}. Isto altera a preferência do seu perfil e vale para as próximas buscas. Confirme na janela.`);
+  const atuais = [store.estado?.memory?.facts?.workModes?.value ?? []].flat().filter(Boolean);
+  const exclusivo = /\b(só|somente|apenas|exclusivamente)\b/.test(normalizado) || !atuais.length;
+  const novas = exclusivo ? [modalidade] : [...new Set([...atuais, modalidade])];
+  const descricao = exclusivo
+    ? `aceitar apenas vagas ${modalidade.toLocaleLowerCase()}`
+    : `aceitar também vagas ${modalidade.toLocaleLowerCase()}, além de ${atuais.join(', ').toLocaleLowerCase()}`;
+  say(`Entendi que você quer ${descricao}. Isto altera as modalidades aceitas no seu perfil e vale para as próximas buscas. Confirme na janela.`);
   openDialog({
     title: 'Confirmar mudança de preferência',
-    body: [el('p', { class: 'leitura', text: `Priorizar vagas ${modalidade.toLocaleLowerCase()} nas próximas buscas?` })],
+    body: [el('p', { class: 'leitura', text: `Modalidades aceitas passam a ser: ${novas.join(', ')}. Confirmar?` })],
     actions: [
       { label: 'Não alterar', onSelect: () => { say('Preferência mantida como estava.'); } },
       {
-        label: `Priorizar ${modalidade.toLocaleLowerCase()}`,
+        label: 'Confirmar modalidades',
         variant: 'primario',
         onSelect: async () => {
-          try { await corrigirFato('workModes', modalidade); }
+          try { await corrigirFato('workModes', novas); }
           catch (error) { say(describeError(error), { tom: 'erro' }); return false; }
           return true;
         }

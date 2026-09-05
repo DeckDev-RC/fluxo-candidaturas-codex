@@ -23,7 +23,8 @@
 
 .botao:hover { background: var(--acao-forte); }
 .botao[disabled] { background: var(--superficie-2); color: var(--texto-3); border-color: var(--linha); cursor: not-allowed; opacity: 1; }
-.botao[aria-busy="true"] { background: var(--acao-forte); cursor: progress; }
+.botao[aria-busy="true"] { background: var(--acao-forte); color: var(--texto-inverso); border-color: transparent; cursor: progress; }
+.botao-secundario[aria-busy="true"] { background: var(--superficie-2); color: var(--texto-2); border-color: var(--linha-forte); }
 .botao svg { width: 1rem; height: 1rem; }
 
 .botao-secundario {
@@ -47,8 +48,8 @@
 
 .botao-texto:hover { background: var(--superficie-2); color: var(--texto); }
 
-.botao-perigo { background: var(--erro); color: #fff; }
-.botao-perigo:hover { background: #991b1b; }
+.botao-perigo { background: var(--erro); color: var(--texto-inverso); }
+.botao-perigo:hover { filter: brightness(0.9); }
 
 /* Campos */
 .campo { display: flex; flex-direction: column; gap: var(--e1); }
@@ -168,8 +169,12 @@ input[type="file"]::file-selector-button {
 }
 
 .item-lista:hover { background: var(--superficie-2); }
-.item-lista[aria-selected="true"] { background: var(--acento-fraco); }
-.item-lista[aria-selected="true"] .item-titulo { color: var(--acento); }
+.item-lista[aria-selected="true"],
+.item-lista[aria-expanded="true"] { background: var(--acento-fraco); }
+.item-lista[aria-selected="true"] .item-titulo,
+.item-lista[aria-expanded="true"] .item-titulo { color: var(--acento); }
+/* Linha somente de leitura: sem cursor de mão nem realce ao passar o mouse. */
+.item-lista-estatico, .item-lista-estatico:hover { cursor: default; background: none; }
 
 .item-titulo { font-weight: var(--peso-medio); color: var(--texto); }
 .item-apoio { color: var(--texto-2); font-size: var(--texto-sm); }
@@ -209,7 +214,7 @@ dialog {
 }
 
 dialog h2 { font-size: var(--texto-md); margin-bottom: var(--e3); }
-dialog::backdrop { background: rgba(17, 17, 19, 0.45); backdrop-filter: blur(4px); }
+dialog::backdrop { background: var(--veu); backdrop-filter: blur(4px); }
 .dialogo-acoes { display: flex; gap: var(--e2); justify-content: flex-end; margin-top: var(--e5); flex-wrap: wrap; }
 
 /* Ocupado sem porcentagem inventada. */

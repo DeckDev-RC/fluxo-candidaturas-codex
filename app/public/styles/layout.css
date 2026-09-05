@@ -79,7 +79,8 @@
 }
 
 .objetivo-ativo { display: flex; flex-direction: column; gap: 0; min-width: 0; flex: 1; }
-.objetivo-ativo .etiqueta { display: none; }
+/* Rótulo do objetivo: invisível, mas lido por leitor de tela. */
+.objetivo-ativo .etiqueta { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .objetivo-ativo strong { font-size: var(--texto-base); font-weight: var(--peso-forte); letter-spacing: var(--traco-titulo); }
 .objetivo-ativo .apoio { font-size: var(--texto-xs); }
 .cabecalho-acoes { display: flex; align-items: center; gap: var(--e2); flex-wrap: wrap; justify-content: flex-end; }

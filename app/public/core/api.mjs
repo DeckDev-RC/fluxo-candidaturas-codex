@@ -30,8 +30,8 @@ export function describeError(error) {
 }
 
 export class FluxoError extends Error {
-  constructor(message, code, status) {
-    super(message);
+  constructor(message, code, status, cause) {
+    super(message, cause ? { cause } : undefined);
     this.code = code;
     this.status = status;
   }
@@ -39,7 +39,7 @@ export class FluxoError extends Error {
 
 export async function read(path, { fallback } = {}) {
   try {
-    const response = await fetch(path, { cache: 'no-store' });
+    const response = await pedir(path, { cache: 'no-store' });
     if (!response.ok) throw await toError(response);
     return await response.json();
   } catch (error) {
@@ -49,14 +49,20 @@ export async function read(path, { fallback } = {}) {
 }
 
 export async function send(path, body = {}, { method = 'POST' } = {}) {
-  const response = await fetch(path, {
+  const response = await pedir(path, {
     method,
     headers: { 'content-type': 'application/json', ...(csrfToken ? { 'x-fluxo-csrf': csrfToken } : {}) },
     body: JSON.stringify(body)
   });
   if (!response.ok) throw await toError(response);
   const payload = await response.json().catch(() => ({}));
-  return payload.data ?? payload;
+  return payload?.data ?? payload;
+}
+
+// Falha de rede vira mensagem da pessoa, não "Failed to fetch".
+async function pedir(path, options) {
+  try { return await fetch(path, options); }
+  catch (error) { throw new FluxoError('O Fluxo local não respondeu. Verifique se o aplicativo continua aberto e tente de novo.', 'network_error', 0, error); }
 }
 
 async function toError(response) {

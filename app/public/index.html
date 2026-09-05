@@ -29,26 +29,26 @@
 
       <nav aria-label="Áreas do Fluxo">
         <ul id="navegacao-principal">
-          <li><a href="#agora" data-rota="agora">
+          <li><a href="#agora" data-rota="agora" aria-label="Conversa">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
             <span>Conversa</span></a></li>
-          <li><a href="#oportunidades" data-rota="oportunidades">
+          <li><a href="#oportunidades" data-rota="oportunidades" aria-label="Oportunidades">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
             <span>Oportunidades</span></a></li>
-          <li><a href="#candidaturas" data-rota="candidaturas">
+          <li><a href="#candidaturas" data-rota="candidaturas" aria-label="Candidaturas">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /><rect width="20" height="14" x="2" y="6" rx="2" /></svg>
             <span>Candidaturas</span></a></li>
-          <li><a href="#perfil" data-rota="perfil">
+          <li><a href="#perfil" data-rota="perfil" aria-label="Meu perfil">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
             <span>Meu perfil</span></a></li>
         </ul>
       </nav>
 
       <div class="navegacao-rodape">
-        <a href="#configuracoes" data-rota="configuracoes">
+        <a href="#configuracoes" data-rota="configuracoes" aria-label="Configurações">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4" /></svg>
           <span>Configurações</span></a>
-        <a href="#ajuda" data-rota="ajuda">
+        <a href="#ajuda" data-rota="ajuda" aria-label="Ajuda">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><path d="M12 17h.01" /></svg>
           <span>Ajuda</span></a>
       </div>
@@ -59,10 +59,10 @@
         <div class="objetivo-ativo">
           <span class="etiqueta">objetivo ativo</span>
           <strong id="objetivo-texto">Carregando…</strong>
-          <span class="apoio" id="estado-trabalho">Lendo os dados deste computador</span>
+          <span class="apoio" id="estado-trabalho" aria-live="polite">Lendo os dados deste computador</span>
         </div>
         <div class="cabecalho-acoes">
-          <a class="contador-decisoes" id="indicador-decisoes" href="#decisoes" data-vazio="true">
+          <a class="contador-decisoes" id="indicador-decisoes" data-vazio="true">
             <span id="indicador-decisoes-texto">Nenhuma decisão pendente</span>
           </a>
           <button class="botao-secundario botao" id="editar-objetivo" type="button">Mudar objetivo</button>
@@ -85,7 +85,7 @@
     </div>
   </div>
 
-  <dialog id="dialogo">
+  <dialog id="dialogo" aria-labelledby="dialogo-titulo">
     <h2 id="dialogo-titulo"></h2>
     <div id="dialogo-corpo"></div>
     <div class="dialogo-acoes" id="dialogo-acoes"></div>

@@ -1,26 +1,22 @@
 // Oportunidades: lista comparável sem abrir cada vaga, com motivo da
 // recomendação e dado ausente identificado (U5-01 a U5-03).
 
-import { badge, button, definitions, el, emptyState, field, panel } from '../core/dom.mjs';
+import { badge, button, definitions, el, emptyState, field, panel, screen } from '../core/dom.mjs';
+import { nivelAderencia } from '../core/aderencia.mjs';
 import { frescor, salario } from '../core/format.mjs';
 import { store } from '../core/store.mjs';
-import { prepararCandidatura } from '../core/actions.mjs';
 import { listDetail } from '../ui/list-detail.mjs';
-import { notice } from '../ui/messages.mjs';
 import { go, rerender } from '../core/router.mjs';
-import { abrirRevisao } from './decisoes.mjs';
-import { pedirAprovacao } from '../core/actions.mjs';
+import { botaoPreparar } from './partes/preparar-candidatura.mjs';
 
 const filtro = { texto: '', modalidade: '', ordem: 'aderencia' };
 
 export function oportunidadesScreen() {
   const itens = aplicarFiltro(store.estado?.queue?.items ?? []);
-  return el('div', { class: 'area', style: 'padding:0' }, [
-    el('div', { class: 'area-titulo' }, [
-      el('p', { class: 'etiqueta', text: 'oportunidades' }),
-      el('h1', { text: 'Vagas encontradas para o seu objetivo' }),
-      el('p', { class: 'leitura secundario', text: 'A ordenação usa a aderência calculada com os seus dados confirmados. Filtrar esta lista não altera os critérios da campanha.' })
-    ]),
+  return screen({
+    title: 'Vagas encontradas para o seu objetivo',
+    lead: 'A ordenação usa a aderência calculada com os seus dados confirmados. Filtrar esta lista não altera o que a busca procura.',
+    children: [
     filtros(),
     listDetail({
       area: 'oportunidades',
@@ -33,7 +29,7 @@ export function oportunidadesScreen() {
           el('p', { class: 'apoio quebra', text: motivo(item) })
         ]),
         el('div', { class: 'item-direita' }, [
-          badge(rotuloAderencia(item), tomAderencia(item)),
+          badge(nivelAderencia(item).rotulo, nivelAderencia(item).tom),
           el('span', { class: 'apoio', text: salario(item.salary) }),
           el('span', { class: 'apoio', text: item.platform || 'origem não informada' })
         ])
@@ -43,17 +39,18 @@ export function oportunidadesScreen() {
         children: emptyState(
           'Nenhuma oportunidade na lista',
           store.estado?.discovery?.collectedAt
-            ? 'A busca já rodou e nada passou pelos seus critérios. Você pode ajustar filtros da campanha ou manter o acompanhamento agendado.'
+            ? 'A busca já rodou e nada passou pelos seus critérios. Você pode ajustar plataformas e metas ou manter o acompanhamento agendado.'
             : 'Assim que a busca rodar, as vagas observadas aparecem aqui com empresa, local, origem e o motivo da recomendação.',
-          button('Iniciar uma busca', { onClick: () => go('primeiro-uso') })
+          button('Iniciar uma nova busca', { onClick: () => go('primeiro-uso') })
         )
       })
     })
-  ]);
+  ] });
 }
 
 function filtros() {
-  const texto = el('input', { id: 'filtro-texto', value: filtro.texto, placeholder: 'cargo ou empresa', onInput: (evento) => { filtro.texto = evento.target.value; rerender(); } });
+  // A repintura troca o campo: o foco e o cursor voltam para onde a pessoa digitava.
+  const texto = el('input', { id: 'filtro-texto', value: filtro.texto, placeholder: 'cargo ou empresa', onInput: (evento) => { filtro.texto = evento.target.value; const cursor = evento.target.selectionStart; rerender(); const novo = document.querySelector('#filtro-texto'); novo?.focus(); novo?.setSelectionRange(cursor, cursor); } });
   const modalidade = el('select', { id: 'filtro-modalidade', onChange: (evento) => { filtro.modalidade = evento.target.value; rerender(); } }, [
     el('option', { value: '', text: 'todas as modalidades', selected: filtro.modalidade === '' }),
     ...['Remoto', 'Híbrido', 'Presencial'].map((valor) => el('option', { value: valor, text: valor.toLowerCase(), selected: filtro.modalidade === valor }))
@@ -69,7 +66,7 @@ function filtros() {
       field({ label: 'Modalidade', control: modalidade }),
       field({ label: 'Ordenar por', control: ordem })
     ]),
-    el('p', { class: 'apoio', text: 'Estes controles só mudam a visualização. Para alterar o que o Fluxo procura, ajuste os critérios da campanha em Configurações.' })
+    el('p', { class: 'apoio', text: 'Estes controles só mudam a visualização. O que o Fluxo procura vem do seu objetivo e das plataformas habilitadas em Configurações.' })
   ]);
 }
 
@@ -95,7 +92,7 @@ function detalhe(item) {
       el('p', { class: 'leitura quebra', text: motivo(item) }),
       requisitos.length ? el('div', {}, [
         el('p', { class: 'etiqueta', text: 'requisitos observados' }),
-        el('ul', {}, requisitos.map((requisito) => el('li', { class: 'quebra', text: `• ${requisito}` })))
+        el('ul', { class: 'marcadores' }, requisitos.map((requisito) => el('li', { class: 'quebra', text: requisito })))
       ]) : null,
       eliminatorios.length ? el('div', { class: 'aviso', dataset: { tom: 'atencao' } }, [
         el('div', {}, [
@@ -105,25 +102,7 @@ function detalhe(item) {
       ]) : null,
       el('p', { class: 'apoio', text: 'A aderência é uma justificativa a partir dos seus dados confirmados e da descrição observada. Não é probabilidade de contratação.' }),
       el('div', { class: 'linha-acoes' }, [
-        button('Preparar candidatura para revisão', {
-          id: 'preparar-candidatura',
-          onClick: async (evento) => {
-            const botao = evento.currentTarget;
-            botao.disabled = true;
-            botao.setAttribute('aria-busy', 'true');
-            try {
-              const preparada = await prepararCandidatura({ itemId: item.id });
-              const { aprovacao } = await pedirAprovacao(preparada);
-              rerender();
-              if (aprovacao?.id) abrirRevisao({ ...aprovacao, payloadSummary: { payload: { queueItemId: preparada.item?.id, fields: preparada.snapshot, resume: preparada.resume?.path } } });
-            } catch (error) {
-              notice(error.message, 'erro');
-            } finally {
-              botao.disabled = false;
-              botao.removeAttribute('aria-busy');
-            }
-          }
-        }),
+        botaoPreparar(item, { id: 'preparar-candidatura' }),
         item.identifierOrUrl?.startsWith('http')
           ? el('a', { class: 'botao botao-secundario', href: item.identifierOrUrl, target: '_blank', rel: 'noreferrer noopener', text: 'Abrir a vaga na plataforma' })
           : null
@@ -142,22 +121,7 @@ function motivo(item) {
   return partes.join(' · ');
 }
 
-function rotuloAderencia(item) {
-  const nota = Number(item.fitScore ?? 0);
-  if ([item.eliminators].flat().filter(Boolean).length) return 'requisito eliminatório';
-  if (!nota) return 'aderência não calculada';
-  if (nota >= 80) return `aderência forte · ${nota}%`;
-  if (nota >= 50) return `aderência possível · ${nota}%`;
-  return `aderência fraca · ${nota}%`;
-}
 
-function tomAderencia(item) {
-  const nota = Number(item.fitScore ?? 0);
-  if ([item.eliminators].flat().filter(Boolean).length) return 'erro';
-  if (nota >= 80) return 'sucesso';
-  if (nota >= 50) return 'informacao';
-  return '';
-}
 
 function aplicarFiltro(itens) {
   const termo = filtro.texto.trim().toLocaleLowerCase();

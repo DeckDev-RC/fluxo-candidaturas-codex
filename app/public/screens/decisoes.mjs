@@ -1,7 +1,8 @@
 // Caixa de decisões: o que depende da sua autorização, por urgência e impacto.
 // Cada item diz por que precisa de você e o que acontece depois (U6).
 
-import { badge, button, definitions, el, emptyState, field, panel } from '../core/dom.mjs';
+import { badge, button, definitions, el, emptyState, field, panel, screen, staticListItem } from '../core/dom.mjs';
+import { selectId } from '../ui/list-detail.mjs';
 import { dataHora } from '../core/format.mjs';
 import { decisions, store } from '../core/store.mjs';
 import { decidirAprovacao, responderLacunas } from '../core/actions.mjs';
@@ -20,33 +21,27 @@ const EXPLICACOES = {
 
 export function decisoesScreen() {
   const itens = decisions().sort((a, b) => URGENCIA[a.tipo] - URGENCIA[b.tipo]);
-  return el('div', { class: 'area', style: 'padding:0' }, [
-    el('div', { class: 'area-titulo' }, [
-      el('p', { class: 'etiqueta', text: 'decisões' }),
-      el('h1', { text: itens.length ? `${itens.length} ${itens.length === 1 ? 'item espera' : 'itens esperam'} por você` : 'Nenhuma decisão pendente' }),
-      el('p', { class: 'leitura secundario', text: 'Aqui ficam apenas escolhas que dependem de você: aprovar um envio, confirmar uma informação, resolver um acesso ou conferir um resultado incerto.' })
-    ]),
-    itens.length
+  return screen({
+    title: itens.length ? `${itens.length} ${itens.length === 1 ? 'item espera' : 'itens esperam'} por você` : 'Nenhuma decisão pendente',
+    lead: 'Aqui ficam apenas escolhas que dependem de você: aprovar um envio, confirmar uma informação, resolver um acesso ou conferir um resultado incerto.',
+    children: itens.length
       ? panel({ children: decisionList(itens) })
-      : panel({ children: emptyState('Você está em dia', 'Quando o Fluxo precisar de uma autorização ou de um dado seu, o item aparece aqui e no indicador do topo.', button('Voltar para Agora', { variant: 'secundario', onClick: () => go('agora') })) })
-  ]);
+      : panel({ children: emptyState('Você está em dia', 'Quando o Fluxo precisar de uma autorização ou de um dado seu, o item aparece aqui e no indicador do topo.', button('Voltar para a conversa', { variant: 'secundario', onClick: () => go('agora') })) })
+  });
 }
 
 export function decisionList(itens) {
   if (!itens.length) return emptyState('Nenhuma decisão pendente', 'O Fluxo continua trabalhando e chama você somente quando precisar.');
-  return el('ul', { class: 'lista', id: 'lista-decisoes' }, itens.map((item) => el('li', {}, [
-    el('div', { class: 'item-lista', role: 'none', style: 'cursor:default', dataset: { tipo: item.tipo } }, [
-      el('div', {}, [
-        el('p', { class: 'item-titulo quebra', text: item.titulo }),
-        el('p', { class: 'item-apoio quebra', text: item.detalhe || EXPLICACOES[item.tipo] }),
-        el('p', { class: 'apoio', text: EXPLICACOES[item.tipo] })
-      ]),
-      el('div', { class: 'item-direita' }, [
-        badge(rotuloTipo(item.tipo), item.tipo === 'aprovacao' ? 'acao' : item.tipo === 'bloqueio' ? 'erro' : 'atencao'),
-        acaoDoItem(item)
-      ])
-    ])
-  ])));
+  // Sem detalhe próprio, a explicação do tipo aparece uma vez só.
+  return el('ul', { class: 'lista', id: 'lista-decisoes' }, itens.map((item) => staticListItem({
+    title: item.titulo,
+    support: item.detalhe || EXPLICACOES[item.tipo],
+    detail: item.detalhe ? EXPLICACOES[item.tipo] : '',
+    right: [
+      badge(rotuloTipo(item.tipo), item.tipo === 'aprovacao' ? 'acao' : item.tipo === 'bloqueio' ? 'erro' : 'atencao'),
+      acaoDoItem(item)
+    ]
+  })));
 }
 
 function acaoDoItem(item) {
@@ -57,7 +52,8 @@ function acaoDoItem(item) {
     return button('Responder', { onClick: abrirPerguntas });
   }
   if (item.tipo === 'bloqueio') {
-    return button('Ver candidatura', { variant: 'secundario', onClick: () => go('candidaturas') });
+    // A vaga bloqueada está na fila: abre a oportunidade certa, já selecionada.
+    return button('Ver oportunidade', { variant: 'secundario', onClick: () => { selectId('oportunidades', item.id); go('oportunidades'); } });
   }
   return button('Abrir', { variant: 'secundario', onClick: () => go('candidaturas') });
 }
@@ -82,7 +78,7 @@ export function abrirRevisao(aprovacao) {
         ['Plataforma', vaga.platform],
         ['Endereço da vaga', vaga.identifierOrUrl],
         ['Currículo anexado', conteudo.resume || 'nenhum documento anexado'],
-        ...Object.entries(campos).map(([campo, valor]) => [`Campo ${campo}`, String(valor || 'em branco')])
+        ...Object.entries(campos).map(([campo, valor]) => [rotuloCampo(campo), String(valor || 'em branco')])
       ]),
       el('p', { class: 'leitura apoio', text: 'Ao aprovar, o Fluxo envia exatamente esta revisão. Se a página ou o conteúdo mudarem, a aprovação deixa de valer e uma nova revisão é exigida.' }),
       el('details', { class: 'suporte' }, [
@@ -137,6 +133,18 @@ async function registrar(id, decisao) {
     return false;
   }
   return true;
+}
+
+// Nomes técnicos de campo do formulário da plataforma, em linguagem da pessoa.
+const ROTULOS_CAMPO = {
+  name: 'Nome', fullname: 'Nome completo', email: 'E-mail', phone: 'Telefone', telephone: 'Telefone', mobile: 'Celular',
+  note: 'Observações', notes: 'Observações', message: 'Mensagem', cover: 'Carta de apresentação', salary: 'Pretensão salarial',
+  linkedin: 'LinkedIn', location: 'Localização', city: 'Cidade', resume: 'Currículo', cv: 'Currículo'
+};
+
+function rotuloCampo(campo) {
+  const chave = String(campo).toLowerCase().replace(/[^a-z]/g, '');
+  return ROTULOS_CAMPO[chave] ?? `Campo "${campo}"`;
 }
 
 function rotuloTipo(tipo) {
