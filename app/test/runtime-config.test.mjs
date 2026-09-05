@@ -24,6 +24,11 @@ test('runtime config reads safe operational controls and omits credentials', asy
   assert.equal(config.maxConsecutiveFailures, 3);
   assert.equal(config.evidenceMode, 'confirmation');
   assert.equal(JSON.stringify(config).includes('must-not-leak'), false);
+  assert.deepEqual(Object.keys(config).sort(), [
+    'allowAutomatedSubmission', 'browserAutomationRequired', 'checkpointAfterEachAction',
+    'evidenceMode', 'maxApplicationsPerRun', 'maxConsecutiveFailures',
+    'playwrightHeadless', 'playwrightSession', 'requireFinalConfirmation'
+  ]);
 });
 
 test('runtime config returns safe defaults without env file', async () => {

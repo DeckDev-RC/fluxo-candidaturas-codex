@@ -130,6 +130,7 @@ Fluxo/
 ## Documentação
 
 - `app/README.md`: execução e endpoints do App Harness local.
+- `docs/CONTRATO-DE-EXECUCAO.md`: contrato de instalação, startup, modos e diagnóstico.
 - `docs/OPERACAO.md`: sequência de ponta a ponta.
 - `docs/PRIMEIRO-USO.md`: onboarding guiado e preflight.
 - `docs/PLAYWRIGHT.md`: uso do navegador pelo agente.

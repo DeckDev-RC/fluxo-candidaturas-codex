@@ -19,6 +19,9 @@ npm start
 
 Abra `http://127.0.0.1:4173`.
 
+O contrato completo de instalação, modos (`chatgpt`, `api-key`, fixture e offline),
+diagnóstico e limites está em [`docs/CONTRATO-DE-EXECUCAO.md`](../docs/CONTRATO-DE-EXECUCAO.md).
+
 O dashboard inicia em modo somente leitura. O onboarding, preflight, claim, exportação, aprovação e execução de navegador são ações separadas e sujeitas às políticas do Fluxo. O runtime exige sessão local com cookie e CSRF, aceita somente conexões loopback, aplica CSP, atribui `x-request-id` e mantém mutações serializadas por `estado/harness.lock`.
 
 ## API local
