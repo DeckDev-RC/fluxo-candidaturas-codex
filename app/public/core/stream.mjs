@@ -10,7 +10,7 @@ const TIPOS = [
   'autopilot.waiting_user', 'autopilot.completed', 'autopilot.exception', 'autopilot.failed', 'autopilot.retry',
   'autopilot.human.rejected', 'autopilot.turn.completed',
   'application.prepared', 'application.fields.filled', 'application.submission_confirmed',
-  'run.paused', 'run.resumed', 'run.needs_reconcile'
+  'run.needs_reconcile'
 ];
 
 // Eventos que mudam o que está persistido: o retrato do estado é relido.
@@ -123,8 +123,6 @@ function aplicar(tipo, payload, { repetido }) {
     setJourney({ status: 'concluida', mensagem: 'A jornada terminou com resultados confirmados.', perguntas: [] });
   }
   if (tipo === 'autopilot.turn.completed') linha('informacao', 'Etapa concluída; a campanha continua na próxima tarefa autorizada.');
-  if (tipo === 'run.paused') setJourney({ status: 'pausada', mensagem: payload.reason ?? 'A jornada está pausada.' });
-  if (tipo === 'run.resumed') setJourney({ status: 'trabalhando', mensagem: 'A jornada foi retomada.' });
   if (tipo === 'run.needs_reconcile') setJourney({ status: 'incerto', mensagem: 'Um envio ficou com resultado incerto e precisa de conferência.' });
   if (tipo === 'application.prepared') linha('informacao', 'Candidatura preparada para sua revisão.');
   if (tipo === 'application.fields.filled') linha('informacao', 'Campos preenchidos com informações confirmadas.');

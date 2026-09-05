@@ -1,7 +1,7 @@
 // Mensagens persistentes: aprovações, falhas e prazos continuam encontráveis
 // depois que a pessoa deixa de olhar a tela (U7-05). Nada desaparece sozinho.
 
-import { el, replace } from '../core/dom.mjs';
+import { el } from '../core/dom.mjs';
 
 const mensagens = [];
 const AGRUPAR_MS = 4000;
@@ -39,15 +39,27 @@ function visivel(item) {
   return !naConversa || item.persistente || item.tom === 'erro' || item.tom === 'atencao';
 }
 
+// Cada aviso tem o próprio nó, reaproveitado entre pinturas: a região viva só
+// anuncia o que entrou, não relê os avisos antigos a cada mudança.
+const nos = new WeakMap();
+
 function render() {
   const regiao = document.querySelector('#mensagens');
   if (!regiao) return;
+  const desejados = mensagens.filter(visivel).map((item) => {
+    const no = nos.get(item) ?? criarAviso(item);
+    nos.set(item, no);
+    no.querySelector('p').textContent = item.repeticoes > 1 ? `${item.texto} (${item.repeticoes}×)` : item.texto;
+    return no;
+  });
+  for (const filho of [...regiao.children]) if (!desejados.includes(filho)) filho.remove();
+  desejados.forEach((no, indice) => { if (regiao.children[indice] !== no) regiao.insertBefore(no, regiao.children[indice] ?? null); });
+}
+
+function criarAviso(item) {
   // Erro é anunciado de imediato (alert); o resto segue a região polida.
-  replace(regiao, mensagens.filter(visivel).map((item) => el('div', { class: 'aviso', dataset: { tom: item.tom }, role: item.tom === 'erro' ? 'alert' : undefined }, [
-    el('div', { class: 'leitura' }, [
-      el('p', { text: item.repeticoes > 1 ? `${item.texto} (${item.repeticoes}×)` : item.texto }),
-      item.acao
-    ]),
+  return el('div', { class: 'aviso', dataset: { tom: item.tom }, role: item.tom === 'erro' ? 'alert' : undefined }, [
+    el('div', { class: 'leitura' }, [el('p', { text: item.texto }), item.acao]),
     el('button', {
       type: 'button',
       class: 'botao botao-texto',
@@ -55,5 +67,5 @@ function render() {
       'aria-label': `Dispensar aviso: ${item.texto}`,
       onClick: () => { mensagens.splice(mensagens.indexOf(item), 1); render(); }
     })
-  ])));
+  ]);
 }

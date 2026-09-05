@@ -83,9 +83,9 @@ function limitesPanel() {
     children: [
       el('p', { class: 'apoio', id: 'consumo-campanha', text: 'Lendo o consumo desta execução…' }),
       el('div', { class: 'blocos' }, [
-        metric('Candidaturas por execução', numero(limites.maxApplicationsPerRun ?? 30)),
-        metric('Falhas seguidas antes de parar', numero(limites.maxConsecutiveFailures ?? 3)),
-        metric('Tentativas por tarefa', numero(limites.maxTaskAttempts ?? 2)),
+        metric('Candidaturas por execução', limite(limites.maxApplicationsPerRun)),
+        metric('Falhas seguidas antes de parar', limite(limites.maxConsecutiveFailures)),
+        metric('Tentativas por tarefa', limite(limites.maxTaskAttempts)),
         metric('Duração máxima', duracao(limites.maxRunDurationMs ?? 0)),
         metric('Consumo máximo', `${numero(limites.maxRunTokens ?? 0)} tokens`),
         metric('Intervalo mínimo de acompanhamento', duracao(limites.followUpMinIntervalMs ?? 0))
@@ -161,7 +161,7 @@ function privacidadePanel() {
 }
 
 // Consumo medido de verdade: candidaturas enviadas, falhas seguidas e tokens
-// informados pelo runtime de IA. Quando o runtime não informa, isso é dito.
+// informados pela IA. Quando ela não informa, isso é dito.
 // Diagnósticos são lidos uma vez por visita (ou ao pedir atualização), não a
 // cada repintura: cada leitura abre o banco local.
 const VALIDADE_MS = 30_000;
@@ -188,7 +188,7 @@ async function atualizarConsumo() {
   alvo.textContent = [
     `Nesta execução: ${numero(uso.submitted ?? 0)} candidatura(s) enviada(s)`,
     `${numero(uso.consecutiveFailures ?? 0)} falha(s) seguida(s)`,
-    tokens > 0 ? `${numero(tokens)} tokens medidos` : 'consumo de tokens ainda não informado pelo runtime',
+    tokens > 0 ? `${numero(tokens)} tokens medidos` : 'consumo de tokens ainda não informado pela IA',
     uso.cancelled ? 'campanha cancelada' : uso.pausedForUser ? 'aguardando você' : 'em andamento'
   ].join(' · ');
 }
@@ -262,6 +262,11 @@ async function operacaoReconciliacao(strategy) {
   } catch (error) { notice(error.message, 'erro'); }
 }
 
+
+// Os limites vêm da política do serviço; a interface não presume valores.
+function limite(valor) {
+  return valor === undefined || valor === null ? 'não informado' : numero(valor);
+}
 
 function rotuloModo(modo) {
   return { 'codex-app-server': 'automação completa', 'offline-read': 'somente leitura local', demonstracao: 'demonstração local' }[modo] ?? 'não determinado';

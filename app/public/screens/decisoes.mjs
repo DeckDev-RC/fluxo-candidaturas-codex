@@ -64,10 +64,11 @@ export function abrirRevisao(aprovacao) {
   const vaga = (store.estado?.queue?.items ?? []).find((item) => item.id === conteudo.queueItemId) ?? {};
   const campos = conteudo.fields?.formValues ?? {};
   const expirada = aprovacao.expiresAt && Date.parse(aprovacao.expiresAt) < Date.now();
-  const empresa = vaga.company ?? 'empresa não identificada';
+  const empresa = vaga.company ?? '';
+  const titulo = empresa ? `Aprovar envio para ${empresa}` : 'Aprovar envio desta candidatura';
 
   openDialog({
-    title: `Aprovar envio para ${empresa}`,
+    title: titulo,
     body: [
       expirada
         ? el('div', { class: 'aviso', dataset: { tom: 'atencao' } }, [el('p', { text: 'Esta revisão perdeu a validade. Prepare a candidatura novamente para gerar uma revisão atual.' })])
@@ -89,7 +90,7 @@ export function abrirRevisao(aprovacao) {
     actions: [
       { label: 'Rejeitar', variant: 'perigo', onSelect: () => registrar(aprovacao.id, 'rejected') },
       { label: 'Voltar sem decidir' },
-      ...(expirada ? [] : [{ label: `Aprovar envio para ${empresa}`, variant: 'primario', onSelect: () => registrar(aprovacao.id, 'approved') }])
+      ...(expirada ? [] : [{ label: titulo, variant: 'primario', onSelect: () => registrar(aprovacao.id, 'approved') }])
     ]
   });
 }
