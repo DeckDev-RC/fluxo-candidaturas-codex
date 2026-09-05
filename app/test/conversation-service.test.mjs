@@ -5,65 +5,142 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createConversationService, separarAcoes } from '../src/conversation-service.mjs';
 import { montarContexto } from '../src/conversation-prompt.mjs';
+import { resumirFerramenta } from '../src/conversation-narration.mjs';
 import { createServer } from '../src/http-server.mjs';
 
-// Adaptador falso: abre thread, e a cada turno emite a resposta como o app-server faria.
-function adaptadorFalso({ resposta = 'Olá! Comece pelo cartão de primeiro uso.' } = {}) {
+// Adaptador falso: abre thread e, a cada turno, emite o que o app-server emitiria.
+// `roteiro(texto)` devolve a lista de eventos do turno (mensagens e chamadas de ferramenta).
+function adaptadorFalso(roteiro = () => [{ mensagem: 'Olá! Comece pelo cartão de primeiro uso.' }], { concluir = true } = {}) {
   const chamadas = [];
+  const vinculos = [];
   let notificar = () => {};
+  let ferramenta = () => {};
+  let contador = 0;
   const adapter = {
-    request: async () => ({}),
+    request: async (method, params) => { chamadas.push([method, params]); return {}; },
+    bindRun(runId, threadId) { vinculos.push([runId, threadId]); },
     async startThread(params) { chamadas.push(['thread/start', params]); return { thread: { id: 'thread-conversa' } }; },
-    async runTurn(threadId, text) {
-      chamadas.push(['turn/start', { threadId, text }]);
+    async runTurnForRun(runId, threadId, text) {
+      chamadas.push(['turn/start', { runId, threadId, text }]);
+      const turnId = `turn-${++contador}`;
       setTimeout(() => {
-        notificar({ method: 'item/completed', params: { threadId, turnId: 'turn-1', item: { type: 'agentMessage', text: resposta } } });
-        notificar({ method: 'turn/completed', params: { threadId, turn: { id: 'turn-1', status: 'completed' } } });
+        for (const passo of roteiro(text)) {
+          if (passo.mensagem) notificar({ method: 'item/completed', params: { threadId, turnId, item: { type: 'agentMessage', text: passo.mensagem } } });
+          if (passo.ferramenta) { ferramenta({ phase: 'started', runId, threadId, turnId, tool: passo.ferramenta, arguments: passo.args ?? {} }); ferramenta({ phase: 'completed', runId, threadId, turnId, tool: passo.ferramenta, arguments: passo.args ?? {}, ok: true, result: passo.result ?? {} }); }
+        }
+        if (concluir) notificar({ method: 'turn/completed', params: { threadId, turn: { id: turnId, status: 'completed' } } });
       }, 5);
-      return { turn: { id: 'turn-1' } };
+      return { turn: { id: turnId } };
     },
-    ligar(fn) { notificar = fn; }
+    ligar(service) { notificar = (m) => service.handleNotification(m); ferramenta = (c) => service.handleToolCall(c); }
   };
-  return { adapter, chamadas };
+  return { adapter, chamadas, vinculos };
 }
 
-test('um turno de conversa envia o contexto, sem ferramentas, e devolve o texto do assistente', async () => {
+function runServiceFalso() {
+  const runs = new Map();
+  const eventos = [];
+  return {
+    startRun({ kind, mode, goal }) { const run = { id: `run-${runs.size + 1}`, kind, mode, goal, status: 'running' }; runs.set(run.id, run); return run; },
+    getRun(id) { return runs.get(id) ?? null; },
+    setAgentThread(id, threadId) { runs.get(id).agentThreadId = threadId; },
+    appendEvent(evento) { eventos.push(evento); },
+    eventos
+  };
+}
+
+const ate = (service, tipo) => new Promise((resolve) => { const parar = service.subscribe((evento) => { if (evento.type === tipo) { parar(); resolve(evento); } }); });
+
+test('um turno abre a thread com ferramentas, vincula um run e entrega a resposta por eventos', async () => {
   const rootDir = await mkdtemp(join(tmpdir(), 'fluxo-conversa-'));
-  const { adapter, chamadas } = adaptadorFalso({ resposta: 'Você está no primeiro uso: escreva o objetivo e importe o currículo.\nAÇÃO: abrir=primeiro-uso' });
-  const service = createConversationService({ agentAdapter: adapter, rootDir, snapshot: async () => ({ situacao: 'primeiro uso', objetivo: '', plataformas: [] }) });
-  adapter.ligar((mensagem) => service.handleNotification(mensagem));
+  const { adapter, chamadas, vinculos } = adaptadorFalso(() => [{ mensagem: 'Você está no primeiro uso: escreva o objetivo e importe o currículo.\nAÇÃO: abrir=primeiro-uso' }]);
+  const runService = runServiceFalso();
+  const service = createConversationService({ agentAdapter: adapter, rootDir, runService, snapshot: async () => ({ situacao: 'primeiro uso', objetivo: '', plataformas: [] }) });
+  adapter.ligar(service);
 
-  const resultado = await service.turn('oi, o que eu faço?');
-  assert.equal(resultado.reply, 'Você está no primeiro uso: escreva o objetivo e importe o currículo.');
-  assert.deepEqual(resultado.actions, [{ tipo: 'abrir', valor: 'primeiro-uso' }]);
+  const concluido = ate(service, 'turn.completed');
+  const inicio = await service.turn('oi, o que eu faço?');
+  assert.ok(inicio.turnId);
+  const fim = await concluido;
+  assert.equal(fim.reply, 'Você está no primeiro uso: escreva o objetivo e importe o currículo.');
+  assert.deepEqual(fim.actions, [{ tipo: 'abrir', valor: 'primeiro-uso' }]);
+
   assert.equal(chamadas[0][0], 'thread/start');
-  assert.equal(chamadas[0][1].conversation, true, 'a conversa não recebe ferramentas de operação');
-  assert.match(chamadas[0][1].developerInstructions, /não envia nada sem aprovação/i);
+  assert.equal(chamadas[0][1].conversation, undefined, 'a conversa condutora recebe as ferramentas fluxo_*');
+  assert.match(chamadas[0][1].developerInstructions, /Nunca aprove um envio/);
+  assert.deepEqual(vinculos, [['run-1', 'thread-conversa']]);
+  assert.equal(runService.getRun('run-1').agentThreadId, 'thread-conversa');
   assert.match(chamadas[1][1].text, /CONTEXTO ATUAL/);
-  assert.match(chamadas[1][1].text, /Situação: primeiro uso/);
   assert.match(chamadas[1][1].text, /Pessoa: oi, o que eu faço\?/);
+  assert.ok(runService.eventos.some((evento) => evento.type === 'conversation.user'), 'a fala da pessoa fica no histórico do run');
 
-  // A thread é persistida: a próxima mensagem não abre outra.
+  // A thread é persistida: a próxima mensagem não abre outra nem outro run.
+  const segundo = ate(service, 'turn.completed');
   await service.turn('e depois?');
+  await segundo;
   assert.equal(chamadas.filter(([metodo]) => metodo === 'thread/start').length, 1);
+  assert.equal(vinculos.length, 1);
   assert.equal(JSON.parse(await readFile(join(rootDir, 'estado', 'conversa.json'), 'utf8')).threadId, 'thread-conversa');
 });
 
-test('notificações de outras threads são ignoradas e o turno expira com mensagem legível', async () => {
-  const adapter = { request: async () => ({}), async startThread() { return { thread: { id: 'thread-x' } }; }, async runTurn() { return { turn: { id: 'turn-x' } }; } };
-  const service = createConversationService({ agentAdapter: adapter, snapshot: async () => ({}), timeoutMs: 30 });
-  assert.equal(service.handleNotification({ method: 'item/completed', params: { threadId: 'outra', item: { type: 'agentMessage', text: 'x' } } }), false);
-  await assert.rejects(service.turn('oi'), { code: 'conversation_timeout' });
+test('chamadas de ferramenta viram narração e esperas pela pessoa', async () => {
+  const { adapter } = adaptadorFalso(() => [
+    { ferramenta: 'fluxo_open_platform', args: { platform: 'LINKEDIN' }, result: { url: 'https://www.linkedin.com/login', loginPending: true, challenge: null } },
+    { mensagem: 'Abri o LinkedIn na aba do navegador. Entre com a sua conta e me avise.' }
+  ]);
+  const service = createConversationService({ agentAdapter: adapter, runService: runServiceFalso(), snapshot: async () => ({}) });
+  adapter.ligar(service);
+  const eventos = [];
+  service.subscribe((evento) => eventos.push(evento));
+  const fim = ate(service, 'turn.completed');
+  await service.turn('pode começar');
+  await fim;
+  const tipos = eventos.map((evento) => evento.type);
+  assert.deepEqual(tipos, ['turn.started', 'tool.started', 'tool.completed', 'waiting_user', 'assistant.message', 'turn.completed']);
+  assert.equal(eventos[1].summary, 'Abrindo LinkedIn na aba do navegador.');
+  assert.equal(eventos[2].summary, 'LinkedIn está aberto e pede login.');
+  assert.deepEqual(eventos[3].kind, 'login');
+  assert.equal(eventos[3].platform, 'LINKEDIN');
 });
 
-test('separarAcoes tira as linhas de ação do texto lido e o contexto lista o estado sem segredo', () => {
+test('turno de sistema é rotulado, mensagem em curso bloqueia outra e a interrupção encerra', async () => {
+  const { adapter, chamadas } = adaptadorFalso(() => [], { concluir: false });
+  const service = createConversationService({ agentAdapter: adapter, runService: runServiceFalso(), snapshot: async () => ({}), timeoutMs: 5000 });
+  adapter.ligar(service);
+  await service.turn('Aprovação demo-1 registrada. Prossiga.', { system: true });
+  assert.match(chamadas.at(-1)[1].text, /SISTEMA \(evento da interface/);
+  await assert.rejects(service.turn('outra'), { code: 'conversation_busy' });
+  const falha = ate(service, 'turn.failed');
+  const resultado = await service.interrupt();
+  assert.equal(resultado.interrupted, true);
+  assert.equal((await falha).code, 'conversation_interrupted');
+  assert.ok(chamadas.some(([metodo]) => metodo === 'turn/interrupt'));
+  assert.equal(service.status().busy, false);
+});
+
+test('notificações de outras threads são ignoradas e o turno expira com mensagem legível', async () => {
+  const { adapter } = adaptadorFalso(() => [], { concluir: false });
+  const service = createConversationService({ agentAdapter: adapter, snapshot: async () => ({}), timeoutMs: 30 });
+  adapter.ligar(service);
+  assert.equal(service.handleNotification({ method: 'item/completed', params: { threadId: 'outra', item: { type: 'agentMessage', text: 'x' } } }), false);
+  const falha = ate(service, 'turn.failed');
+  await service.turn('oi');
+  assert.equal((await falha).code, 'conversation_timeout');
+});
+
+test('separarAcoes, contexto e narração não vazam segredo nem vocabulário técnico', () => {
   const { resposta, acoes } = separarAcoes('Vou abrir suas **oportunidades**.\nAÇÃO: abrir=oportunidades');
-  assert.equal(resposta, 'Vou abrir suas oportunidades.', 'markdown residual não chega à pessoa');
+  assert.equal(resposta, 'Vou abrir suas oportunidades.');
   assert.deepEqual(acoes, [{ tipo: 'abrir', valor: 'oportunidades' }]);
-  const contexto = montarContexto({ situacao: 'escolher vaga', fila: 3, plataformas: [{ name: 'GUPY', goal: 5 }], fatosConfirmados: ['name'], lacunas: ['location'] });
+  const contexto = montarContexto({ situacao: 'escolher vaga', fila: 3, plataformas: [{ name: 'GUPY', goal: 5 }], fatosConfirmados: ['name'], lacunas: ['location'], abas: [{ platform: 'GUPY', loginPending: true }] });
   assert.match(contexto, /Vagas aguardando na fila: 3/);
-  assert.match(contexto, /GUPY \(meta 5\)/);
+  assert.match(contexto, /GUPY \(login pendente\)/);
   assert.doesNotMatch(contexto, /token|senha/i);
+  const revisao = resumirFerramenta({ tool: 'fluxo_review', arguments: { runId: 'r' }, ok: true, result: { id: 'ap-1' } });
+  assert.equal(revisao.espera.kind, 'approval');
+  assert.equal(revisao.espera.approvalId, 'ap-1');
+  const falha = resumirFerramenta({ tool: 'fluxo_discover', arguments: { platform: 'GUPY' }, ok: false, error: { message: 'página não suportada' } });
+  assert.match(falha.fim, /Não deu certo: página não suportada/);
 });
 
 // Achado do teste com conta real: a IA dizia "jornada pausada" quando a execução
@@ -74,37 +151,45 @@ test('o retrato distingue espera pela pessoa de pausa deliberada', async () => {
     rootDir: await mkdtemp(join(tmpdir(), 'fluxo-retrato-')),
     memoryService: { safeSummary: async () => ({ facts: { name: { confirmed: true, value: 'Pessoa Teste' }, targetRoles: { confirmed: true, value: 'Dev' } }, gaps: [] }) },
     approvalService: { listApprovals: () => [] },
-    runtimeHealth: { snapshot: async () => ({ available: true }) }
+    runtimeHealth: { snapshot: async () => ({ available: true }) },
+    browserAdapter: { tabs: async () => [{ platform: 'GUPY', loginPending: false, challenge: null }] }
   };
   const comEventos = (eventos) => ({ listRuns: () => [{ id: 'r1', kind: 'autopilot', status: 'paused', goal: 'x' }], listEvents: () => eventos });
-
   const esperando = await retratoParaConversa({ ...base, runService: comEventos([{ type: 'autopilot.waiting_user' }]) });
   assert.match(esperando.jornada, /aguardando você/);
+  assert.equal(esperando.abas[0].platform, 'GUPY');
   const pausada = await retratoParaConversa({ ...base, runService: comEventos([{ type: 'run.paused' }]) });
   assert.match(pausada.jornada, /pausada pela pessoa/);
-  assert.equal(pausada.situacao.includes('primeiro uso'), true, 'sem plataformas no estado em disco, a situação continua sendo de configuração inicial');
 });
 
-test('a rota de conversa responde 503 sem IA e entrega a resposta com IA', async () => {
+test('a rota de conversa responde 503 sem IA, aceita o turno com 202 e transmite eventos', async () => {
   const rootDir = await mkdtemp(join(tmpdir(), 'fluxo-conversa-http-'));
   const semIa = createServer({ rootDir, requireSession: false });
   await new Promise((resolve) => semIa.listen(0, '127.0.0.1', resolve));
   try {
     const resposta = await fetch(`http://127.0.0.1:${semIa.address().port}/api/v1/conversation/turn`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: 'oi' }) });
     assert.equal(resposta.status, 503);
-    assert.equal((await resposta.json()).error.code, 'agent_unavailable');
   } finally { await new Promise((resolve) => semIa.close(resolve)); }
 
-  // Outra pasta: dois servidores sobre a mesma raiz não é cenário real.
   const outraRaiz = await mkdtemp(join(tmpdir(), 'fluxo-conversa-http-ia-'));
-  const { adapter } = adaptadorFalso({ resposta: 'Estou aqui.' });
+  const { adapter } = adaptadorFalso(() => [{ mensagem: 'Estou aqui.' }]);
   const conversationService = createConversationService({ agentAdapter: adapter, rootDir: outraRaiz, snapshot: async () => ({}) });
-  adapter.ligar((mensagem) => conversationService.handleNotification(mensagem));
+  adapter.ligar(conversationService);
   const comIa = createServer({ rootDir: outraRaiz, requireSession: false, conversationService });
   await new Promise((resolve) => comIa.listen(0, '127.0.0.1', resolve));
   try {
-    const resposta = await fetch(`http://127.0.0.1:${comIa.address().port}/api/v1/conversation/turn`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: 'oi' }) });
-    assert.equal(resposta.status, 200);
-    assert.equal((await resposta.json()).data.reply, 'Estou aqui.');
+    const base = `http://127.0.0.1:${comIa.address().port}`;
+    const controle = new AbortController();
+    const fluxo = await fetch(`${base}/api/v1/conversation/events?stream=1`, { signal: controle.signal });
+    assert.match(fluxo.headers.get('content-type'), /^text\/event-stream/);
+    const leitor = fluxo.body.getReader();
+    const resposta = await fetch(`${base}/api/v1/conversation/turn`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: 'oi' }) });
+    assert.equal(resposta.status, 202);
+    assert.ok((await resposta.json()).data.turnId);
+    let recebido = '';
+    while (!/event: turn\.completed/.test(recebido)) recebido += new TextDecoder().decode((await leitor.read()).value);
+    assert.match(recebido, /event: assistant\.message/);
+    assert.match(recebido, /"reply":"Estou aqui\."/);
+    controle.abort();
   } finally { await new Promise((resolve) => comIa.close(resolve)); }
 });

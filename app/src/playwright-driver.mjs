@@ -1,24 +1,52 @@
 import { mkdir } from 'node:fs/promises';
 import { dirname, join, resolve, relative } from 'node:path';
 import { createHash } from 'node:crypto';
+import { platformOfUrl } from './platform-search.mjs';
 
 // The driver owns the browser process; importing it or reading local state never launches Chromium.
+// Uma aba por plataforma: a URL decide em qual aba a navegação acontece, e a
+// pessoa vê cada site no próprio lugar quando a IA conduz.
 export function createPlaywrightDriver({ rootDir, headless = false, browserType, page: suppliedPage } = {}) {
   let context; let page = suppliedPage; let starting;
-  async function getPage() {
-    if (page && !page.isClosed()) return page;
+  const abas = new Map();
+  let ativa = '';
+
+  async function getContext() {
+    if (context) return context;
     if (!starting) starting = (async () => {
       const chromium = browserType ?? (await import('playwright')).chromium;
       await mkdir(join(rootDir, 'estado', 'browser-profile'), { recursive: true });
       context = await chromium.launchPersistentContext(join(rootDir, 'estado', 'browser-profile'), { headless, viewport: { width: 1280, height: 900 } });
-      page = context.pages()[0] ?? await context.newPage();
       const openedContext = context;
-      context.once('close', () => { if (context === openedContext) { context = null; page = null; starting = null; } });
-      page.setDefaultTimeout(15_000);
-      return page;
+      context.once('close', () => { if (context === openedContext) { context = null; page = null; abas.clear(); ativa = ''; starting = null; } });
+      return context;
     })().finally(() => { starting = null; });
     return starting;
   }
+
+  async function getPage() {
+    if (ativa && abas.get(ativa) && !abas.get(ativa).isClosed()) return abas.get(ativa);
+    if (page && !page.isClosed()) return page;
+    const ctx = await getContext();
+    page = ctx.pages()[0] ?? await ctx.newPage();
+    page.setDefaultTimeout(15_000);
+    return page;
+  }
+
+  async function pageFor(platform) {
+    const nome = String(platform ?? '').toUpperCase();
+    if (!nome) return getPage();
+    const existente = abas.get(nome);
+    if (existente && !existente.isClosed()) return existente;
+    const ctx = await getContext();
+    // A primeira plataforma reaproveita a aba inicial em branco; as demais abrem a própria.
+    const disponivel = !abas.size && ctx.pages()[0] && ctx.pages()[0].url() === 'about:blank' ? ctx.pages()[0] : await ctx.newPage();
+    disponivel.setDefaultTimeout(15_000);
+    disponivel.once('close', () => { if (abas.get(nome) === disponivel) abas.delete(nome); if (ativa === nome) ativa = ''; });
+    abas.set(nome, disponivel);
+    return disponivel;
+  }
+
   async function locator(ref) {
     const current = await getPage();
     const match = ref === 'submit'
@@ -27,10 +55,35 @@ export function createPlaywrightDriver({ rootDir, headless = false, browserType,
     if (await match.count() !== 1) throw error('browser_reference_ambiguous', 'Capture novamente a página e selecione uma referência única.');
     return match;
   }
+
   return {
     async goto(url) {
       if (!/^https?:\/\//i.test(String(url))) throw error('invalid_browser_url', 'A navegação exige uma URL HTTP ou HTTPS.');
-      const current = await getPage(); await current.goto(String(url), { waitUntil: 'domcontentloaded' });
+      const plataforma = platformOfUrl(url);
+      const alvo = plataforma ? await pageFor(plataforma) : await getPage();
+      ativa = plataforma;
+      await alvo.goto(String(url), { waitUntil: 'domcontentloaded' });
+    },
+    // Abre a plataforma na própria aba, traz para a frente e diz se a pessoa precisa entrar.
+    async openPlatform(platform, url) {
+      const alvo = await pageFor(platform);
+      ativa = String(platform).toUpperCase();
+      await alvo.goto(String(url), { waitUntil: 'domcontentloaded' });
+      await alvo.bringToFront().catch(() => {});
+      return { platform: ativa, ...(await alvo.evaluate(observeLogin)) };
+    },
+    async loginState(platform) {
+      const alvo = platform ? abas.get(String(platform).toUpperCase()) : await getPage();
+      if (!alvo || alvo.isClosed()) return { platform: String(platform ?? '').toUpperCase(), open: false };
+      return { platform: String(platform ?? '').toUpperCase(), open: true, ...(await alvo.evaluate(observeLogin)) };
+    },
+    async tabs() {
+      const lista = [];
+      for (const [plataforma, aba] of abas) {
+        if (aba.isClosed()) continue;
+        lista.push({ platform: plataforma, ...(await aba.evaluate(observeLogin).catch(() => ({ url: aba.url(), title: '', challenge: null, loginPending: false }))) });
+      }
+      return lista;
     },
     async snapshot() { const current = await getPage(); const observed = await current.evaluate(observePage); const formHash = createHash('sha256').update(JSON.stringify(observed.formValues)).digest('hex'); return { ...observed, formHash, observedAt: new Date().toISOString() }; },
     async state() { return this.snapshot(); },
@@ -60,11 +113,20 @@ export function createPlaywrightDriver({ rootDir, headless = false, browserType,
       await page.screenshot({ path: absolute, fullPage: true });
       return { ok: true, path, scope: 'page' };
     },
-    async close() { if (context) await context.close(); context = null; page = suppliedPage; starting = null; }
+    async close() { if (context) await context.close(); context = null; page = suppliedPage; abas.clear(); ativa = ''; starting = null; }
   };
 }
 
 function error(code, message) { return Object.assign(new Error(message), { code }); }
+
+// Runs inside the page: só o necessário para saber se a pessoa precisa entrar.
+function observeLogin() {
+  const text = document.body?.innerText ?? '';
+  const challenge = /captcha/i.test(text) ? 'captcha' : /\bmfa\b|two.factor|multifator|c[oó]digo de verifica/i.test(text) ? 'mfa' : /biometr/i.test(text) ? 'biometric' : null;
+  const senha = Boolean(document.querySelector('input[type="password"]'));
+  const urlDeLogin = /login|signin|sign-in|entrar|auth|autentica|checkpoint/i.test(location.pathname + location.search);
+  return { url: location.href, title: document.title, challenge, loginPending: senha || urlDeLogin };
+}
 
 // Runs inside the observed page. Only rendered facts and explicit structured job metadata are returned.
 function observePage() {

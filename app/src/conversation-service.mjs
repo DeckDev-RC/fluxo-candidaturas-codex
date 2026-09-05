@@ -1,86 +1,179 @@
-// Conversa com o Fluxo: cada mensagem da pessoa vira um turno real no Codex
-// app-server, com o retrato atual do estado local como contexto. O modelo
-// explica, orienta e propõe; não executa ação externa e não decide aprovação.
-// A conversa não tem ferramentas: o que muda dados passa pelos portões da
-// interface (diálogos de confirmação), nunca por texto livre.
+// Conversa com o Fluxo = o agente condutor. Cada mensagem da pessoa vira um
+// turno real no Codex app-server, em uma thread com as ferramentas fluxo_*,
+// dona de um run desta sessão. O agente lê, pergunta, abre o navegador, busca,
+// compara e preenche; os portões (aprovação, dado sensível, CAPTCHA/MFA) ficam
+// no código, fora da vontade do modelo. Tudo o que acontece vira evento para a
+// tela: texto do assistente, cada ferramenta chamada, esperas pela pessoa.
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { INSTRUCOES_DA_CONVERSA, montarContexto } from './conversation-prompt.mjs';
+import { resumirFerramenta } from './conversation-narration.mjs';
 
 const ARQUIVO = 'estado/conversa.json';
-const PRAZO_TURNO_MS = 120_000;
+const PRAZO_TURNO_MS = 15 * 60 * 1000;
+const HISTORICO_EVENTOS = 200;
 // Linhas finais "AÇÃO: ..." que a interface sabe executar com confirmação da pessoa.
 const ACOES = /^AÇÃO:\s*(abrir|objetivo|modalidades)\s*=\s*(.+)$/imu;
 
-export function createConversationService({ agentAdapter, snapshot = async () => ({}), rootDir = '', now = () => new Date(), timeoutMs = PRAZO_TURNO_MS } = {}) {
+export function createConversationService({ agentAdapter, snapshot = async () => ({}), rootDir = '', runService = null, tabs = null, now = () => new Date(), timeoutMs = PRAZO_TURNO_MS } = {}) {
   if (!agentAdapter?.request) throw new TypeError('A conversa requer o adaptador do agente.');
   let threadId = '';
+  let runId = '';
   let carregado = false;
-  const turnosAbertos = new Map();
+  let turnoAtivo = null;
+  const ouvintes = new Set();
+  const historico = [];
 
-  return {
-    // Notificações do app-server pertencentes à conversa: texto do assistente e fim do turno.
+  const service = {
+    // Notificações do app-server pertencentes à conversa: texto e fim do turno.
     handleNotification(message) {
       const params = message?.params ?? {};
       const alvo = String(params.threadId ?? params.thread?.id ?? '');
       if (!threadId || alvo !== threadId) return false;
-      const turnId = String(params.turnId ?? params.turn?.id ?? '');
-      const aberto = turnosAbertos.get(turnId) ?? [...turnosAbertos.values()].at(-1);
-      if (!aberto) return true;
-      if (message.method === 'item/completed' && params.item?.type === 'agentMessage') aberto.textos.push(String(params.item.text ?? ''));
-      if (message.method === 'turn/completed') aberto.concluir(params.turn?.status ?? 'completed');
-      if (message.method === 'error' || params.error) aberto.falhar(new Error(String(params.error?.message ?? params.message ?? 'O turno falhou.')));
+      const turno = turnoAtivo;
+      if (!turno) return true;
+      // Deltas de texto não vão para a tela nem para o histórico: a mensagem completa basta.
+      if (message.method === 'item/completed' && params.item?.type === 'agentMessage') {
+        const texto = String(params.item.text ?? '');
+        turno.textos.push(texto);
+        const { resposta, acoes } = separarAcoes(texto);
+        emitir('assistant.message', { turnId: turno.id, text: resposta, actions: acoes });
+      }
+      if (message.method === 'turn/completed') concluirTurno(String(params.turn?.status ?? 'completed'));
+      if (message.method === 'error' || params.error) falharTurno(new Error(String(params.error?.message ?? params.message ?? 'O turno falhou.')));
       return true;
     },
 
-    async turn(texto) {
+    // Chamadas de ferramenta do run desta conversa, narradas para a tela.
+    handleToolCall(chamada) {
+      if (!runId || chamada.runId !== runId) return false;
+      const resumo = resumirFerramenta(chamada);
+      if (chamada.phase === 'started') emitir('tool.started', { tool: chamada.tool, summary: resumo.inicio });
+      else {
+        emitir('tool.completed', { tool: chamada.tool, ok: chamada.ok, summary: resumo.fim, error: chamada.ok ? null : chamada.error });
+        if (resumo.espera) emitir('waiting_user', resumo.espera);
+        if (chamada.ok && ['fluxo_open_platform', 'fluxo_browser_status'].includes(chamada.tool)) publicarAbas(chamada.result);
+      }
+      registrar('conversation.tool', { tool: chamada.tool, phase: chamada.phase, ok: chamada.ok ?? null, summary: chamada.phase === 'started' ? resumo.inicio : resumo.fim });
+      return true;
+    },
+
+    // Turno assíncrono: devolve o identificador e segue emitindo eventos.
+    async turn(texto, { system = false } = {}) {
       const pedido = String(texto ?? '').trim();
       if (!pedido) throw domainError('conversation_empty', 'Escreva algo para o Fluxo responder.');
+      if (turnoAtivo) throw domainError('conversation_busy', 'O Fluxo ainda está trabalhando na mensagem anterior. Aguarde ou interrompa.');
       await this.ensureThread();
+      await ensureRun();
       const contexto = montarContexto(await snapshot(), now());
-      const entrada = `${contexto}\n\nPessoa: ${pedido}`;
-      const coleta = abrirColeta(turnosAbertos, timeoutMs);
-      let resultado;
+      const entrada = `${contexto}\n\n${system ? 'SISTEMA (evento da interface, não é fala da pessoa)' : 'Pessoa'}: ${pedido}`;
+      const turno = abrirTurno();
+      turnoAtivo = turno;
+      registrar(system ? 'conversation.system' : 'conversation.user', { text: pedido });
+      emitir('turn.started', { turnId: turno.id, system });
       try {
-        resultado = await agentAdapter.runTurn(threadId, entrada);
-        const turnId = String(resultado?.turn?.id ?? '');
-        if (turnId) turnosAbertos.set(turnId, coleta);
-        const status = await coleta.promessa;
-        const bruto = coleta.textos.join('\n').trim();
-        const { resposta, acoes } = separarAcoes(bruto);
-        return { reply: resposta || 'Não consegui formular uma resposta agora. Tente de novo em instantes.', actions: acoes, threadId, status };
+        const resultado = await agentAdapter.runTurnForRun(runId, threadId, entrada);
+        turno.codexTurnId = String(resultado?.turn?.id ?? '');
       } catch (error) {
-        // Sessão perdida no app-server (reinício, logout): a próxima mensagem abre outra.
-        if (/thread|not found|unknown/i.test(String(error?.message ?? '')) && error?.code !== 'agent_unavailable') { threadId = ''; await persistir(rootDir, { threadId: '' }); }
+        falharTurno(error);
+        if (/thread|not found|unknown/i.test(String(error?.message ?? '')) && error?.code !== 'agent_unavailable') await this.reset({ silencioso: true });
         throw error;
-      } finally {
-        for (const [id, item] of turnosAbertos) if (item === coleta) turnosAbertos.delete(id);
       }
+      return { turnId: turno.id, threadId, runId };
+    },
+
+    async interrupt() {
+      const turno = turnoAtivo;
+      if (!turno) return { interrupted: false };
+      if (turno.codexTurnId) await agentAdapter.request('turn/interrupt', { threadId, turnId: turno.codexTurnId }).catch(() => {});
+      falharTurno(domainError('conversation_interrupted', 'Interrompido por você.'));
+      return { interrupted: true };
     },
 
     async ensureThread() {
       if (!carregado) { threadId = (await carregar(rootDir)).threadId ?? ''; carregado = true; }
       if (threadId) return threadId;
-      const iniciado = await agentAdapter.startThread({ metadata: { mode: 'fluxo-conversa' }, developerInstructions: INSTRUCOES_DA_CONVERSA, conversation: true });
+      const iniciado = await agentAdapter.startThread({ metadata: { mode: 'fluxo-condutor' }, developerInstructions: INSTRUCOES_DA_CONVERSA });
       threadId = String(iniciado?.thread?.id ?? iniciado?.threadId ?? '');
       if (!threadId) throw domainError('conversation_thread_failed', 'O Codex não abriu uma conversa.');
       await persistir(rootDir, { threadId, startedAt: now().toISOString() });
       return threadId;
     },
 
-    async reset() { threadId = ''; carregado = true; await persistir(rootDir, { threadId: '' }); }
-  };
-}
+    async reset({ silencioso = false } = {}) {
+      if (turnoAtivo) await this.interrupt();
+      threadId = '';
+      runId = '';
+      carregado = true;
+      await persistir(rootDir, { threadId: '' });
+      if (!silencioso) emitir('conversation.reset', {});
+    },
 
-function abrirColeta(turnosAbertos, timeoutMs) {
-  const coleta = { textos: [] };
-  coleta.promessa = new Promise((resolve, reject) => {
-    const prazo = setTimeout(() => reject(domainError('conversation_timeout', 'O Fluxo demorou demais para responder. Tente de novo.')), timeoutMs);
-    coleta.concluir = (status) => { clearTimeout(prazo); resolve(status); };
-    coleta.falhar = (error) => { clearTimeout(prazo); reject(error); };
-  });
-  return coleta;
+    subscribe(listener) { ouvintes.add(listener); return () => ouvintes.delete(listener); },
+    history() { return [...historico]; },
+    status() { return { threadId, runId, busy: Boolean(turnoAtivo), turnId: turnoAtivo?.id ?? '' }; }
+  };
+  return service;
+
+  // Um run por sessão do processo é dono das chamadas de ferramenta; um run
+  // que deixou de estar em execução (reinício, reconciliação) é substituído.
+  async function ensureRun() {
+    if (runId && runService?.getRun?.(runId)?.status === 'running') return runId;
+    if (!runService?.startRun) { runId = runId || 'conversa'; return runId; }
+    const run = runService.startRun({ kind: 'autopilot', mode: 'conversa', goal: 'Conversa conduzida pela IA' });
+    runId = run.id;
+    if (runService.setAgentThread) runService.setAgentThread(runId, threadId);
+    agentAdapter.bindRun?.(runId, threadId);
+    return runId;
+  }
+
+  // As abas do navegador vão para a tela sem HTML nem formulário: só plataforma, URL, título e estado.
+  function publicarAbas(resultado) {
+    const fonte = Array.isArray(resultado?.tabs) ? Promise.resolve(resultado.tabs) : Promise.resolve(tabs?.()).catch(() => null);
+    fonte.then((lista) => {
+      if (!Array.isArray(lista)) return;
+      emitir('browser.tabs', { tabs: lista.map((aba) => ({ platform: aba.platform, url: aba.url ?? '', title: aba.title ?? '', loginPending: aba.loginPending === true, challenge: aba.challenge ?? null })) });
+    });
+  }
+
+  function abrirTurno() {
+    const turno = { id: `turno-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`, codexTurnId: '', textos: [] };
+    turno.prazo = setTimeout(() => falharTurno(domainError('conversation_timeout', 'O Fluxo demorou demais para responder. Tente de novo ou interrompa.')), timeoutMs);
+    return turno;
+  }
+
+  function concluirTurno(status) {
+    const turno = turnoAtivo;
+    if (!turno) return;
+    clearTimeout(turno.prazo);
+    turnoAtivo = null;
+    const bruto = turno.textos.join('\n').trim();
+    const { resposta, acoes } = separarAcoes(bruto);
+    registrar('conversation.assistant', { text: resposta, actions: acoes, status });
+    emitir('turn.completed', { turnId: turno.id, status, reply: resposta, actions: acoes });
+  }
+
+  function falharTurno(error) {
+    const turno = turnoAtivo;
+    if (!turno) return;
+    clearTimeout(turno.prazo);
+    turnoAtivo = null;
+    registrar('conversation.failed', { code: error?.code ?? 'turn_failed', message: error?.message ?? String(error) });
+    emitir('turn.failed', { turnId: turno.id, code: error?.code ?? 'turn_failed', message: error?.message ?? String(error) });
+  }
+
+  function emitir(type, payload) {
+    const evento = { id: `${Date.now()}-${historico.length}`, type, at: now().toISOString(), ...payload };
+    historico.push(evento);
+    while (historico.length > HISTORICO_EVENTOS) historico.shift();
+    for (const ouvinte of ouvintes) { try { ouvinte(evento); } catch {} }
+  }
+
+  function registrar(type, payload) {
+    if (!runId || !runService?.appendEvent) return;
+    try { runService.appendEvent({ runId, type, payload, actorType: type === 'conversation.user' ? 'user' : 'agent' }); } catch {}
+  }
 }
 
 // Separa a resposta do que a interface deve fazer. Cada AÇÃO fica fora do texto

@@ -20,7 +20,7 @@ let erroPlataformas = '';
 function etapasIniciais() { return { selecionado: 'pendente', importado: 'pendente', lido: 'pendente', confirmado: 'pendente' }; }
 
 export function primeiroUsoScreen() {
-  const retorno = Boolean(store.perfil?.profile?.exists);
+  const retorno = Boolean(store.perfil?.profile?.exists) || Object.values(store.estado?.memory?.facts ?? {}).some((fato) => fato?.confirmed === true);
   return screen({
     title: retorno ? 'Iniciar uma nova busca' : 'Diga o que você procura',
     lead: retorno ? 'Confirme o objetivo, o currículo em uso e onde procurar. O que já está confirmado no seu perfil continua valendo.' : 'Objetivo, currículo e onde procurar. O resto eu pergunto só quando precisar.',

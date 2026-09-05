@@ -5,7 +5,8 @@
 import { button, el } from '../../core/dom.mjs';
 import { store } from '../../core/store.mjs';
 import { go } from '../../core/router.mjs';
-import { conferirEnvio, consultarNovidades, encerrarCampanha, pausarJornada, retomarJornada } from '../../core/actions.mjs';
+import { avisarQueTerminei, conferirEnvio, consultarNovidades, encerrarCampanha, pausarJornada, retomarJornada } from '../../core/actions.mjs';
+import { nomePlataforma } from '../../core/conversa-ia.mjs';
 
 export function acoesDaSituacao(situacao, pendentes) {
   const acoes = [];
@@ -19,6 +20,15 @@ export function acoesDaSituacao(situacao, pendentes) {
   if (estado === 'acesso-indisponivel') {
     acoes.push(button('Resolver acesso', { onClick: () => go('configuracoes') }));
     acoes.push(button('Continuar revisando meus dados', { variant: 'secundario', onClick: () => go('perfil') }));
+  }
+  if (estado === 'aguardando-voce') {
+    const espera = store.conversa?.aguardando;
+    if (espera?.kind === 'login' || espera?.kind === 'challenge') {
+      acoes.push(button(`Já entrei no ${nomePlataforma(espera.platform)}`, { onClick: () => avisarQueTerminei(espera) }));
+    } else if (espera?.kind !== 'approval') {
+      acoes.push(button('Pode continuar', { onClick: () => avisarQueTerminei(espera) }));
+    }
+    acoes.push(button('Encerrar campanha', { variant: 'secundario', onClick: encerrarCampanha }));
   }
   if (estado === 'pausada') {
     acoes.push(button('Retomar de onde parou', { onClick: retomarJornada }));

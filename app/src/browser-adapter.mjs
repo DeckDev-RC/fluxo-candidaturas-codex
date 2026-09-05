@@ -21,6 +21,15 @@ export function createBrowserAdapter({ driver, evidenceRoot = '' }) {
       const current = await this.snapshot();
       if (snapshot.url && current.url !== snapshot.url || snapshot.formHash && current.formHash !== snapshot.formHash) throw domainError('approval_payload_changed', 'O formulário mudou desde a revisão. Revise novamente antes do envio.');
     },
+    // Abre a página de entrada da plataforma na própria aba e informa se a
+    // pessoa precisa entrar. Desafio (CAPTCHA/MFA) não é erro aqui: é informação
+    // para a IA pedir a intervenção certa.
+    async openPlatform(platform, url) {
+      if (!driver.openPlatform) throw domainError('browser_platform_unsupported', 'Este navegador não abre plataformas em abas separadas.');
+      if (!/^https?:\/\//i.test(String(url))) throw domainError('unsupported_target_url', 'A plataforma não tem página de entrada conhecida.');
+      return driver.openPlatform(platform, url);
+    },
+    async tabs() { return driver.tabs ? driver.tabs() : []; },
     async open(item) {
       const target = String(item?.identifierOrUrl ?? '');
       // Recusar esquema não suportado em vez de fotografar a página que já estava aberta.

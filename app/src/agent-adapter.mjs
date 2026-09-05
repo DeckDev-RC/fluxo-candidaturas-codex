@@ -1,4 +1,4 @@
-export function createAgentAdapter({ transport, transportFactory, onNotification = () => {}, settingsService, domainTools } = {}) {
+export function createAgentAdapter({ transport, transportFactory, onNotification = () => {}, onToolCall = () => {}, settingsService, domainTools } = {}) {
   let initialized = false;
   let activeTransport = transport;
   const threadRuns = new Map();
@@ -47,8 +47,9 @@ export function createAgentAdapter({ transport, transportFactory, onNotification
       await this.initialize();
       const { conversation = false, ...resto } = params;
       const restricoes = { sandbox: 'read-only', approvalPolicy: 'never', config: { 'features.shell_tool': false, 'features.unified_exec': false, 'features.apply_patch_freeform': false, 'web_search': 'disabled' } };
+      // Instruções próprias (ex.: agente condutor) prevalecem sobre a frase padrão de operação.
       const operacao = domainTools && !conversation
-        ? { dynamicTools: domainTools.definitions, developerInstructions: 'Use exclusivamente ferramentas fluxo_* para operar candidaturas. Nunca altere arquivos diretamente. Aprovação humana é obrigatória e não pode ser decidida pelo agente. Um turn concluído não significa uma candidatura enviada.' }
+        ? { dynamicTools: domainTools.definitions, developerInstructions: resto.developerInstructions ?? 'Use exclusivamente ferramentas fluxo_* para operar candidaturas. Nunca altere arquivos diretamente. Aprovação humana é obrigatória e não pode ser decidida pelo agente. Um turn concluído não significa uma candidatura enviada.' }
         : {};
       return (await getTransport()).request('thread/start', { ...resto, ...restricoes, ...operacao });
     },
@@ -88,8 +89,17 @@ export function createAgentAdapter({ transport, transportFactory, onNotification
     const params = message.params ?? {};
     const runId = turnRuns.get(params.turnId) ?? threadRuns.get(params.threadId);
     if (!runId) throw Object.assign(new Error('Execução não associada.'), { code: 'tool_run_mismatch' });
-    try { const result = await domainTools.call(params.tool, params.arguments, runId); return { success: true, contentItems: [{ type: 'inputText', text: JSON.stringify(result) }] }; }
-    catch (error) { return { success: false, contentItems: [{ type: 'inputText', text: JSON.stringify({ code: error.code ?? 'tool_failed', message: error.message }) }] }; }
+    // Quem observa (a conversa) recebe início e fim de cada ferramenta, para narrar.
+    const chamada = { tool: String(params.tool ?? ''), arguments: params.arguments ?? {}, runId, threadId: String(params.threadId ?? ''), turnId: String(params.turnId ?? '') };
+    try { onToolCall({ phase: 'started', ...chamada }); } catch {}
+    try {
+      const result = await domainTools.call(params.tool, params.arguments, runId);
+      try { onToolCall({ phase: 'completed', ...chamada, ok: true, result }); } catch {}
+      return { success: true, contentItems: [{ type: 'inputText', text: JSON.stringify(result) }] };
+    } catch (error) {
+      try { onToolCall({ phase: 'completed', ...chamada, ok: false, error: { code: error.code ?? 'tool_failed', message: error.message } }); } catch {}
+      return { success: false, contentItems: [{ type: 'inputText', text: JSON.stringify({ code: error.code ?? 'tool_failed', message: error.message }) }] };
+    }
   }
 
   function handleNotification(message) {

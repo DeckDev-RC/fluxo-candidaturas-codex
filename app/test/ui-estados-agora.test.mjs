@@ -29,7 +29,9 @@ function base(patch = {}) {
 function confirmado(value) { return { value, confirmed: true }; }
 
 test('sem perfil, plataforma ou fato confirmado a tela pede o começo', () => {
-  assert.equal(resolveNowState({ estado: base().estado, perfil: null }).estado, 'primeiro-uso');
+  const semPerfilNemFato = base();
+  semPerfilNemFato.estado.memory.facts = {};
+  assert.equal(resolveNowState({ ...semPerfilNemFato, perfil: null }).estado, 'primeiro-uso');
   const semPlataforma = base();
   semPlataforma.estado.campaign.platforms = [];
   assert.equal(resolveNowState(semPlataforma).estado, 'primeiro-uso');
@@ -102,8 +104,23 @@ test('tudo confirmado convida para a busca', () => {
 });
 
 test('todos os estados declarados têm resolução possível', () => {
-  assert.equal(ESTADOS.length, 12);
-  assert.equal(new Set(ESTADOS).size, 12);
+  assert.equal(ESTADOS.length, 13);
+  assert.equal(new Set(ESTADOS).size, 13);
+});
+
+// Achado da auditoria real: quem passou pelo cartão de primeiro uso (fatos
+// confirmados e plataformas) não tem perfil/candidato.md e voltava ao cartão.
+test('fatos confirmados e plataformas bastam para sair do primeiro uso, mesmo sem arquivo de perfil', () => {
+  const dados = base({ perfil: { profile: { exists: false } }, jornada: { status: 'trabalhando', mensagem: 'Buscando.' } });
+  assert.equal(resolveNowState(dados).estado, 'trabalhando');
+});
+
+// A IA condutora encerra o turno quando a etapa depende da pessoa (login,
+// verificação, escolha): a tela diz isso em vez de "estou trabalhando".
+test('turno encerrado esperando a pessoa vira "preciso de você", acima de pausa e trabalho', () => {
+  const situacao = resolveNowState(base({ jornada: { status: 'aguardando', mensagem: 'Entre no LinkedIn na janela do navegador.' } }));
+  assert.equal(situacao.estado, 'aguardando-voce');
+  assert.equal(situacao.motivo, 'Entre no LinkedIn na janela do navegador.');
 });
 
 // Achado do QA: a jornada parava na revisão humana e a tela dizia "estou

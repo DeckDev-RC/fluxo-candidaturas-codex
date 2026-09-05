@@ -34,6 +34,21 @@ export function say(texto, { tom = 'informacao' } = {}) {
   return registrar({ autor: 'fluxo', texto: String(texto ?? '').trim(), tom });
 }
 
+// Passo do agente: "Abrindo o InfoJobs…" vira "InfoJobs aberto" na mesma linha,
+// em vez de duas linhas por ferramenta.
+export function amendStep(texto, { tom = 'passo' } = {}) {
+  const lista = transcript();
+  const ultimo = lista.at(-1);
+  if (ultimo?.autor === 'fluxo' && ultimo.tom === 'passo' && String(texto ?? '').trim()) {
+    ultimo.texto = String(texto).trim();
+    ultimo.tom = tom;
+    persistir();
+    avisar();
+    return ultimo;
+  }
+  return say(texto, { tom });
+}
+
 // Pedido da pessoa, sempre registrado como veio.
 export function ask(texto) {
   return registrar({ autor: 'voce', texto: String(texto ?? '').trim(), tom: '' });

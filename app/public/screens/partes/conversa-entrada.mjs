@@ -1,14 +1,16 @@
 // Entrada da conversa. O pedido da pessoa entra na linha do tempo e a resposta
-// do Fluxo também. Com a IA conectada, a mensagem vira um turno real no Codex,
-// que responde com o estado atual como contexto e pode propor ações; cada
-// ação passa pelo mesmo portão de confirmação da interface. Sem IA, um roteiro
-// determinístico cobre preferências e atalhos e diz com clareza o que não faz.
+// do Fluxo também. Com a IA conectada, a mensagem vira um turno real do agente
+// condutor: a resposta e cada passo chegam pelo fluxo de eventos (conversa-ia)
+// e as ações propostas passam pelo mesmo portão de confirmação da interface.
+// Sem IA, um roteiro determinístico cobre preferências e atalhos e diz com
+// clareza o que não faz.
 
 import { el } from '../../core/dom.mjs';
-import { describeError, send } from '../../core/api.mjs';
+import { describeError } from '../../core/api.mjs';
 import { corrigirFato } from '../../core/actions.mjs';
-import { ask, say, setThinking } from '../../core/conversa.mjs';
-import { isDemo, store } from '../../core/store.mjs';
+import { agentDriving, onAgentActions, sendTurn } from '../../core/conversa-ia.mjs';
+import { ask, say } from '../../core/conversa.mjs';
+import { store } from '../../core/store.mjs';
 import { currentRoute, go, ROTAS } from '../../core/router.mjs';
 import { openDialog } from '../../ui/dialog.mjs';
 import { abrirMudancaDeObjetivo } from './objetivo.mjs';
@@ -24,6 +26,7 @@ const ATALHOS = [
 ];
 
 export function bindConversationInput(form) {
+  onAgentActions((acoes) => { for (const acao of acoes) executarAcao(acao); });
   form.addEventListener('submit', async (evento) => {
     evento.preventDefault();
     const campo = form.querySelector('input');
@@ -32,22 +35,17 @@ export function bindConversationInput(form) {
     campo.value = '';
     ask(texto);
     if (currentRoute() !== 'agora') go('agora');
-    if (store.ia.disponivel && !isDemo()) await conversarComIa(texto);
+    if (agentDriving()) await conversarComIa(texto);
     else await interpretar(texto);
   });
 }
 
-// Turno real: a resposta do modelo entra na conversa; ações vêm em linhas
-// próprias e são executadas aqui, sempre com confirmação quando mudam dados.
+// Turno real: a resposta entra na conversa pelo fluxo de eventos. Se o pedido
+// nem chegou ao agente, o roteiro local atende o que puder.
 async function conversarComIa(texto) {
-  setThinking(true);
   try {
-    const { reply, actions = [] } = await send('/api/v1/conversation/turn', { text: texto });
-    setThinking(false);
-    if (reply) say(reply);
-    for (const acao of actions) executarAcao(acao);
+    await sendTurn(texto);
   } catch (error) {
-    setThinking(false);
     say(`${describeError(error)} Enquanto isso, atendo pedidos simples por aqui.`, { tom: 'atencao' });
     await interpretar(texto);
   }
