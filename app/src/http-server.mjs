@@ -26,7 +26,8 @@ const STATIC_TYPES = new Map([
   ['.mjs', 'text/javascript; charset=utf-8'],
   ['.css', 'text/css; charset=utf-8'],
   ['.svg', 'image/svg+xml'],
-  ['.json', 'application/json; charset=utf-8']
+  ['.json', 'application/json; charset=utf-8'],
+  ['.woff2', 'font/woff2']
 ]);
 
 // A interface é modular: servimos a pasta pública com nome restrito e extensão

@@ -1,4 +1,10 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell, utilityProcess } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme, shell, utilityProcess } = require('electron');
+
+// Mesma cor de fundo dos tokens da interface (--fundo), para a janela não piscar
+// em branco antes de carregar e acompanhar o tema do sistema. A barra de menu
+// nativa fica escondida (Alt mostra): os itens continuam no atalho de teclado.
+const corDeFundo = () => (nativeTheme.shouldUseDarkColors ? '#09090b' : '#fafafa');
+const janelaBase = () => ({ backgroundColor: corDeFundo(), autoHideMenuBar: true, webPreferences: { preload, nodeIntegration: false, contextIsolation: true, sandbox: true } });
 const { join, resolve, dirname } = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { readFile, writeFile, mkdir } = require('node:fs/promises');
@@ -32,8 +38,9 @@ async function start() {
 
   // Mínimo baixo o suficiente para 1024×768 com zoom de texto: a interface tem
   // composição de coluna única abaixo de 48rem (U8-03).
-  mainWindow = new BrowserWindow({ width: 1280, height: 860, minWidth: 720, minHeight: 560, title: 'Fluxo', show: false, webPreferences: { preload, nodeIntegration: false, contextIsolation: true, sandbox: true } });
+  mainWindow = new BrowserWindow({ width: 1280, height: 860, minWidth: 720, minHeight: 560, title: 'Fluxo', show: false, ...janelaBase() });
   mainWindow.once('ready-to-show', () => mainWindow.show());
+  nativeTheme.on('updated', () => { mainWindow?.setBackgroundColor(corDeFundo()); diagnosticWindow?.setBackgroundColor(corDeFundo()); });
   mainWindow.on('closed', () => { mainWindow = null; });
   protectWindow(mainWindow);
   const trusted = event => {
@@ -81,7 +88,7 @@ async function selectWorkspace(preferencesPath) {
 
 function showDiagnostics() {
   if (diagnosticWindow) { diagnosticWindow.focus(); return; }
-  diagnosticWindow = new BrowserWindow({ parent: mainWindow, width: 760, height: 620, minWidth: 560, minHeight: 480, title: 'Preparação do ambiente — Fluxo', webPreferences: { preload, nodeIntegration: false, contextIsolation: true, sandbox: true } });
+  diagnosticWindow = new BrowserWindow({ parent: mainWindow, width: 760, height: 620, minWidth: 560, minHeight: 480, title: 'Preparação do ambiente — Fluxo', ...janelaBase() });
   protectWindow(diagnosticWindow); diagnosticWindow.on('closed', () => { diagnosticWindow = null; });
   void diagnosticWindow.loadURL(diagnosticUrl);
 }

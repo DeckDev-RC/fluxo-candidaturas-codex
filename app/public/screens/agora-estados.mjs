@@ -7,6 +7,55 @@ export const ESTADOS = [
   'sem-vaga-adequada', 'preparar-ambiente', 'pronta-para-buscar'
 ];
 
+// O que o Fluxo diz em cada situação. É a fala atual da conversa e também a
+// linha registrada quando a situação muda.
+export const TEXTOS = {
+  'primeiro-uso': {
+    titulo: 'Vamos começar pelo seu objetivo',
+    corpo: 'Diga o que você quer alcançar e importe seu currículo. Eu leio o documento, mostro o que entendi e pergunto apenas o que faltar.'
+  },
+  'decisao-pendente': {
+    titulo: 'Há uma decisão esperando por você',
+    corpo: 'Parei de propósito nesta etapa. Nada é enviado sem a sua aprovação.'
+  },
+  'envio-incerto': {
+    titulo: 'Um envio ficou sem confirmação',
+    corpo: 'A plataforma não sinalizou o recebimento. Confira a página antes de qualquer nova tentativa: eu não repito o clique por conta própria.'
+  },
+  'acesso-indisponivel': {
+    titulo: 'A automação de IA está indisponível',
+    corpo: 'Seus dados continuam acessíveis e você pode revisar, corrigir e decidir. A busca automática volta quando o acesso for restabelecido.'
+  },
+  pausada: {
+    titulo: 'Jornada pausada por você',
+    corpo: 'O ponto de retomada está salvo. Nenhuma nova ação externa será iniciada até você retomar.'
+  },
+  'material-nao-lido': {
+    titulo: 'Ainda estou lendo seu currículo',
+    corpo: 'O arquivo foi transferido e verificado. A leitura e a sua revisão são etapas separadas: nada é usado antes de você confirmar.'
+  },
+  trabalhando: {
+    titulo: 'Estou trabalhando',
+    corpo: 'Você acompanha cada etapa ao lado e pode pausar quando quiser. Só chamo você quando uma decisão depender de você.'
+  },
+  'campanha-concluida': {
+    titulo: 'A meta desta campanha foi atingida',
+    corpo: 'Os resultados estão registrados. Terminar a busca não encerra os processos em andamento: continue acompanhando as respostas.'
+  },
+  'sem-vaga-adequada': {
+    titulo: 'Nenhuma vaga passou pelos seus critérios',
+    corpo: 'Isto não é uma falha. Você pode ajustar os filtros, manter o acompanhamento agendado ou encerrar a campanha.'
+  },
+  'preparar-ambiente': {
+    titulo: 'Falta preparar o ambiente deste computador',
+    corpo: 'Uma dependência necessária ainda não está pronta. A verificação diz o que falta, para que serve e o que fazer.'
+  },
+  'pronta-para-buscar': {
+    titulo: 'Tudo pronto para procurar vagas',
+    corpo: 'Seu objetivo, seus dados confirmados e as plataformas escolhidas estão definidos.'
+  }
+};
+
 export function resolveNowState({ estado, jornada = {}, decisoes = [], perfil, ia = {} } = {}) {
   const campanha = estado?.campaign ?? {};
   const plataformas = (campanha.platforms ?? []).filter((item) => item.enabled !== false);

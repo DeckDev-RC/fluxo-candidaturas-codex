@@ -19,6 +19,18 @@ export function el(tag, props = {}, children = []) {
   return node;
 }
 
+// SVG inline precisa do espaço de nomes próprio; a CSP não permite data: URLs.
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+export function svg(tag, props = {}, children = []) {
+  const node = document.createElementNS(SVG_NS, tag);
+  for (const [key, value] of Object.entries(props)) {
+    if (value === undefined || value === null || value === false) continue;
+    node.setAttribute(key, String(value));
+  }
+  return append(node, children);
+}
+
 export function append(node, children) {
   for (const child of [children].flat(4)) {
     if (child === undefined || child === null || child === false) continue;

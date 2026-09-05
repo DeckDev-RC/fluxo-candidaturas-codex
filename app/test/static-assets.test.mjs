@@ -39,6 +39,9 @@ test('módulos e estilos da interface são servidos e travessia de caminho é re
     ['/ui/dialog.mjs', /^text\/javascript/],
     ['/styles/tokens.css', /^text\/css/],
     ['/styles/components.css', /^text\/css/],
+    ['/styles/blocks.css', /^text\/css/],
+    ['/styles/conversa.css', /^text\/css/],
+    ['/fonts/InterVariable.woff2', /^font\/woff2/],
     ['/favicon.svg', /^image\/svg\+xml/],
     ['/fixtures/ui-state.json', /^application\/json/]
   ];

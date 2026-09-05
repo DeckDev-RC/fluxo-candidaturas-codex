@@ -1,53 +1,80 @@
-/* Direção Trajetória — tokens da interface do Fluxo (U1-04).
-   Contraste medido contra a superfície de uso, WCAG 2.2 AA:
-   tinta/mineral 13,7:1 · terracota/mineral 4,9:1 · branco/terracota 5,4:1
-   sucesso 5,9:1 · atenção 5,3:1 · erro 6,8:1 · informação 6,3:1
-   borda de controle/papel 3,7:1 (mínimo 3:1 de 1.4.11). */
+/* Direção Calma — tokens da interface do Fluxo.
+   Superfície quase branca, tinta quase preta, cinzas neutros e um único acento
+   usado como pontuação (foco, item ativo, progresso, link). Funções de risco
+   têm cor própria e nunca herdam o acento.
+
+   Contraste medido sobre a superfície de uso, WCAG 2.2 AA:
+   texto/fundo 18,1:1 · texto-2/fundo 7,4:1 · texto-3/fundo 5,1:1
+   acento/fundo 6,0:1 · branco/acento 6,3:1 · branco/tinta 18,9:1
+   sucesso 4,8:1 · atenção 4,7:1 · erro 6,2:1 · informação 6,4:1
+   borda de controle/superfície 3,2:1 (mínimo 3:1 de 1.4.11). */
 
 :root {
-  /* Superfícies e tinta */
-  --mineral: #f4f3ef;
-  --papel: #ffffff;
-  --tinta: #20262b;
-  --tinta-media: #4d565d;
-  --tinta-suave: #6b7479;
+  /* Camada 1 — primitivas neutras e de acento */
+  --cinza-50: #fafafa;
+  --cinza-100: #f4f4f5;
+  --cinza-200: #e4e4e7;
+  --cinza-300: #d4d4d8;
+  --cinza-400: #8f8f98;
+  --cinza-500: #6b6b74;
+  --cinza-600: #52525b;
+  --cinza-800: #27272a;
+  --cinza-900: #18181b;
+  --cinza-950: #111113;
+  --indigo-50: #eef2ff;
+  --indigo-400: #818cf8;
+  --indigo-600: #4f46e5;
+  --indigo-700: #4338ca;
+
+  /* Camada 2 — funções: superfícies e tinta */
+  --fundo: #fafafa;
+  --superficie: #ffffff;
+  --superficie-2: #f4f4f5;
+  --texto: #111113;
+  --texto-2: #52525b;
+  --texto-3: #6b6b74;
+  --texto-inverso: #ffffff;
 
   /* Ação e identidade */
-  --terracota: #b44832;
-  --terracota-escura: #8f3826;
-  --terracota-fraca: #f6e7e2;
+  --acento: #4f46e5;
+  --acento-forte: #4338ca;
+  --acento-fraco: #eef2ff;
+  --acao: #111113;
+  --acao-forte: #27272a;
 
   /* Funções semânticas: nunca substituídas pela cor da marca */
-  --sucesso: #1f6b4a;
-  --sucesso-fraca: #e4efe9;
-  --atencao: #8a5a00;
-  --atencao-fraca: #f6ecd9;
-  --erro: #a32116;
-  --erro-fraca: #f7e4e2;
-  --informacao: #2c5c8a;
-  --informacao-fraca: #e5edf4;
-  --selecao: #e8e6df;
+  --sucesso: #15803d;
+  --sucesso-fraca: #f0fdf4;
+  --atencao: #a16207;
+  --atencao-fraca: #fefce8;
+  --erro: #b91c1c;
+  --erro-fraca: #fef2f2;
+  --informacao: #1d4ed8;
+  --informacao-fraca: #eff6ff;
+  --selecao: #f4f4f5;
 
-  /* Linhas: decorativa e de controle */
-  --linha: #dcd9d1;
-  --linha-controle: #8c8578;
+  /* Linhas: decorativa, de botão e de campo */
+  --linha: #e4e4e7;
+  --linha-forte: #d4d4d8;
+  --linha-controle: #8f8f98;
+  --anel-foco: #4f46e5;
 
-  /* Tipografia: pilha do sistema, disponível offline e sem licença extra.
-     Segoe UI no Windows distingue bem 1/l e 0/O. */
-  --fonte: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Noto Sans", Arial, sans-serif;
-  --fonte-numeros: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  /* Tipografia: Inter empacotada (offline), com a pilha do sistema como reserva. */
+  --fonte: "Inter", "Inter Variable", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Noto Sans", Arial, sans-serif;
+  --fonte-numeros: var(--fonte);
   --texto-xs: 0.75rem;
   --texto-sm: 0.8125rem;
-  --texto-base: 0.9375rem;
-  --texto-md: 1.0625rem;
-  --texto-lg: 1.375rem;
-  --texto-xl: 1.75rem;
-  --altura-densa: 1.35;
+  --texto-base: 0.875rem;
+  --texto-md: 1rem;
+  --texto-lg: 1.25rem;
+  --texto-xl: 1.625rem;
+  --altura-densa: 1.3;
   --altura-leitura: 1.55;
   --peso-normal: 400;
-  --peso-medio: 600;
-  --peso-forte: 700;
-  --traco-etiqueta: 0.04em;
+  --peso-medio: 500;
+  --peso-forte: 600;
+  --traco-titulo: -0.02em;
+  --traco-etiqueta: 0.01em;
 
   /* Espaçamento em escala de 4 */
   --e1: 0.25rem;
@@ -58,12 +85,13 @@
   --e6: 2rem;
   --e7: 3rem;
 
-  /* Bordas e elevação: contida, sem sombra em todo bloco */
-  --raio-sm: 3px;
+  /* Bordas e elevação: hairline em quase tudo, sombra só no que flutua */
+  --raio-sm: 4px;
   --raio: 6px;
   --raio-lg: 10px;
-  --elevacao-painel: 0 1px 2px rgba(32, 38, 43, 0.06);
-  --elevacao-flutuante: 0 8px 24px rgba(32, 38, 43, 0.16);
+  --raio-xl: 14px;
+  --elevacao-painel: 0 1px 2px rgba(17, 17, 19, 0.04);
+  --elevacao-flutuante: 0 12px 40px rgba(17, 17, 19, 0.18), 0 0 0 1px rgba(17, 17, 19, 0.06);
 
   /* Movimento: curto e explicativo; desligado por preferência do sistema */
   --duracao-curta: 120ms;
@@ -71,14 +99,48 @@
   --curva: cubic-bezier(0.2, 0, 0.2, 1);
 
   /* Estrutura */
-  --nav-largura: 13.5rem;
-  --detalhe-largura: 26rem;
-  --leitura-maxima: 42rem;
+  --nav-largura: 14.5rem;
+  --detalhe-largura: 24rem;
+  --conteudo-maximo: 60rem;
+  --leitura-maxima: 40rem;
 }
 
 @media (prefers-reduced-motion: reduce) {
   :root {
     --duracao-curta: 0ms;
     --duracao-media: 0ms;
+  }
+}
+
+/* Tema escuro: só a camada de funções muda; nenhum componente precisa saber. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fundo: #09090b;
+    --superficie: #111113;
+    --superficie-2: #1b1b1f;
+    --texto: #f4f4f5;
+    --texto-2: #a1a1aa;
+    --texto-3: #8f8f98;
+    --texto-inverso: #111113;
+    --acento: #818cf8;
+    --acento-forte: #a5b4fc;
+    --acento-fraco: rgba(129, 140, 248, 0.14);
+    --acao: #f4f4f5;
+    --acao-forte: #ffffff;
+    --sucesso: #4ade80;
+    --sucesso-fraca: rgba(74, 222, 128, 0.12);
+    --atencao: #facc15;
+    --atencao-fraca: rgba(250, 204, 21, 0.12);
+    --erro: #f87171;
+    --erro-fraca: rgba(248, 113, 113, 0.12);
+    --informacao: #60a5fa;
+    --informacao-fraca: rgba(96, 165, 250, 0.12);
+    --selecao: #1b1b1f;
+    --linha: #27272a;
+    --linha-forte: #3f3f46;
+    --linha-controle: #6b6b74;
+    --anel-foco: #818cf8;
+    --elevacao-painel: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --elevacao-flutuante: 0 12px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.08);
   }
 }

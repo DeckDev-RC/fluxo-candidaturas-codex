@@ -2,44 +2,48 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-// Contrato dos tokens da direção Trajetória (U1-04): funções semânticas
-// separadas da cor da marca e contraste medido, não estimado.
+// Contrato dos tokens da direção Calma: funções semânticas separadas da cor
+// de acento, tema claro e escuro na mesma camada e contraste medido, não estimado.
 
 const arquivo = (nome) => readFile(new URL(`../public/styles/${nome}`, import.meta.url), 'utf8');
 
 test('tokens definem cor, tipografia, espaçamento, borda, elevação e movimento', async () => {
   const css = await arquivo('tokens.css');
-  for (const token of ['--mineral', '--tinta', '--terracota', '--fonte', '--e4', '--raio', '--elevacao-painel', '--duracao-curta', '--linha-controle']) {
+  for (const token of ['--fundo', '--superficie', '--texto', '--acento', '--acao', '--fonte', '--e4', '--raio', '--elevacao-painel', '--duracao-curta', '--linha-controle']) {
     assert.match(css, new RegExp(`${token}:`), `token ${token} precisa existir`);
   }
-  // Funções de risco têm cor própria: destaque da marca não substitui semântica.
+  // Funções de risco têm cor própria: o acento da marca não substitui semântica.
   for (const token of ['--sucesso', '--atencao', '--erro', '--informacao', '--selecao']) {
     assert.match(css, new RegExp(`${token}:`), `função semântica ${token} precisa existir`);
   }
-  assert.doesNotMatch(css, /--sucesso:\s*var\(--terracota\)/);
+  assert.doesNotMatch(css, /--sucesso:\s*var\(--acento\)/);
   assert.match(css, /prefers-reduced-motion/);
   assert.match(css, /--duracao-curta:\s*0ms/, 'movimento reduzido precisa zerar a duração');
+  assert.match(css, /prefers-color-scheme: dark/, 'o tema escuro é redefinição de tokens, não de componentes');
 });
 
 test('contraste dos pares principais atende WCAG 2.2 AA', async () => {
   const css = await arquivo('tokens.css');
+  // A primeira ocorrência é sempre a do tema claro, definido antes do bloco escuro.
   const cor = (nome) => {
     const encontrado = css.match(new RegExp(`${nome}:\\s*(#[0-9a-f]{6})`, 'i'));
     assert.ok(encontrado, `${nome} precisa ser uma cor hexadecimal`);
     return encontrado[1];
   };
-  const mineral = cor('--mineral');
-  const papel = cor('--papel');
+  const fundo = cor('--fundo');
+  const superficie = cor('--superficie');
 
   // Texto normal: 4,5:1. Bordas e componentes: 3:1.
-  assert.ok(contraste(cor('--tinta'), mineral) >= 4.5, 'tinta sobre mineral');
-  assert.ok(contraste(cor('--tinta-media'), mineral) >= 4.5, 'tinta média sobre mineral');
-  assert.ok(contraste(cor('--terracota'), mineral) >= 4.5, 'terracota sobre mineral');
-  assert.ok(contraste(papel, cor('--terracota')) >= 4.5, 'texto branco sobre terracota');
+  assert.ok(contraste(cor('--texto'), fundo) >= 4.5, 'texto sobre fundo');
+  assert.ok(contraste(cor('--texto-2'), fundo) >= 4.5, 'texto secundário sobre fundo');
+  assert.ok(contraste(cor('--texto-3'), fundo) >= 4.5, 'texto de apoio sobre fundo');
+  assert.ok(contraste(cor('--acento'), fundo) >= 4.5, 'acento sobre fundo');
+  assert.ok(contraste(cor('--texto-inverso'), cor('--acao')) >= 4.5, 'texto do botão sobre a ação');
+  assert.ok(contraste(superficie, cor('--acento')) >= 4.5, 'texto branco sobre acento');
   for (const funcao of ['--sucesso', '--atencao', '--erro', '--informacao']) {
-    assert.ok(contraste(cor(funcao), mineral) >= 4.5, `${funcao} sobre mineral`);
+    assert.ok(contraste(cor(funcao), fundo) >= 4.5, `${funcao} sobre fundo`);
   }
-  assert.ok(contraste(cor('--linha-controle'), papel) >= 3, 'borda de controle sobre papel');
+  assert.ok(contraste(cor('--linha-controle'), superficie) >= 3, 'borda de controle sobre superfície');
 });
 
 test('componentes cobrem foco, erro, ocupado, indisponível e texto longo', async () => {
@@ -56,7 +60,18 @@ test('componentes cobrem foco, erro, ocupado, indisponível e texto longo', asyn
   assert.match(componentes, /\.selo\[data-tom="erro"\]/);
   assert.match(componentes, /dialog::backdrop/);
   assert.match(componentes, /\.aviso/);
+  assert.match(componentes, /::file-selector-button/, 'o seletor de arquivo não fica com aparência nativa');
   assert.match(base, /\.quebra\s*\{[^}]*overflow-wrap/);
+  assert.match(base, /@font-face[^}]*InterVariable\.woff2/, 'a fonte é empacotada, não carregada da internet');
+});
+
+test('blocos de composição cobrem situação atual, decisões, percurso e indicadores', async () => {
+  const blocos = await arquivo('blocks.css');
+  assert.match(blocos, /#painel-agora/);
+  assert.match(blocos, /\.painel:has\(#lista-decisoes\)/);
+  assert.match(blocos, /\.percurso li\[data-status="waiting_user"\]/);
+  assert.match(blocos, /\.contador-decisoes\[data-vazio="true"\]/);
+  assert.match(blocos, /\.bloco strong/);
 });
 
 test('a composição usa navegação compacta, lista com detalhe e adaptação de janela', async () => {

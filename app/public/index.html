@@ -3,12 +3,16 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
   <title>Fluxo — sua busca de emprego</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="preload" href="/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="/styles/tokens.css" />
   <link rel="stylesheet" href="/styles/base.css" />
   <link rel="stylesheet" href="/styles/layout.css" />
   <link rel="stylesheet" href="/styles/components.css" />
+  <link rel="stylesheet" href="/styles/blocks.css" />
+  <link rel="stylesheet" href="/styles/conversa.css" />
 </head>
 <body>
   <a class="pular-para-conteudo" href="#conteudo">Ir para o conteúdo</a>
@@ -17,24 +21,36 @@
     <div class="navegacao">
       <p class="marca">
         <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true" focusable="false">
-          <path d="M3 16.5C6.5 16.5 6.5 5.5 11 5.5s4.5 11 8 11" fill="none" stroke="#b44832" stroke-width="2.2" stroke-linecap="round" />
-          <circle cx="19" cy="16.5" r="2.2" fill="#20262b" />
+          <rect width="22" height="22" rx="6" fill="currentColor" />
+          <path d="M5 13.5C8 13.5 8 8 11 8s3 5.5 6 5.5" fill="none" stroke="var(--superficie)" stroke-width="2" stroke-linecap="round" />
         </svg>
         Fluxo
       </p>
 
       <nav aria-label="Áreas do Fluxo">
         <ul id="navegacao-principal">
-          <li><a href="#agora" data-rota="agora">Agora</a></li>
-          <li><a href="#oportunidades" data-rota="oportunidades">Oportunidades</a></li>
-          <li><a href="#candidaturas" data-rota="candidaturas">Candidaturas</a></li>
-          <li><a href="#perfil" data-rota="perfil">Meu perfil</a></li>
+          <li><a href="#agora" data-rota="agora">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
+            <span>Conversa</span></a></li>
+          <li><a href="#oportunidades" data-rota="oportunidades">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+            <span>Oportunidades</span></a></li>
+          <li><a href="#candidaturas" data-rota="candidaturas">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /><rect width="20" height="14" x="2" y="6" rx="2" /></svg>
+            <span>Candidaturas</span></a></li>
+          <li><a href="#perfil" data-rota="perfil">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+            <span>Meu perfil</span></a></li>
         </ul>
       </nav>
 
       <div class="navegacao-rodape">
-        <a href="#configuracoes" data-rota="configuracoes">Configurações</a>
-        <a href="#ajuda" data-rota="ajuda">Ajuda</a>
+        <a href="#configuracoes" data-rota="configuracoes">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4" /></svg>
+          <span>Configurações</span></a>
+        <a href="#ajuda" data-rota="ajuda">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><path d="M12 17h.01" /></svg>
+          <span>Ajuda</span></a>
       </div>
     </div>
 
@@ -60,9 +76,11 @@
       </main>
 
       <form class="conversa" id="conversa" aria-label="Falar com o Fluxo">
-        <label class="apenas-leitor" for="conversa-texto">Pergunte ou ajuste seu objetivo</label>
-        <input id="conversa-texto" name="mensagem" type="text" placeholder="Pergunte ou ajuste seu objetivo. Ex.: quero apenas vagas remotas" autocomplete="off" />
-        <button class="botao" type="submit">Enviar</button>
+        <label class="apenas-leitor" for="conversa-texto">Escreva para o Fluxo</label>
+        <input id="conversa-texto" name="mensagem" type="text" placeholder="Escreva para o Fluxo. Ex.: quero apenas vagas remotas" autocomplete="off" />
+        <button class="botao" type="submit" aria-label="Enviar" title="Enviar (Enter)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 7-7 7 7" /><path d="M12 19V5" /></svg>
+        </button>
       </form>
     </div>
   </div>
