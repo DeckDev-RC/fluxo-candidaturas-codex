@@ -43,6 +43,15 @@ export function createSchedulerService({ rootDir, persistence, now = () => new D
       return job;
     },
 
+    // Cancelar é decisão da pessoa: a agenda some e nenhuma consulta nova é disparada.
+    async remove(id) {
+      const state = await read();
+      if (!state.jobs[id]) throw createDomainError('schedule_not_found', 'Agenda não encontrada.');
+      delete state.jobs[id];
+      await write(state);
+      return { id, removed: true };
+    },
+
     async list() { return Object.values((await read()).jobs); },
     async authority() { return documento.authority(); }
   };

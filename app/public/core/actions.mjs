@@ -187,6 +187,12 @@ export async function agendarAcompanhamento(intervaloMinutos) {
   return resultado;
 }
 
+export async function cancelarAcompanhamento() {
+  await send('/api/v1/scheduler/jobs/followup', {}, { method: 'DELETE' });
+  notice('Consulta automática cancelada. Você continua podendo consultar quando quiser.', 'informacao');
+  await loadState();
+}
+
 export async function corrigirFato(chave, valor) {
   await send('/api/v1/memory/answers', { answers: { [chave]: valor } });
   notice('Informação atualizada no seu perfil. Novas candidaturas usam o valor corrigido.', 'sucesso');

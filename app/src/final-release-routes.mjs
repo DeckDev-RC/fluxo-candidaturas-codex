@@ -14,7 +14,8 @@ const PADROES = [
   /^\/api\/v1\/memory\/conflicts\/([^/]+)\/resolve$/,
   /^\/api\/v1\/notifications\/([^/]+)\/open$/,
   /^\/api\/v1\/autopilot\/([^/]+)\/continue$/,
-  /^\/api\/v1\/autopilot\/([^/]+)\/cancel$/
+  /^\/api\/v1\/autopilot\/([^/]+)\/cancel$/,
+  /^\/api\/v1\/scheduler\/jobs\/([^/]+)$/
 ];
 
 export function createFinalReleaseRoutes(services = {}) {
@@ -69,6 +70,11 @@ function createHandler({
       }
       if (request.method === 'GET' && path === '/api/v1/scheduler/jobs') {
         sendJson(response, 200, await schedulerService.list());
+        return true;
+      }
+      const agendaMatch = path.match(/^\/api\/v1\/scheduler\/jobs\/([^/]+)$/);
+      if (request.method === 'DELETE' && agendaMatch) {
+        sendJson(response, 200, await schedulerService.remove(decodeURIComponent(agendaMatch[1])));
         return true;
       }
       if (request.method === 'POST' && path === '/api/v1/notifications') {

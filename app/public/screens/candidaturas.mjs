@@ -4,7 +4,7 @@
 import { badge, button, definitions, el, emptyState, field, panel, screen, staticListItem } from '../core/dom.mjs';
 import { dataHora, frescor } from '../core/format.mjs';
 import { loadState, store } from '../core/store.mjs';
-import { agendarAcompanhamento, conferirEnvio, consultarNovidades } from '../core/actions.mjs';
+import { agendarAcompanhamento, cancelarAcompanhamento, conferirEnvio, consultarNovidades } from '../core/actions.mjs';
 import { send } from '../core/api.mjs';
 import { listDetail } from '../ui/list-detail.mjs';
 import { openDialog } from '../ui/dialog.mjs';
@@ -71,7 +71,9 @@ function acompanhamentoPanel() {
     title: 'Novidades das plataformas',
     actions: [
       button('Consultar novidades', { onClick: consultarNovidades }),
-      button('Agendar a cada 30 min', { variant: 'secundario', onClick: () => agendarAcompanhamento(30) })
+      agenda
+        ? button('Cancelar consulta automática', { variant: 'secundario', onClick: cancelarAcompanhamento })
+        : button('Agendar a cada 30 min', { variant: 'secundario', onClick: () => agendarAcompanhamento(30) })
     ],
     children: [
       el('p', { class: 'leitura apoio', text: ciclo }),
