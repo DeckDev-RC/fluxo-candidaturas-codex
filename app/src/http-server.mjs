@@ -237,11 +237,11 @@ export function createServer({ rootDir, queueService = createQueueService({ root
         const approvalId = policyApprovalMatch[2] ? decodeURIComponent(policyApprovalMatch[2]) : '';
         const result = approvalId
           ? isAssessment
-            ? assessmentService.assertTimedTestApproved({ approvalId, payload: input.payload ?? {} })
-            : messageService.assertSendApproved({ approvalId, payload: input.payload ?? {} })
+            ? assessmentService.assertTimedTestApproved({ approvalId, payload: input.payload ?? {}, context: sanitizePolicyContext(input.context) })
+            : messageService.assertSendApproved({ approvalId, payload: input.payload ?? {}, context: sanitizePolicyContext(input.context) })
           : isAssessment
-            ? assessmentService.requestTimedTestApproval(input)
-            : messageService.requestSendApproval(input);
+            ? assessmentService.requestTimedTestApproval({ ...input, context: sanitizePolicyContext(input.context) })
+            : messageService.requestSendApproval({ ...input, context: sanitizePolicyContext(input.context) });
         sendJson(response, approvalId ? 200 : 201, result);
       } catch (error) {
         sendDomainError(response, error);
@@ -590,6 +590,15 @@ function mutationTargets(rootDir, path) {
         : path.startsWith('/api/v1/applications/') ? ['candidaturas/candidaturas.json']
           : path === '/api/v1/state/checkpoint' ? ['estado/checkpoint.json'] : [];
   return relative.map((item) => join(rootDir, item));
+}
+
+function sanitizePolicyContext(context = {}) {
+  const sanitized = {};
+  if (['captcha', 'mfa', 'biometric'].includes(context.browserChallenge)) sanitized.browserChallenge = context.browserChallenge;
+  for (const key of ['sensitiveConfirmed', 'requireFinalConfirmation', 'allowAutomatedSubmission']) {
+    if (typeof context[key] === 'boolean') sanitized[key] = context[key];
+  }
+  return sanitized;
 }
 
 function hashTargets(paths) {

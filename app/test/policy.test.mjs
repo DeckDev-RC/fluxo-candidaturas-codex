@@ -60,11 +60,11 @@ test('policy gateway binds approval to its action version and full payload, whil
     assert.deepEqual(approval.payloadSummary, { action, payload });
 
     assert.throws(
-      () => approvalService.decideApproval(approval.id, { decision: 'approved', actorId: 'agent-1', actorType: 'agent', reason: 'agent-approved' }),
+      () => approvalService.decideApproval(approval.id, { decision: 'approved', reason: 'agent-approved' }, { actorId: 'agent-1', actorType: 'agent' }),
       (error) => error.code === 'approval_decision_forbidden'
     );
 
-    const decided = approvalService.decideApproval(approval.id, { decision: 'approved', actorId: 'candidate', reason: 'Mensagem revisada pela candidata.' });
+    const decided = approvalService.decideApproval(approval.id, { decision: 'approved', reason: 'Mensagem revisada pela candidata.' }, { actorId: 'candidate', actorType: 'user' });
     assert.equal(decided.decisionReason, 'Mensagem revisada pela candidata.');
     assert.equal(decided.decidedBy, 'candidate');
     assert.ok(decided.decidedAt);
@@ -97,8 +97,8 @@ test('timed-test and message services request and validate approvals through the
     assert.equal(timedTest.kind, 'timed_test');
     assert.equal(message.kind, 'message');
 
-    approvalService.decideApproval(timedTest.id, { decision: 'approved', actorId: 'candidate', reason: 'Teste iniciado pela candidata.' });
-    approvalService.decideApproval(message.id, { decision: 'approved', actorId: 'candidate', reason: 'Mensagem revisada pela candidata.' });
+    approvalService.decideApproval(timedTest.id, { decision: 'approved', reason: 'Teste iniciado pela candidata.' }, { actorId: 'candidate', actorType: 'user' });
+    approvalService.decideApproval(message.id, { decision: 'approved', reason: 'Mensagem revisada pela candidata.' }, { actorId: 'candidate', actorType: 'user' });
     assert.doesNotThrow(() => assessmentService.assertTimedTestApproved({ approvalId: timedTest.id, payload: { name: 'Lógica', durationSeconds: 900 } }));
     assert.doesNotThrow(() => messageService.assertSendApproved({ approvalId: message.id, payload: { recipient: 'Pessoa Teste', text: 'Olá, Pessoa Teste.' } }));
   } finally {

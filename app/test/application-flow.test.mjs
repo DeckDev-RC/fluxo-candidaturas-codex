@@ -27,7 +27,7 @@ test('application flow connects claim, approval, visual confirmation and record'
   try {
     const prepared = await flow.prepareNext();
     const approval = flow.requestSubmissionApproval(prepared.run.id, { queueItemId: prepared.item.id, fields: { role: 'Dev' } });
-    approvalService.decideApproval(approval.id, { decision: 'approved', actorId: 'candidate' });
+    approvalService.decideApproval(approval.id, { decision: 'approved' }, { actorId: 'candidate', actorType: 'user' });
     const result = await flow.submitApproved(prepared, approval.id, { queueItemId: prepared.item.id, fields: { role: 'Dev' } });
 
     assert.equal(result.application.status, 'enviada');
@@ -54,7 +54,7 @@ test('application flow refuses to record without visual confirmation', async () 
   try {
     const prepared = await flow.prepareNext();
     const approval = flow.requestSubmissionApproval(prepared.run.id, { queueItemId: prepared.item.id });
-    approvalService.decideApproval(approval.id, { decision: 'approved', actorId: 'candidate' });
+    approvalService.decideApproval(approval.id, { decision: 'approved' }, { actorId: 'candidate', actorType: 'user' });
     await assert.rejects(() => flow.submitApproved(prepared, approval.id, { queueItemId: prepared.item.id }), (error) => error.code === 'submission_not_confirmed');
     assert.equal(recorded, false);
   } finally {
@@ -91,7 +91,7 @@ test('application flow captures evidence automatically when confirmation has no 
   try {
     const prepared = await flow.prepareNext();
     const approval = flow.requestSubmissionApproval(prepared.run.id, {});
-    approvalService.decideApproval(approval.id, { decision: 'approved', actorId: 'candidate' });
+    approvalService.decideApproval(approval.id, { decision: 'approved' }, { actorId: 'candidate', actorType: 'user' });
     await flow.submitApproved(prepared, approval.id, {});
     assert.equal(recorded.payload.evidencePath, 'evidencias/auto-run.png');
   } finally { runService.close(); approvalService.close(); }
@@ -114,7 +114,7 @@ test('application flow honors disabled checkpoint-after-action configuration', a
 test('application flow enforces confirmation evidence mode before recording', async () => {
   const root = await fixtureRoot(); const queueService = createQueueService({ rootDir: root }); const runService = createRunService({ dbPath: join(root, 'estado', 'harness.sqlite') }); const approvalService = createApprovalService({ dbPath: join(root, 'estado', 'harness.sqlite') }); let recorded = false;
   const flow = createApplicationFlow({ queueService, runService, approvalService, evidenceMode: 'confirmation', browserAdapter: { async snapshot() { return {}; }, async verifySubmission() { return { confirmed: true, state: {} }; } }, async recordApplication() { recorded = true; } });
-  try { const prepared = await flow.prepareNext(); const approval = flow.requestSubmissionApproval(prepared.run.id, {}); approvalService.decideApproval(approval.id, { decision: 'approved', actorId: 'candidate' }); await assert.rejects(() => flow.submitApproved(prepared, approval.id, {}), (error) => error.code === 'evidence_required'); assert.equal(recorded, false); }
+  try { const prepared = await flow.prepareNext(); const approval = flow.requestSubmissionApproval(prepared.run.id, {}); approvalService.decideApproval(approval.id, { decision: 'approved' }, { actorId: 'candidate', actorType: 'user' }); await assert.rejects(() => flow.submitApproved(prepared, approval.id, {}), (error) => error.code === 'evidence_required'); assert.equal(recorded, false); }
   finally { runService.close(); approvalService.close(); }
 });
 
@@ -128,7 +128,7 @@ test('application flow stops when the observed page diverges from checkpoint', a
 test('application flow preserves the evidence hash returned by automatic capture', async () => {
   const root = await fixtureRoot(); const queueService = createQueueService({ rootDir: root }); const runService = createRunService({ dbPath: join(root, 'estado', 'harness.sqlite') }); const approvalService = createApprovalService({ dbPath: join(root, 'estado', 'harness.sqlite') }); let recorded;
   const flow = createApplicationFlow({ queueService, runService, approvalService, browserAdapter: { async snapshot() { return {}; }, async verifySubmission() { return { confirmed: true, state: {} }; }, async captureEvidence() { return { path: 'evidencias/auto.png', sha256: 'a'.repeat(64) }; } }, async recordApplication(input) { recorded = input; return {}; } });
-  try { const prepared = await flow.prepareNext(); const approval = flow.requestSubmissionApproval(prepared.run.id, {}); approvalService.decideApproval(approval.id, { decision: 'approved', actorId: 'candidate' }); await flow.submitApproved(prepared, approval.id, {}); assert.equal(recorded.payload.evidenceSha256, 'a'.repeat(64)); assert.equal(runService.listEvents(prepared.run.id).at(-1).payloadJson.includes('evidenceSha256'), true); }
+  try { const prepared = await flow.prepareNext(); const approval = flow.requestSubmissionApproval(prepared.run.id, {}); approvalService.decideApproval(approval.id, { decision: 'approved' }, { actorId: 'candidate', actorType: 'user' }); await flow.submitApproved(prepared, approval.id, {}); assert.equal(recorded.payload.evidenceSha256, 'a'.repeat(64)); assert.equal(runService.listEvents(prepared.run.id).at(-1).payloadJson.includes('evidenceSha256'), true); }
   finally { runService.close(); approvalService.close(); }
 });
 

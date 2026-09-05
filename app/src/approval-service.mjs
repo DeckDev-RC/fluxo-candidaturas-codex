@@ -34,16 +34,15 @@ export function createApprovalService({ dbPath, now = () => new Date() }) {
       return publicApproval(approval, payload);
     },
 
-    decideApproval(id, { decision, actorId, actorType, reason } = {}, authority) {
+    decideApproval(id, { decision, reason } = {}, authority) {
       const row = getRow(id);
       ensureNotExpired(row, now());
       if (!['approved', 'rejected'].includes(decision)) throw domainError('invalid_approval_decision', 'Decisão de aprovação inválida.');
-      const decisionAuthority = authority ?? { actorId: actorId ?? 'user', actorType: actorType ?? 'user' };
-      if (decisionAuthority.actorType !== 'user') throw domainError('approval_decision_forbidden', 'A decisão de aprovação exige uma pessoa usuária.');
+      if (!isTrustedUserAuthority(authority)) throw domainError('approval_decision_forbidden', 'A decisão de aprovação exige uma pessoa usuária autenticada.');
       const transition = canTransitionApproval(row.status, decision);
       if (!transition.allowed) throw domainError(transition.reason, 'A aprovação já possui uma decisão terminal.');
       const decidedAt = now().toISOString();
-      const decisionAudit = createDecisionAudit({ ...decisionAuthority, reason, decision, decidedAt });
+      const decisionAudit = createDecisionAudit({ ...authority, reason, decision, decidedAt });
       database.prepare('update approvals set status = ?, decided_by = ?, decided_at = ? where id = ?').run(decision, JSON.stringify(decisionAudit), decidedAt, id);
       return toApproval({ ...row, status: decision, decided_by: JSON.stringify(decisionAudit), decided_at: decidedAt });
     },
@@ -114,6 +113,10 @@ function createDecisionAudit({ actorId, actorType, reason, decision, decidedAt }
     reason: String(reason || `user_${decision}`),
     decidedAt
   };
+}
+
+function isTrustedUserAuthority(authority) {
+  return authority?.actorType === 'user' && Boolean(String(authority.actorId ?? '').trim());
 }
 
 function readDecisionAudit(value) {

@@ -68,6 +68,14 @@ test('operations API requests and validates timed-test and message approvals thr
     const messageAsserted = await responseJson(address, 'POST', `/api/v1/messages/approval/${message.id}/assert`, { payload: { recipient: 'Pessoa Teste', text: 'Olá, Pessoa Teste.' } });
     assert.equal(timedAsserted.status, 'approved');
     assert.equal(messageAsserted.status, 'approved');
+    for (const [path, payload, browserChallenge] of [
+      [`/api/v1/assessments/approval/${timed.id}/assert`, { name: 'Lógica', durationSeconds: 900 }, 'captcha'],
+      [`/api/v1/messages/approval/${message.id}/assert`, { recipient: 'Pessoa Teste', text: 'Olá, Pessoa Teste.' }, 'mfa']
+    ]) {
+      const blocked = await fetch(`http://127.0.0.1:${address.port}${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ payload, context: { browserChallenge } }) });
+      assert.equal(blocked.status, 400, browserChallenge);
+      assert.equal((await blocked.json()).error.code, 'manual_intervention_required');
+    }
   } finally { await close(server); }
 });
 

@@ -5,6 +5,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createApprovalService } from '../src/approval-service.mjs';
 
+const USER_AUTHORITY = { actorId: 'candidate', actorType: 'user' };
+
 test('approval service creates and approves a hash-bound request', async () => {
   const root = await mkdtemp(join(tmpdir(), 'fluxo-harness-approval-'));
   const service = createApprovalService({ dbPath: join(root, 'harness.sqlite') });
@@ -12,13 +14,29 @@ test('approval service creates and approves a hash-bound request', async () => {
   try {
     const approval = service.requestApproval({ runId: 'run-1', kind: 'submission', payload: { company: 'Acme', role: 'Dev' } });
     const listed = service.listApprovals();
-    const approved = service.decideApproval(approval.id, { decision: 'approved', actorId: 'candidate' });
+    const approved = service.decideApproval(approval.id, { decision: 'approved' }, USER_AUTHORITY);
     const verified = service.assertApproved(approval.id, { company: 'Acme', role: 'Dev' });
 
     assert.equal(approval.status, 'pending');
     assert.equal(listed[0].payloadSummary.company, 'Acme');
     assert.equal(approved.status, 'approved');
     assert.equal(verified.status, 'approved');
+  } finally {
+    service.close();
+  }
+});
+
+test('approval service rejects a direct decision without explicit trusted user authority', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'fluxo-harness-approval-authority-'));
+  const service = createApprovalService({ dbPath: join(root, 'harness.sqlite') });
+  try {
+    const approval = service.requestApproval({ runId: 'run-1', kind: 'message', payload: { text: 'Olá' } });
+    assert.throws(
+      () => service.decideApproval(approval.id, { decision: 'approved', actorId: 'agent-1' }),
+      (error) => error.code === 'approval_decision_forbidden'
+    );
+    const decided = service.decideApproval(approval.id, { decision: 'approved' }, USER_AUTHORITY);
+    assert.equal(decided.decidedBy, 'candidate');
   } finally {
     service.close();
   }
@@ -31,7 +49,7 @@ test('approval service rejects changed payload and expired approval', async () =
 
   try {
     const changed = service.requestApproval({ runId: 'run-1', kind: 'submission', payload: { role: 'Dev' } });
-    service.decideApproval(changed.id, { decision: 'approved', actorId: 'candidate' });
+    service.decideApproval(changed.id, { decision: 'approved' }, USER_AUTHORITY);
     assert.throws(
       () => service.assertApproved(changed.id, { role: 'Senior Dev' }),
       (error) => error.code === 'approval_payload_changed'
@@ -40,7 +58,7 @@ test('approval service rejects changed payload and expired approval', async () =
     const expired = service.requestApproval({ runId: 'run-1', kind: 'message', payload: { text: 'Olá' }, ttlMs: 1000 });
     current = new Date('2026-09-04T12:00:02Z');
     assert.throws(
-      () => service.decideApproval(expired.id, { decision: 'approved', actorId: 'candidate' }),
+      () => service.decideApproval(expired.id, { decision: 'approved' }, USER_AUTHORITY),
       (error) => error.code === 'approval_expired'
     );
   } finally {
