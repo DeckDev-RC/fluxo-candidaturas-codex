@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
+import { canTransitionApproval } from './domain/approval-status.mjs';
+import { createDomainError } from './domain/errors.mjs';
 
 export function createApprovalService({ dbPath, now = () => new Date() }) {
   const database = new DatabaseSync(dbPath);
@@ -29,16 +31,20 @@ export function createApprovalService({ dbPath, now = () => new Date() }) {
       database.prepare(`insert into approvals
         (id, run_id, kind, payload_hash, payload_json, status, expires_at, created_at)
         values (?, ?, ?, ?, ?, ?, ?, ?)`).run(approval.id, approval.runId, approval.kind, approval.payloadHash, approval.payloadJson, approval.status, approval.expiresAt, approval.createdAt);
-      return approval;
+      return { ...approval, payloadSummary: redact(payload) };
     },
 
-    decideApproval(id, { decision, actorId }) {
+    decideApproval(id, { decision, actorId = 'user', actorType = 'user', reason } = {}) {
       const row = getRow(id);
       ensureNotExpired(row, now());
       if (!['approved', 'rejected'].includes(decision)) throw domainError('invalid_approval_decision', 'Decisão de aprovação inválida.');
+      if (actorType !== 'user') throw domainError('approval_decision_forbidden', 'A decisão de aprovação exige uma pessoa usuária.');
+      const transition = canTransitionApproval(row.status, decision);
+      if (!transition.allowed) throw domainError(transition.reason, 'A aprovação já possui uma decisão terminal.');
       const decidedAt = now().toISOString();
-      database.prepare('update approvals set status = ?, decided_by = ?, decided_at = ? where id = ?').run(decision, actorId, decidedAt, id);
-      return toApproval({ ...row, status: decision, decided_by: actorId, decided_at: decidedAt });
+      const decisionAudit = createDecisionAudit({ actorId, actorType, reason, decision, decidedAt });
+      database.prepare('update approvals set status = ?, decided_by = ?, decided_at = ? where id = ?').run(decision, JSON.stringify(decisionAudit), decidedAt, id);
+      return toApproval({ ...row, status: decision, decided_by: JSON.stringify(decisionAudit), decided_at: decidedAt });
     },
 
     assertApproved(id, payload) {
@@ -83,11 +89,31 @@ function hashPayload(payload) {
 function toApproval(row) {
   let payloadSummary = {};
   try { payloadSummary = redact(JSON.parse(row.payload_json ?? '{}')); } catch { payloadSummary = {}; }
+  const decisionAudit = readDecisionAudit(row.decided_by);
   return {
     id: row.id, runId: row.run_id, kind: row.kind, payloadHash: row.payload_hash,
-    status: row.status, decidedBy: row.decided_by, expiresAt: row.expires_at,
+    status: row.status, decidedBy: decisionAudit.actorId, decisionActorType: decisionAudit.actorType, decisionReason: decisionAudit.reason, expiresAt: row.expires_at,
     createdAt: row.created_at, decidedAt: row.decided_at, payloadSummary
   };
+}
+
+function createDecisionAudit({ actorId, actorType, reason, decision, decidedAt }) {
+  return {
+    actorId: String(actorId || 'user'),
+    actorType,
+    reason: String(reason || `user_${decision}`),
+    decidedAt
+  };
+}
+
+function readDecisionAudit(value) {
+  try {
+    const audit = JSON.parse(value);
+    if (audit && typeof audit === 'object' && audit.actorId) return audit;
+  } catch {
+    // Registros anteriores guardam apenas o identificador do ator.
+  }
+  return { actorId: value ?? null, actorType: null, reason: null };
 }
 
 function redact(value) {
@@ -97,7 +123,5 @@ function redact(value) {
 }
 
 function domainError(code, message) {
-  const error = new Error(message);
-  error.code = code;
-  return error;
+  return createDomainError(code, message);
 }

@@ -2,8 +2,10 @@ import { access, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { runAllowedScript } from './script-adapter.mjs';
 import { acquireFluxoLock, wrapMutations } from './lock.mjs';
+import { createPolicyGateway } from './policy.mjs';
 
-export function createMessageService({ rootDir = '', scriptRunner = (name, args) => runAllowedScript(name, args, { rootDir }), mutationLock = true, lock = () => acquireFluxoLock(rootDir) }) {
+export function createMessageService({ rootDir = '', scriptRunner = (name, args) => runAllowedScript(name, args, { rootDir }), policyGateway: injectedPolicyGateway, mutationLock = true, lock = () => acquireFluxoLock(rootDir) }) {
+  const policyGateway = injectedPolicyGateway ?? createPolicyGateway();
   const service = {
     async createDraft({ company, role, recruiterName = '', highlights = [], callToAction = '' }) {
       if (!String(company ?? '').trim() || !String(role ?? '').trim()) throw domainError('invalid_message', 'Empresa e vaga são obrigatórias.');
@@ -24,6 +26,12 @@ export function createMessageService({ rootDir = '', scriptRunner = (name, args)
         }
       }
       return { text: output, path: '' };
+    },
+    requestSendApproval({ runId, payload, context = {}, ttlMs } = {}) {
+      return policyGateway.requestApproval({ runId, action: { kind: 'message', version: 'v1' }, payload, context, ttlMs });
+    },
+    assertSendApproved({ approvalId, payload, context = {} } = {}) {
+      return policyGateway.assertApproved({ approvalId, action: { kind: 'message', version: 'v1' }, payload, context });
     }
   };
   return wrapMutations(service, ['createDraft'], { rootDir, mutationLock, lock });

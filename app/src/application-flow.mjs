@@ -1,6 +1,7 @@
-import { evaluateAction } from './policy.mjs';
+import { createPolicyGateway } from './policy.mjs';
 
-export function createApplicationFlow({ queueService, runService, approvalService, browserAdapter, recordApplication, checkpointService, checkpointAfterEachAction = true, evidenceMode = '', preflightReady = async () => true }) {
+export function createApplicationFlow({ queueService, runService, approvalService, policyGateway: injectedPolicyGateway, browserAdapter, recordApplication, checkpointService, checkpointAfterEachAction = true, evidenceMode = '', preflightReady = async () => true }) {
+  const policyGateway = injectedPolicyGateway ?? createPolicyGateway({ approvalService });
   return {
     async prepareNext({ platform = '', checkpoint = null } = {}) {
       if (!(await preflightReady())) throw domainError('preflight_blocked', 'O preflight precisa estar aprovado antes de preparar uma candidatura.');
@@ -17,14 +18,20 @@ export function createApplicationFlow({ queueService, runService, approvalServic
     },
 
     requestSubmissionApproval(runId, payload) {
-      const policy = evaluateAction({ kind: 'submission' }, { requireFinalConfirmation: true });
-      if (!policy.requiresApproval) return null;
-      return approvalService.requestApproval({ runId, kind: 'submission', payload });
+      return policyGateway.requestApproval({ runId, action: { kind: 'submission', version: 'v1' }, payload, context: { requireFinalConfirmation: true } });
+    },
+
+    requestSensitiveDataApproval(runId, payload, context = {}) {
+      return policyGateway.requestApproval({ runId, action: { kind: 'sensitive_data', version: 'v1' }, payload, context });
+    },
+
+    requestWithdrawalApproval(runId, payload) {
+      return policyGateway.requestApproval({ runId, action: { kind: 'withdrawal', version: 'v1' }, payload });
     },
 
     async submitApproved(prepared, approvalId, payload) {
       if (runService.assertCanSubmit) runService.assertCanSubmit(prepared.run.id);
-      approvalService.assertApproved(approvalId, payload);
+      policyGateway.assertApproved({ approvalId, action: { kind: 'submission', version: 'v1' }, payload, context: { requireFinalConfirmation: true } });
       const confirmation = await browserAdapter.verifySubmission();
       if (!confirmation.confirmed) throw domainError('submission_not_confirmed', 'A plataforma não confirmou o recebimento.');
       const effectivePayload = { ...(payload ?? {}) };

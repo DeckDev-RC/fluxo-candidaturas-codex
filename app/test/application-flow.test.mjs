@@ -132,6 +132,32 @@ test('application flow preserves the evidence hash returned by automatic capture
   finally { runService.close(); approvalService.close(); }
 });
 
+test('application flow requests the central policy approval for sensitive data and withdrawal', async () => {
+  const root = await fixtureRoot();
+  const queueService = createQueueService({ rootDir: root });
+  const runService = createRunService({ dbPath: join(root, 'estado', 'harness.sqlite') });
+  const approvalService = createApprovalService({ dbPath: join(root, 'estado', 'harness.sqlite') });
+  const flow = createApplicationFlow({ queueService, runService, approvalService, browserAdapter: { async snapshot() { return {}; } }, async recordApplication() {} });
+
+  try {
+    const prepared = await flow.prepareNext();
+    assert.throws(
+      () => flow.requestSensitiveDataApproval(prepared.run.id, { disability: 'yes' }, { sensitiveConfirmed: false }),
+      (error) => error.code === 'sensitive_confirmation_required'
+    );
+    const sensitive = flow.requestSensitiveDataApproval(prepared.run.id, { disability: 'yes' }, { sensitiveConfirmed: true });
+    const withdrawal = flow.requestWithdrawalApproval(prepared.run.id, { applicationId: 'app-1', reason: 'Nova oportunidade' });
+
+    assert.equal(sensitive.kind, 'sensitive_data');
+    assert.equal(withdrawal.kind, 'withdrawal');
+    assert.equal(sensitive.payloadSummary.action.version, 'v1');
+    assert.equal(withdrawal.payloadSummary.action.version, 'v1');
+  } finally {
+    runService.close();
+    approvalService.close();
+  }
+});
+
 async function fixtureRoot() {
   const root = await mkdtemp(join(tmpdir(), 'fluxo-harness-flow-'));
   for (const directory of ['estado', 'campanha', 'fila', 'candidaturas']) await mkdir(join(root, directory), { recursive: true });
