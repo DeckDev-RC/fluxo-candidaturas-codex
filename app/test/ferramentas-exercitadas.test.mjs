@@ -36,7 +36,21 @@ test('toda ferramenta registrada é exercitada em uma jornada real, inclusive a 
     assert.equal(importado.imported, true);
     await chamar('fluxo_record_gap', { key: 'targetRoles', value: 'Engenharia de dados' }, run.id);
     await chamar('fluxo_attach_resume', { path: importado.path, sha256: importado.sha256 }, run.id);
+    // A IA lê o currículo selecionado e recebe os dados reconhecidos sem gravá-los.
+    const lido = await chamar('fluxo_read_resume', {}, run.id);
+    assert.equal(lido.path, importado.path);
+    assert.match(lido.text, /Pessoa Ferramenta/);
+    assert.equal(lido.recognized.name, undefined, 'dado já confirmado não volta como pendente');
+    assert.equal((await runtime.memoryService.safeSummary()).facts.email.confirmed, true);
+    await assert.rejects(chamar('fluxo_read_resume', { path: '../fora.txt' }, run.id), { code: 'invalid_path' });
     assert.equal((await runtime.memoryService.safeSummary()).selectedResume.sha256, importado.sha256);
+
+    // Navegador conduzido pela IA: abrir a plataforma na aba dela e ler o que ela pede.
+    const aberta = await chamar('fluxo_open_platform', { platform: 'INFOJOBS' }, run.id);
+    assert.equal(aberta.loginPending, true);
+    assert.equal(quadro.abas[0].platform, 'INFOJOBS');
+    assert.match(quadro.abas[0].url, /^https:\/\/www\.infojobs\.com\.br\//);
+    assert.equal((await chamar('fluxo_browser_status', {}, run.id)).tabs.length, 1);
 
     // Busca, aderência e preparação.
     const busca = await chamar('fluxo_discover', { searchUrl: 'https://quadro.test/jobs', platform: 'INFOJOBS' }, run.id);
@@ -113,8 +127,15 @@ function criarQuadro(raiz) {
   const quadro = {
     pagina,
     cliques: 0,
+    abas: [],
     aoClicar(efeito) { quadro.efeitoDoClique = efeito; },
     driver: {
+      async openPlatform(platform, url) {
+        const aba = { platform, url: String(url), title: 'Entrar', loginPending: true, challenge: null };
+        quadro.abas = [aba];
+        return aba;
+      },
+      async tabs() { return quadro.abas; },
       async goto(url) {
         pagina.url = String(url);
         if (pagina.url.endsWith('/jobs/1')) {

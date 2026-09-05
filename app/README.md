@@ -59,6 +59,14 @@ Na vista **Operações**, o bloco **Codex Harness** mostra a conta/plano, tokens
 
 O dashboard inicia em modo somente leitura. O onboarding, preflight, claim, exportação, aprovação e execução de navegador são ações separadas e sujeitas às políticas do Fluxo. O runtime exige sessão local com cookie e CSRF, aceita somente conexões loopback, aplica CSP, atribui `x-request-id` e mantém mutações serializadas por `estado/harness.lock`.
 
+## A IA conduz a jornada
+
+Com o ChatGPT conectado, a conversa é um turno real no `codex app-server`: a thread recebe as ferramentas `fluxo_*` e instruções de condução (`src/conversation-prompt.mjs`), e um run `mode: 'conversa'` por sessão é dono das chamadas de ferramenta. "Começar" no cartão de primeiro uso entrega o brief da campanha ao agente, que lê o currículo (`fluxo_read_resume`), confirma dados com a pessoa, abre cada plataforma na própria aba do navegador visível (`fluxo_open_platform`), pede login quando houver, busca, compara, preenche só fatos confirmados e para em `fluxo_review`. Aprovar ou rejeitar na interface volta ao agente como turno de sistema; só então ele chama `fluxo_submit`.
+
+O que a tela recebe em tempo real (`GET /api/v1/conversation/events?stream=1`): `turn.started`, `tool.started`/`tool.completed` (resumo legível, sem HTML nem segredo), `browser.tabs`, `waiting_user` (login, verificação, aprovação), `assistant.message`, `turn.completed`/`turn.failed`. `POST /api/v1/conversation/turn` devolve `202 { turnId }`; `POST /api/v1/conversation/interrupt` e `/reset` param e reiniciam a conversa.
+
+Os portões continuam no código, fora da vontade do modelo: aprovação é humana (`assertHumanDecision`), dado sensível exige confirmação explícita, CAPTCHA/MFA/biometria são da pessoa. Sem IA conectada, "Começar" segue pelo orquestrador programado. Checklist e decisões: [`docs/CHECKLIST-IA-CONDUTORA.md`](../docs/CHECKLIST-IA-CONDUTORA.md).
+
 ## API local
 
 - `GET /health`;
@@ -79,6 +87,7 @@ O dashboard inicia em modo somente leitura. O onboarding, preflight, claim, expo
 - `POST /api/v1/imports/legacy`;
 - `POST /api/v1/state/checkpoint`, `DELETE /api/v1/state/checkpoint`;
 - `POST /api/v1/runs/:id/agent-thread`, `POST /api/v1/runs/:id/agent-turn`;
+- `POST /api/v1/conversation/turn`, `POST /api/v1/conversation/interrupt`, `POST /api/v1/conversation/reset`, `GET /api/v1/conversation/status`, `GET /api/v1/conversation/events`;
 - `POST /api/v1/preflight/run`;
 - `POST /api/v1/queue/items`;
 - `POST /api/v1/queue/:id/claim`;

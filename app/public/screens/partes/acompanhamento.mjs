@@ -8,6 +8,7 @@ import { store } from '../../core/store.mjs';
 import { go } from '../../core/router.mjs';
 import { disponivel } from '../agora-estados.mjs';
 import { nivelAderencia } from '../../core/aderencia.mjs';
+import { nomePlataforma } from '../../core/conversa-ia.mjs';
 import { exportarEvidencias, journeySteps } from './percurso.mjs';
 
 const ENCERRADAS = new Set(['rejeitada', 'encerrada', 'desistência']);
@@ -39,6 +40,7 @@ export function trackingPanel(situacao) {
   return el('aside', { class: 'acompanhamento', 'aria-labelledby': 'acompanhamento-titulo' }, [
     Object.assign(titulo, { id: 'acompanhamento-titulo' }),
     andamento(situacao, jornada),
+    navegador(store.conversa),
     metas(dados),
     jornada.plano?.length ? secao('Percurso', journeySteps(jornada), button('Exportar evidências', { variant: 'texto', 'aria-label': 'Exportar evidências desta jornada', onClick: exportarEvidencias })) : null,
     prazos(dados),
@@ -54,6 +56,17 @@ function andamento(_situacao, jornada) {
       : null
   ].filter(Boolean);
   return itens.length ? secao('Andamento', itens) : null;
+}
+
+// Abas que a IA abriu, uma por plataforma, e o que cada uma espera de você.
+function navegador(conversa) {
+  const abas = conversa?.abas ?? [];
+  if (!abas.length) return null;
+  return secao('Navegador', el('ul', { class: 'acompanhamento-lista' }, abas.map((aba) => linha(
+    nomePlataforma(aba.platform),
+    aba.title || aba.url || '',
+    aba.challenge ? badge('verificação pendente', 'atencao') : aba.loginPending ? badge('login pendente', 'atencao') : badge('conectado', 'sucesso')
+  ))));
 }
 
 function metas(dados) {

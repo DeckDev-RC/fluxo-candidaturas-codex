@@ -23,7 +23,9 @@ export const store = {
   notificacoes: [],
   ia: { disponivel: false, mensagem: 'Verificando a automação de IA…', modo: '' },
   codex: null,
-  jornada: { runId: '', status: '', mensagem: '', plano: [], perguntas: [], atualizacoes: [] }
+  jornada: { runId: '', status: '', mensagem: '', plano: [], perguntas: [], atualizacoes: [] },
+  // Conversa conduzida pela IA: se há turno em curso, o que ela espera de você e as abas do navegador.
+  conversa: { ocupada: false, aguardando: null, abas: [] }
 };
 
 export function subscribe(listener) {
@@ -126,6 +128,11 @@ export function setJourney(patch) {
   notify();
 }
 
+export function setConversation(patch) {
+  store.conversa = { ...store.conversa, ...patch };
+  notify();
+}
+
 export function addJourneyUpdate(update) {
   store.jornada = {
     ...store.jornada,
@@ -135,7 +142,9 @@ export function addJourneyUpdate(update) {
 }
 
 export function decisions() {
-  const pendentes = store.aprovacoes.filter((item) => item.status === 'pending');
+  // Revisão vencida não é decisão possível: o serviço a recusa e a IA gera outra.
+  const agora = Date.now();
+  const pendentes = store.aprovacoes.filter((item) => item.status === 'pending' && (!item.expiresAt || new Date(item.expiresAt).getTime() > agora));
   const perguntas = store.jornada.perguntas.length
     ? [{ tipo: 'informacao', id: `lacuna:${store.jornada.runId}`, titulo: 'Confirmar uma informação', detalhe: store.jornada.mensagem }]
     : [];

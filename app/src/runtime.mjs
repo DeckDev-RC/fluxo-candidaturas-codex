@@ -130,7 +130,7 @@ export async function createLocalRuntime({ rootDir, browserDriver, headless, sch
   const codexSettingsService = createCodexSettingsService({ rootDir, readModels: async () => (await codexHarnessService.snapshot()).models ?? [], mutationLock: false });
   // O registro de ferramentas é exposto no runtime para que a suíte exercite cada
   // ferramenta pela composição real, não só por construção isolada.
-  const domainTools = createDomainTools({ rootDir, runService, readState: () => readFluxoState(rootDir), discoveryService, fitService, memoryService, applicationFlow, browserAdapter, followUpMonitor, resumeImportService, budget: campaignBudget });
+  const domainTools = createDomainTools({ rootDir, runService, readState: () => readFluxoState(rootDir), discoveryService, fitService, memoryService, applicationFlow, browserAdapter, followUpMonitor, resumeImportService, intakeService, budget: campaignBudget, platformUrls: () => runtimeConfig.platformUrls ?? {} });
   // O Codex é procurado a cada início do transporte: quem instala o Codex com o
   // app aberto só precisa clicar em "Verificar novamente".
   const codex = () => resolveCodexCommand({ configured: runtimeConfig.codexCommand });
@@ -150,7 +150,8 @@ export async function createLocalRuntime({ rootDir, browserDriver, headless, sch
       if (authService?.handleNotification(message)) return;
       if (conversationService?.handleNotification(message)) return;
       eventosDeExecucao(message, runId);
-    }
+    },
+    onToolCall: (chamada) => { conversationService?.handleToolCall(chamada); }
   });
   const codexHarnessService = createCodexHarnessService({ request: (method, params) => agentAdapter.request(method, params) });
   authService = createCodexAuthService({ agentAdapter });
@@ -176,7 +177,9 @@ export async function createLocalRuntime({ rootDir, browserDriver, headless, sch
   conversationService = createConversationService({
     agentAdapter,
     rootDir,
-    snapshot: () => retratoParaConversa({ rootDir, persistence, memoryService, approvalService, runService, runtimeHealth })
+    runService,
+    tabs: () => browserAdapter.tabs(),
+    snapshot: () => retratoParaConversa({ rootDir, persistence, memoryService, approvalService, runService, runtimeHealth, browserAdapter })
   });
 
   return {

@@ -3,7 +3,7 @@
 
 export const ESTADOS = [
   'primeiro-uso', 'decisao-pendente', 'envio-incerto', 'acesso-indisponivel',
-  'pausada', 'material-nao-lido', 'escolher-vaga', 'trabalhando', 'campanha-concluida',
+  'aguardando-voce', 'pausada', 'material-nao-lido', 'escolher-vaga', 'trabalhando', 'campanha-concluida',
   'sem-vaga-adequada', 'preparar-ambiente', 'pronta-para-buscar'
 ];
 
@@ -25,6 +25,10 @@ export const TEXTOS = {
   'acesso-indisponivel': {
     titulo: 'A automação de IA está indisponível',
     corpo: 'Seus dados continuam acessíveis e você pode revisar, corrigir e decidir. A busca automática volta quando o acesso for restabelecido.'
+  },
+  'aguardando-voce': {
+    titulo: 'Preciso de você para continuar',
+    corpo: 'Parei nesta etapa porque ela depende de você. Assim que fizer o que pedi, me avise e eu sigo de onde parei.'
   },
   pausada: {
     titulo: 'Jornada pausada por você',
@@ -70,7 +74,11 @@ export function resolveNowState({ estado, jornada = {}, decisoes = [], perfil, i
   const candidaturas = estado?.applications ?? { items: [], confirmedCount: 0 };
   const meta = Number(campanha.totalGoal ?? 0);
 
-  if (!perfil?.profile?.exists || !plataformas.length || confirmados === 0) {
+  // A memória confirmada é a fonte do perfil; o arquivo perfil/candidato.md
+  // (onboarding legado) é só um dos caminhos. Quem passou pelo cartão de
+  // primeiro uso tem fatos confirmados e plataformas, e não volta para ele.
+  const perfilPronto = Boolean(perfil?.profile?.exists) || confirmados > 0;
+  if (!perfilPronto || !plataformas.length || confirmados === 0) {
     return { estado: 'primeiro-uso', motivo: 'Ainda não há objetivo, currículo lido e plataformas escolhidas.' };
   }
   if (decisoes.length) {
@@ -81,6 +89,11 @@ export function resolveNowState({ estado, jornada = {}, decisoes = [], perfil, i
   }
   if (ia.disponivel === false && jornada.status && jornada.status !== 'concluida') {
     return { estado: 'acesso-indisponivel', motivo: ia.mensagem ?? 'A automação de IA não está conectada.' };
+  }
+  // A IA condutora encerrou o turno esperando a pessoa (login, verificação, escolha).
+  const metaAtingida = meta > 0 && candidaturas.confirmedCount >= meta;
+  if (jornada.status === 'aguardando' && !metaAtingida) {
+    return { estado: 'aguardando-voce', motivo: jornada.mensagem ?? 'A próxima etapa depende de você.' };
   }
   if (jornada.status === 'pausada') {
     return { estado: 'pausada', motivo: jornada.mensagem ?? 'Você pausou a jornada.' };

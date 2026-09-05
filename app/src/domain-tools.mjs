@@ -3,14 +3,19 @@ import { acquireFluxoLock } from './lock.mjs';
 import { validateToolInput } from './tool-validation.mjs';
 import { assertTrustedPath } from './trust-boundary.mjs';
 import { createRecoveryGuidance } from './recovery-service.mjs';
+import { buildPlatformSearch, platformHome } from './platform-search.mjs';
+import { extractDocumentText } from './document-extract.mjs';
+import { join } from 'node:path';
+
+const LIMITE_TEXTO_CURRICULO = 12_000;
 
 // Ferramentas que agem fora do computador passam pelo mesmo orçamento da campanha:
 // chamar a ferramenta direto não é caminho para furar limite (F0-06, F2-05).
 const ACAO_EXTERNA = new Set(['fluxo_discover', 'fluxo_prepare', 'fluxo_fill', 'fluxo_submit', 'fluxo_reconcile']);
-const LEITURA_EXTERNA = new Set(['fluxo_followup']);
+const LEITURA_EXTERNA = new Set(['fluxo_followup', 'fluxo_open_platform']);
 const ESCOPOS_DE_ESTADO = new Set(['campaign', 'queue', 'applications', 'installation', 'preflight', 'checkpoint', 'memory', 'discovery', 'followup', 'exceptions']);
 
-export function createDomainTools({ rootDir, readState, discoveryService, fitService, memoryService, applicationFlow, browserAdapter, followUpMonitor, runService, resumeImportService, budget } = {}) {
+export function createDomainTools({ rootDir, readState, discoveryService, fitService, memoryService, applicationFlow, browserAdapter, followUpMonitor, runService, resumeImportService, intakeService, budget, platformUrls = () => ({}) } = {}) {
   const string = { type: 'string' };
   // Parâmetro de escopo é opcional: a ferramenta continua válida com `{}`.
   const opcional = (type) => ({ type, optional: true });
@@ -32,14 +37,47 @@ export function createDomainTools({ rootDir, readState, discoveryService, fitSer
       return { facts: { [escopo]: resumo.facts[escopo] } };
     }],
     ['fluxo_import_resume', 'Importar currículo enviado pelo usuário após verificar integridade.', { filename: string, contentBase64: string }, async input => resumeImportService.importFile(input)],
+    // Ler o currículo é o primeiro passo da IA: o texto vem com os dados que o
+    // extrator reconheceu, ainda não confirmados, para a pessoa validar de uma vez.
+    ['fluxo_read_resume', 'Ler o texto do currículo selecionado e os dados reconhecidos nele, ainda não confirmados; peça confirmação antes de gravar. Omita path (usa o currículo selecionado); se informar, use a forma curriculo/arquivo.ext.', { path: opcional('string') }, async (input) => {
+      const resumo = await memoryService.safeSummary();
+      // Um nome de arquivo solto é procurado na pasta de currículos.
+      const informado = String(input.path ?? '').trim().replaceAll('\\', '/');
+      const caminho = informado ? (informado.includes('/') ? informado : `curriculo/${informado}`) : String(resumo.selectedResume?.path ?? '').trim();
+      if (!caminho) throw fail('resume_not_selected');
+      assertTrustedPath(caminho);
+      if (!caminho.startsWith('curriculo/')) throw fail('invalid_path');
+      const texto = await extractDocumentText(join(rootDir, caminho));
+      const previa = intakeService ? await intakeService.preview({ documents: [{ path: caminho, text: texto }] }) : { facts: {}, missing: [] };
+      const reconhecidos = Object.fromEntries(Object.entries(previa.facts ?? {}).filter(([chave]) => !resumo.facts?.[chave]?.confirmed).map(([chave, fato]) => [chave, fato.value]));
+      return { path: caminho, text: texto.slice(0, LIMITE_TEXTO_CURRICULO), truncated: texto.length > LIMITE_TEXTO_CURRICULO, recognized: reconhecidos, missing: previa.missing ?? [] };
+    }],
     ['fluxo_record_gap', 'Registrar lacuna respondida na memória persistente.', { key: string, value: string }, async input => memoryService.recordAnswers({ [input.key]: input.value })],
     ['fluxo_attach_resume', 'Registrar a variante de currículo usada, com hash.', { path: string, sha256: string }, async input => {
       assertTrustedPath(input.path);
       return memoryService.saveResumeVariant({ path: input.path, sha256: input.sha256, selected: true, source: 'seleção da campanha' });
     }],
-    ['fluxo_discover', 'Observar vagas na página HTTP configurada; exige página suportada.', { searchUrl: string, platform: string }, async input => {
+    // Abrir a plataforma na aba dela é o primeiro passo da IA em cada site: a
+    // resposta diz se a pessoa precisa entrar (login) ou resolver um desafio.
+    ['fluxo_open_platform', 'Abrir a página de entrada da plataforma na aba dela, no navegador visível; informa se há login pendente ou desafio (CAPTCHA/MFA).', { platform: string }, async (input) => {
+      const url = platformHome(input.platform, platformUrls());
+      if (!url) throw fail('unknown_platform');
+      return browserAdapter.openPlatform(String(input.platform).toUpperCase(), url);
+    }],
+    ['fluxo_browser_status', 'Listar as abas abertas do navegador por plataforma, com URL, título, login pendente e desafio.', {}, async () => ({ tabs: await browserAdapter.tabs() })],
+    // A busca é feita na plataforma da aba; sem `searchUrl`, a URL vem do
+    // objetivo confirmado e do catálogo (ou da URL configurada no .env).
+    ['fluxo_discover', 'Observar vagas na plataforma; searchUrl é opcional (montada a partir do objetivo confirmado). Exige plataforma habilitada e ambiente pronto.', { platform: string, searchUrl: opcional('string') }, async input => {
       const state = await readState(); if (!state.installation.ready) throw fail('preflight_blocked');
-      return discoveryService.discover({ searchUrl: input.searchUrl, platforms: [input.platform] });
+      const plataforma = String(input.platform).toUpperCase();
+      let searchUrl = String(input.searchUrl ?? '').trim();
+      if (!searchUrl) {
+        const facts = (await memoryService.safeSummary()).facts ?? {};
+        const [busca] = buildPlatformSearch({ filters: { roles: facts.targetRoles?.value, location: facts.location?.value }, platforms: [plataforma], baseUrls: platformUrls() });
+        if (!busca || busca.unavailable || !busca.searchUrl) throw fail('search_unavailable');
+        searchUrl = busca.searchUrl;
+      }
+      return discoveryService.discover({ searchUrl, platforms: [plataforma] });
     }],
     ['fluxo_shortlist', 'Comparar vagas com os fatos confirmados; limit define quantas retornar.', { limit: opcional('number') }, async (input) => fitService.shortlist({
       opportunities: (await readState()).queue.items,

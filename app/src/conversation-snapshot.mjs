@@ -4,11 +4,12 @@
 
 import { readFluxoState } from './state-reader.mjs';
 
-export async function retratoParaConversa({ rootDir, persistence, memoryService, approvalService, runService, runtimeHealth }) {
-  const [estado, memoria, saude] = await Promise.all([
+export async function retratoParaConversa({ rootDir, persistence, memoryService, approvalService, runService, runtimeHealth, browserAdapter = null }) {
+  const [estado, memoria, saude, abas] = await Promise.all([
     readFluxoState(rootDir, { persistence }).catch(() => ({})),
     memoryService?.safeSummary?.().catch(() => ({ facts: {}, gaps: [] })) ?? { facts: {}, gaps: [] },
-    runtimeHealth?.snapshot?.().catch(() => ({ available: false })) ?? { available: false }
+    runtimeHealth?.snapshot?.().catch(() => ({ available: false })) ?? { available: false },
+    browserAdapter?.tabs?.().catch(() => []) ?? []
   ]);
   const fatos = memoria.facts ?? {};
   const confirmados = Object.entries(fatos).filter(([, fato]) => fato?.confirmed === true).map(([chave]) => chave);
@@ -44,7 +45,8 @@ export async function retratoParaConversa({ rootDir, persistence, memoryService,
     metaTotal,
     fila,
     decisoes: aprovacoes,
-    jornada: descreverExecucao(execucao, pausadaPelaPessoa)
+    jornada: descreverExecucao(execucao, pausadaPelaPessoa),
+    abas: (abas ?? []).map((aba) => ({ platform: aba.platform, loginPending: aba.loginPending === true, challenge: aba.challenge ?? null }))
   };
 }
 

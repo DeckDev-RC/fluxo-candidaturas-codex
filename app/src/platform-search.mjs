@@ -10,6 +10,36 @@ const SEARCH_PATHS = {
   SOLIDES: (q) => `https://vagas.solides.com.br/?q=${encodeURIComponent(q)}`
 };
 
+// Página de entrada de cada plataforma: é o que a IA abre para a pessoa entrar.
+const HOME_PATHS = {
+  GUPY: 'https://portal.gupy.io/',
+  INFOJOBS: 'https://www.infojobs.com.br/',
+  PANDAPE: 'https://www.pandape.com.br/',
+  LINKEDIN: 'https://www.linkedin.com/jobs/',
+  CATHO: 'https://www.catho.com.br/',
+  VAGASCOM: 'https://www.vagas.com.br/',
+  SOLIDES: 'https://vagas.solides.com.br/'
+};
+
+const HOSTS = [
+  ['GUPY', /(^|\.)gupy\.io$/i], ['INFOJOBS', /(^|\.)infojobs\.com\.br$/i], ['PANDAPE', /(^|\.)pandape\.com(\.br)?$/i],
+  ['LINKEDIN', /(^|\.)linkedin\.com$/i], ['CATHO', /(^|\.)catho\.com\.br$/i], ['VAGASCOM', /(^|\.)vagas\.com\.br$/i], ['SOLIDES', /(^|\.)solides\.com\.br$/i]
+];
+
+export function platformHome(platform, baseUrls = {}) {
+  const name = String(platform ?? '').toUpperCase();
+  const configurada = String(baseUrls[name] ?? '').replace('{q}', '');
+  if (configurada) { try { return new URL(configurada).origin + '/'; } catch { /* usa o catálogo */ } }
+  return HOME_PATHS[name] ?? '';
+}
+
+// Plataforma a que uma URL pertence, pelo domínio; '' quando não é uma das conhecidas.
+export function platformOfUrl(url) {
+  let host = '';
+  try { host = new URL(String(url)).hostname; } catch { return ''; }
+  return HOSTS.find(([, padrao]) => padrao.test(host))?.[0] ?? '';
+}
+
 // `baseUrls` vem das chaves `<PLATAFORMA>_URL` do `.env` (ver config/plataformas.json).
 // Um override com `{q}` recebe a consulta; sem o marcador, a URL é usada como a própria página de busca.
 export function buildPlatformSearch({ filters = {}, platforms = PLATFORM_NAMES, baseUrls = {} } = {}) {

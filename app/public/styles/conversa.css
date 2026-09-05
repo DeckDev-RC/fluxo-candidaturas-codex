@@ -39,6 +39,14 @@
 .balao[data-tom="atencao"] .balao-corpo { border-left-color: var(--atencao); }
 .balao[data-tom="erro"] .balao-corpo { border-left-color: var(--erro); }
 
+/* Passo do agente ("Abri o LinkedIn…"): linha discreta, menor e sem avatar,
+   para a narração do trabalho não competir com o que o Fluxo diz à pessoa. */
+.balao[data-tom="passo"] { margin-top: var(--e1); }
+.balao[data-tom="passo"] .balao-avatar { visibility: hidden; }
+.balao[data-tom="passo"] .balao-corpo { flex-direction: row; gap: var(--e2); font-size: var(--texto-sm); color: var(--texto-2); }
+.balao[data-tom="passo"] .balao-corpo::before { content: '›'; color: var(--texto-3); }
+.balao[data-tom="passo"] .balao-hora { display: none; }
+
 .balao[data-autor="voce"] { grid-template-columns: minmax(0, 1fr); justify-items: end; }
 .balao[data-autor="voce"] .balao-corpo {
   max-width: 80%;

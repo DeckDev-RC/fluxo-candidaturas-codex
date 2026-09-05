@@ -7,6 +7,7 @@ import { rerender, startRouter } from './core/router.mjs';
 import { restoreJourney } from './core/stream.mjs';
 import { onTranscript, startTranscript } from './core/conversa.mjs';
 import { connectAiStatus, refreshAiOnFocus } from './core/ia-status.mjs';
+import { agentDriving, connectConversation, disconnectConversation } from './core/conversa-ia.mjs';
 import { notice, renderNotices } from './ui/messages.mjs';
 import { agoraScreen } from './screens/agora.mjs';
 import { oportunidadesScreen } from './screens/oportunidades.mjs';
@@ -40,8 +41,14 @@ document.querySelector('#atualizar').addEventListener('click', async (evento) =>
 document.querySelector('#editar-objetivo').addEventListener('click', () => abrirMudancaDeObjetivo({ aoSalvar: pintarCabecalho }));
 bindConversationInput(document.querySelector('#conversa'));
 
-subscribe(() => { pintarCabecalho(); agendarRepintura(); });
+subscribe(() => { pintarCabecalho(); agendarRepintura(); ligarConversaDaIa(); });
 onTranscript(agendarRepintura);
+
+// Com a IA conectada, a conversa passa a receber o que o agente diz e faz.
+function ligarConversaDaIa() {
+  if (agentDriving()) connectConversation();
+  else disconnectConversation();
+}
 
 // Atualizações agrupadas: novidade que chega enquanto a pessoa digita ou decide
 // não desloca foco nem descarta rascunho (U7-05, U8-05, U9-05).

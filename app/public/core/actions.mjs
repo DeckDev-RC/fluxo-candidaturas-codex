@@ -4,6 +4,8 @@
 import { FluxoError, fileToBase64, send } from './api.mjs';
 import { loadState, setJourney, store } from './store.mjs';
 import { connectJourney, forgetJourney } from './stream.mjs';
+import { agentDriving, interruptConversation, nomePlataforma, resetConversation, sendTurn } from './conversa-ia.mjs';
+import { ask } from './conversa.mjs';
 import { notice } from '../ui/messages.mjs';
 
 // Limite do serviço local para o arquivo (o corpo em base64 é ~35% maior).
@@ -44,7 +46,10 @@ export async function iniciarJornada({ objetivo, curriculo, plataformas: escolhi
   // jornada, para o Fluxo não perguntar de novo o que acabou de ler.
   await send('/api/v1/memory/answers', { answers: { targetRoles: objetivo } });
   const importado = curriculo ? await importarCurriculo(curriculo) : null;
-  const plataformas = (store.estado?.campaign?.platforms ?? []).filter((item) => item.enabled !== false).map((item) => item.name);
+  const habilitadas = (store.estado?.campaign?.platforms ?? []).filter((item) => item.enabled !== false);
+  const plataformas = habilitadas.map((item) => item.name);
+  // Com a IA conectada, quem conduz é o agente: o cartão vira o brief da campanha.
+  if (agentDriving()) return entregarAoAgente({ objetivo, importado, habilitadas });
   const resposta = await send('/api/v1/autopilot/start', {
     intent: objetivo,
     targetRoles: objetivo,
@@ -58,6 +63,31 @@ export async function iniciarJornada({ objetivo, curriculo, plataformas: escolhi
   notice('O Fluxo começou a trabalhar. Você será chamado somente quando uma decisão depender de você.', 'sucesso');
   await loadState();
   return resposta;
+}
+
+async function entregarAoAgente({ objetivo, importado, habilitadas }) {
+  const metas = habilitadas.map((item) => `${nomePlataforma(item.name)} (meta ${Number(item.goal ?? 0)})`).join(', ');
+  const brief = [
+    `Comecei a campanha pelo cartão de primeiro uso. Objetivo: ${objetivo}.`,
+    importado ? `Currículo importado agora: ${importado.filename}.` : 'Currículo: o que já está registrado no meu perfil.',
+    `Plataformas habilitadas e metas: ${metas || 'nenhuma'}.`,
+    'Conduza a busca conforme o protocolo: leia meu perfil, pergunte só o que faltar e comece pela primeira plataforma.'
+  ].join(' ');
+  ask('Pode começar a busca com o que preenchi.');
+  const resposta = await sendTurn(brief);
+  setJourney({ runId: resposta?.runId ?? store.jornada.runId, status: 'trabalhando', mensagem: 'Estou conduzindo a busca.', plano: [], perguntas: [] });
+  notice('Assumi a busca. Acompanhe aqui: peço login quando uma plataforma exigir e paro para você aprovar cada envio.', 'sucesso');
+  await loadState();
+  return resposta;
+}
+
+// A pessoa avisa que fez a parte dela (login, verificação) e o agente confere e segue.
+export async function avisarQueTerminei(espera) {
+  const texto = espera?.kind === 'login' || espera?.kind === 'challenge'
+    ? `Já entrei no ${nomePlataforma(espera.platform)}. Confira a aba e continue.`
+    : 'Pode continuar.';
+  ask(texto);
+  return sendTurn(texto);
 }
 
 export async function responderLacunas(respostas) {
@@ -77,6 +107,12 @@ export async function responderLacunas(respostas) {
 }
 
 export async function pausarJornada() {
+  if (agentDriving()) {
+    const resultado = store.conversa.ocupada ? await interruptConversation() : { interrupted: false };
+    setJourney({ status: 'pausada', mensagem: 'Jornada pausada. Nenhuma nova ação externa será iniciada.' });
+    notice('Pausei. Uma ação externa já iniciada não é desfeita; retome quando quiser.', 'atencao');
+    return resultado;
+  }
   const runId = store.jornada.runId;
   if (!runId) return null;
   const resultado = await send(`/api/v1/runs/${encodeURIComponent(runId)}/interrupt`, {});
@@ -86,6 +122,10 @@ export async function pausarJornada() {
 }
 
 export async function retomarJornada() {
+  if (agentDriving()) {
+    setJourney({ status: 'trabalhando', mensagem: 'Retomando de onde parei.' });
+    return sendTurn('Retome a campanha de onde parou: confira o estado atual e siga o protocolo.', { system: true });
+  }
   const runId = store.jornada.runId;
   if (!runId) return null;
   const resultado = await send(`/api/v1/runs/${encodeURIComponent(runId)}/resume`, {});
@@ -96,6 +136,14 @@ export async function retomarJornada() {
 }
 
 export async function encerrarCampanha() {
+  if (agentDriving()) {
+    const resultado = await resetConversation();
+    forgetJourney();
+    setJourney({ runId: '', status: 'encerrada', mensagem: 'Campanha encerrada. A próxima busca começa uma conversa nova.', plano: [], perguntas: [] });
+    notice('Campanha encerrada. Candidaturas já confirmadas continuam no histórico.', 'atencao');
+    await loadState();
+    return resultado;
+  }
   const runId = store.jornada.runId;
   if (!runId) return null;
   const resultado = await send(`/api/v1/autopilot/${encodeURIComponent(runId)}/cancel`, {});
@@ -132,13 +180,24 @@ export async function pedirAprovacao(preparada) {
 
 export async function decidirAprovacao(id, decisao, motivo = '') {
   await send(`/api/v1/approvals/${encodeURIComponent(id)}/decision`, { decision: decisao, actorId: 'local-user', ...(motivo ? { reason: motivo } : {}) });
+  const revisao = revisoesPendentes.get(id);
+  // Revisão pedida pelo agente condutor: a decisão volta para ele como evento
+  // de sistema. Aprovar aqui nunca envia por conta própria; quem envia é a
+  // ferramenta, com este approvalId.
+  const doAgente = !revisao && agentDriving();
   if (decisao !== 'approved') {
     revisoesPendentes.delete(id);
+    if (doAgente) await sendTurn(`A pessoa rejeitou a revisão ${id}${motivo ? ` (motivo: ${motivo})` : ''}. Não envie esta candidatura; siga para a próxima vaga ou pergunte o que ajustar.`, { system: true }).catch(() => null);
     notice('Revisão rejeitada. Nenhum envio foi feito e a vaga continua na lista.', 'atencao');
     await loadState();
     return { enviado: false };
   }
-  const revisao = revisoesPendentes.get(id);
+  if (doAgente) {
+    await sendTurn(`A pessoa aprovou a revisão ${id} na interface. Prossiga com fluxo_submit usando este approvalId e confirme o recebimento.`, { system: true }).catch(() => null);
+    notice('Aprovação registrada. Vou concluir o envio e confirmar aqui na conversa.', 'informacao');
+    await loadState();
+    return { enviado: false, delegado: true };
+  }
   if (!revisao) {
     notice('Aprovação registrada. Prepare a candidatura novamente para executar esta revisão.', 'atencao');
     await loadState();
