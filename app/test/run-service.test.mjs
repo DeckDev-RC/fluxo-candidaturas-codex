@@ -51,6 +51,31 @@ test('run service publishes appended events to active stream subscribers', async
   assert.equal(received[0].type, 'agent.progress');
 });
 
+test('run service redacts sensitive event payload fields before persistence and notification', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'fluxo-run-redaction-'));
+  const service = createRunService({ dbPath: join(root, 'runs.sqlite') });
+  try {
+    const run = service.startRun({ kind: 'agent' });
+    const received = [];
+    service.subscribe(run.id, (event) => received.push(event));
+    const secrets = {
+      password: 'password-secret', token: 'token-secret', cookie: 'cookie-secret',
+      mfa: 'mfa-secret', authorization: 'authorization-secret', credential: 'credential-secret'
+    };
+    const event = service.appendEvent({ runId: run.id, type: 'agent.notification', payload: { secrets, nested: [{ token: 'nested-token-secret' }] } });
+    const persisted = service.listEvents(run.id)[0];
+
+    for (const secret of Object.values(secrets)) {
+      assert.equal(event.payloadJson.includes(secret), false);
+      assert.equal(persisted.payloadJson.includes(secret), false);
+    }
+    assert.equal(event.payloadJson.includes('"password":"[REDACTED]"'), true);
+    assert.equal(event.payloadJson.includes('"token":"[REDACTED]"'), true);
+    assert.equal(event.payloadJson.includes('"nested-token-secret"'), false);
+    assert.equal(received[0].payloadJson, event.payloadJson);
+  } finally { service.close(); }
+});
+
 test('run service persists agent thread and current turn identifiers', async () => {
   const root = await mkdtemp(join(tmpdir(), 'fluxo-agent-context-'));
   const service = createRunService({ dbPath: join(root, 'runs.sqlite') });

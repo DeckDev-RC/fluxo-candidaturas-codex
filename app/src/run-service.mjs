@@ -76,9 +76,10 @@ export function createRunService({ dbPath, maxApplicationsPerRun = 30, now = () 
         const existing = database.prepare('select * from domain_events where idempotency_key = ?').get(idempotencyKey);
         if (existing) return toEvent(existing);
       }
+      const safePayload = redactEventPayload(payload);
       const event = {
         id: randomUUID(), runId, aggregateType, aggregateId, type,
-        payloadJson: JSON.stringify(payload), actorType, createdAt: now().toISOString(), idempotencyKey: idempotencyKey || null
+        payloadJson: JSON.stringify(safePayload), actorType, createdAt: now().toISOString(), idempotencyKey: idempotencyKey || null
       };
       database.prepare(`insert into domain_events
         (id, run_id, aggregate_type, aggregate_id, type, payload_json, actor_type, created_at, idempotency_key)
@@ -138,6 +139,17 @@ export function createRunService({ dbPath, maxApplicationsPerRun = 30, now = () 
     database.prepare(`update runs set ${Object.keys(fields).map((field) => `${field} = ?`).join(', ')}, updated_at = ? where id = ?`).run(...Object.values(fields), updatedAt, id);
     return toRun(database.prepare('select * from runs where id = ?').get(id));
   }
+}
+
+const SENSITIVE_EVENT_KEY = /(password|token|cookie|mfa|authorization|credential)/i;
+
+function redactEventPayload(value) {
+  if (Array.isArray(value)) return value.map(redactEventPayload);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value).map(([key, nestedValue]) => [
+    key,
+    SENSITIVE_EVENT_KEY.test(key) ? '[REDACTED]' : redactEventPayload(nestedValue)
+  ]));
 }
 
 function toRun(row) {

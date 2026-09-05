@@ -31,6 +31,35 @@ test('events API appends an event and streams it as SSE', async () => {
   }
 });
 
+test('events API redacts sensitive payloads before the response and SSE stream', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'fluxo-harness-event-redaction-'));
+  await mkdir(join(root, 'estado'), { recursive: true });
+  const server = createServer({ rootDir: root });
+  const address = await listen(server);
+  const payload = {
+    password: 'api-password-secret', token: 'api-token-secret', cookie: 'api-cookie-secret',
+    mfa: 'api-mfa-secret', authorization: 'api-authorization-secret', credential: 'api-credential-secret'
+  };
+
+  try {
+    const runResponse = await fetch(`http://127.0.0.1:${address.port}/api/v1/runs`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind: 'campaign' })
+    });
+    const run = await runResponse.json();
+    const eventResponse = await fetch(`http://127.0.0.1:${address.port}/api/v1/runs/${run.id}/events`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ type: 'agent.notification', payload })
+    });
+    const eventBody = await eventResponse.json();
+    const stream = await fetch(`http://127.0.0.1:${address.port}/api/v1/runs/${run.id}/events`);
+    const body = await stream.text();
+    for (const secret of Object.values(payload)) {
+      assert.equal(JSON.stringify(eventBody).includes(secret), false);
+      assert.equal(body.includes(secret), false);
+    }
+    assert.match(body, /\[REDACTED\]/);
+  } finally { await close(server); }
+});
+
 test('agent turn API connects local App Server output to run events', async () => {
   const root = await mkdtemp(join(tmpdir(), 'fluxo-harness-agent-api-'));
   await mkdir(join(root, 'estado'), { recursive: true });
