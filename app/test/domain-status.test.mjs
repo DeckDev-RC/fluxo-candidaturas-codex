@@ -15,8 +15,8 @@ test('domain application transitions submit only with visual confirmation, verif
     evidenceMode: 'confirmation',
     evidence,
     requireApproval: true,
-    approval: { status: APPROVAL_STATUS.APPROVED, expiresAt: '2026-09-04T12:10:00.000Z', payloadHash: 'same' },
-    payloadHash: 'same',
+    approval: { status: APPROVAL_STATUS.APPROVED, expiresAt: '2026-09-04T12:10:00.000Z', payloadHash: evidence.sha256 },
+    payloadHash: evidence.sha256,
     now: new Date('2026-09-04T12:01:00.000Z')
   });
 
@@ -27,8 +27,8 @@ test('domain application transitions submit only with visual confirmation, verif
       evidenceMode: 'confirmation',
       evidence,
       requireApproval: true,
-      approval: { status: APPROVAL_STATUS.APPROVED, expiresAt: '2026-09-04T12:10:00.000Z', payloadHash: 'same' },
-      payloadHash: 'same',
+      approval: { status: APPROVAL_STATUS.APPROVED, expiresAt: '2026-09-04T12:10:00.000Z', payloadHash: evidence.sha256 },
+      payloadHash: evidence.sha256,
       now: new Date('2026-09-04T12:01:00.000Z')
     }),
     { id: 'app-1', status: APPLICATION_STATUS.SUBMITTED }
@@ -53,14 +53,43 @@ test('domain application rejects unconfirmed, unevidenced and invalidly approved
     'approval_expired'
   );
   assert.equal(
-    canTransitionApplication(APPLICATION_STATUS.DRAFT, APPLICATION_STATUS.SUBMITTED, { confirmation, evidence, requireApproval: true, approval: { status: APPROVAL_STATUS.APPROVED, payloadHash: 'approved' }, payloadHash: 'changed' }).reason,
+    canTransitionApplication(APPLICATION_STATUS.DRAFT, APPLICATION_STATUS.SUBMITTED, { confirmation, evidence, requireApproval: true, approval: { status: APPROVAL_STATUS.APPROVED, payloadHash: evidence.sha256 }, payloadHash: 'b'.repeat(64) }).reason,
     'approval_payload_changed'
+  );
+  assert.equal(
+    canTransitionApplication(APPLICATION_STATUS.DRAFT, APPLICATION_STATUS.SUBMITTED, { confirmation, evidence, requireApproval: true, approval: { status: APPROVAL_STATUS.APPROVED, payloadHash: evidence.sha256 } }).reason,
+    'approval_payload_changed'
+  );
+  assert.equal(
+    canTransitionApplication(APPLICATION_STATUS.DRAFT, APPLICATION_STATUS.SUBMITTED, { confirmation, evidence, requireApproval: true, approval: { status: APPROVAL_STATUS.APPROVED, payloadHash: evidence.sha256 }, payloadHash: 'not-a-sha256' }).reason,
+    'approval_payload_changed'
+  );
+  assert.equal(
+    canTransitionApplication(APPLICATION_STATUS.DRAFT, APPLICATION_STATUS.SUBMITTED, { confirmation: { confirmed: true, confirmedAt: 'not-a-date' } }).reason,
+    'submission_confirmation_timestamp_required'
+  );
+});
+
+test('domain application preserves legacy review and withdrawal transitions', () => {
+  assert.deepEqual(
+    canTransitionApplication(APPLICATION_STATUS.DRAFT, APPLICATION_STATUS.READY_FOR_REVIEW),
+    { allowed: true }
+  );
+  assert.deepEqual(
+    canTransitionApplication(APPLICATION_STATUS.READY_FOR_REVIEW, APPLICATION_STATUS.SUBMITTED, { confirmation }),
+    { allowed: true }
+  );
+  assert.deepEqual(
+    canTransitionApplication(APPLICATION_STATUS.INTERVIEW, APPLICATION_STATUS.WITHDRAWN),
+    { allowed: true }
   );
 });
 
 test('domain application does not reactivate terminal statuses and transitionApplication throws its reason', () => {
   const rejected = canTransitionApplication(APPLICATION_STATUS.REJECTED, APPLICATION_STATUS.INTERVIEW, {});
   assert.deepEqual(rejected, { allowed: false, reason: 'application_terminal' });
+  const closed = canTransitionApplication(APPLICATION_STATUS.CLOSED, APPLICATION_STATUS.INTERVIEW, {});
+  assert.deepEqual(closed, { allowed: false, reason: 'application_terminal' });
   assert.throws(
     () => transitionApplication({ id: 'app-1', status: APPLICATION_STATUS.REJECTED }, APPLICATION_STATUS.INTERVIEW, {}),
     (error) => error.code === 'application_terminal'
@@ -79,6 +108,10 @@ test('domain queue allows claiming only eligible queued work', () => {
   assert.equal(
     canTransitionQueue(QUEUE_STATUS.QUEUED, QUEUE_STATUS.IN_PROGRESS, { targetReached: true }).reason,
     'queue_goal_reached'
+  );
+  assert.deepEqual(
+    canTransitionQueue(QUEUE_STATUS.IN_PROGRESS, QUEUE_STATUS.PROCESSED),
+    { allowed: true }
   );
 });
 

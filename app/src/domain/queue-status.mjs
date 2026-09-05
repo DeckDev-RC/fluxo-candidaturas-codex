@@ -1,10 +1,11 @@
 export const QUEUE_STATUS = Object.freeze({
   QUEUED: 'na fila',
   IN_PROGRESS: 'em andamento',
+  PROCESSED: 'processada',
   BLOCKED: 'bloqueada'
 });
 
-const TERMINAL_STATUSES = new Set([QUEUE_STATUS.BLOCKED]);
+const TERMINAL_STATUSES = new Set([QUEUE_STATUS.PROCESSED, QUEUE_STATUS.BLOCKED]);
 
 export function canTransitionQueue(from, to, context = {}) {
   if (from === QUEUE_STATUS.BLOCKED && to === QUEUE_STATUS.IN_PROGRESS) return denied('queue_item_blocked');
@@ -15,7 +16,7 @@ export function canTransitionQueue(from, to, context = {}) {
     }
     return allowed();
   }
-  if (from === QUEUE_STATUS.IN_PROGRESS && [QUEUE_STATUS.QUEUED, QUEUE_STATUS.BLOCKED].includes(to)) return allowed();
+  if (from === QUEUE_STATUS.IN_PROGRESS && [QUEUE_STATUS.QUEUED, QUEUE_STATUS.PROCESSED, QUEUE_STATUS.BLOCKED].includes(to)) return allowed();
   return denied('invalid_queue_transition');
 }
 

@@ -3,6 +3,7 @@ import { createDomainError } from './errors.mjs';
 
 export const APPLICATION_STATUS = Object.freeze({
   DRAFT: 'rascunho',
+  READY_FOR_REVIEW: 'pronta para revisão',
   SUBMITTED: 'enviada',
   SCREENING: 'triagem',
   TEST_PENDING: 'teste pendente',
@@ -10,12 +11,15 @@ export const APPLICATION_STATUS = Object.freeze({
   INTERVIEW: 'entrevista',
   OFFER: 'proposta',
   REJECTED: 'rejeitada',
+  WITHDRAWN: 'desistência',
   CLOSED: 'encerrada'
 });
 
-const TERMINAL_STATUSES = new Set([APPLICATION_STATUS.REJECTED, APPLICATION_STATUS.CLOSED]);
+const TERMINAL_STATUSES = new Set([APPLICATION_STATUS.REJECTED, APPLICATION_STATUS.WITHDRAWN, APPLICATION_STATUS.CLOSED]);
+const OUTCOME_STATUSES = [APPLICATION_STATUS.REJECTED, APPLICATION_STATUS.WITHDRAWN, APPLICATION_STATUS.CLOSED];
 const ACTIVE_STATUSES = new Set([
   APPLICATION_STATUS.DRAFT,
+  APPLICATION_STATUS.READY_FOR_REVIEW,
   APPLICATION_STATUS.SUBMITTED,
   APPLICATION_STATUS.SCREENING,
   APPLICATION_STATUS.TEST_PENDING,
@@ -24,12 +28,13 @@ const ACTIVE_STATUSES = new Set([
   APPLICATION_STATUS.OFFER
 ]);
 const TRANSITIONS = new Map([
-  [APPLICATION_STATUS.DRAFT, new Set([APPLICATION_STATUS.SUBMITTED])],
-  [APPLICATION_STATUS.SUBMITTED, new Set([APPLICATION_STATUS.SCREENING, APPLICATION_STATUS.TEST_PENDING, APPLICATION_STATUS.INTERVIEW, APPLICATION_STATUS.OFFER, APPLICATION_STATUS.REJECTED, APPLICATION_STATUS.CLOSED])],
-  [APPLICATION_STATUS.SCREENING, new Set([APPLICATION_STATUS.TEST_PENDING, APPLICATION_STATUS.INTERVIEW, APPLICATION_STATUS.OFFER, APPLICATION_STATUS.REJECTED, APPLICATION_STATUS.CLOSED])],
-  [APPLICATION_STATUS.TEST_PENDING, new Set([APPLICATION_STATUS.TEST_COMPLETED, APPLICATION_STATUS.REJECTED, APPLICATION_STATUS.CLOSED])],
-  [APPLICATION_STATUS.TEST_COMPLETED, new Set([APPLICATION_STATUS.INTERVIEW, APPLICATION_STATUS.OFFER, APPLICATION_STATUS.REJECTED, APPLICATION_STATUS.CLOSED])],
-  [APPLICATION_STATUS.INTERVIEW, new Set([APPLICATION_STATUS.OFFER, APPLICATION_STATUS.REJECTED, APPLICATION_STATUS.CLOSED])],
+  [APPLICATION_STATUS.DRAFT, new Set([APPLICATION_STATUS.READY_FOR_REVIEW, APPLICATION_STATUS.SUBMITTED])],
+  [APPLICATION_STATUS.READY_FOR_REVIEW, new Set([APPLICATION_STATUS.SUBMITTED, ...OUTCOME_STATUSES])],
+  [APPLICATION_STATUS.SUBMITTED, new Set([APPLICATION_STATUS.SCREENING, APPLICATION_STATUS.TEST_PENDING, APPLICATION_STATUS.INTERVIEW, APPLICATION_STATUS.OFFER, ...OUTCOME_STATUSES])],
+  [APPLICATION_STATUS.SCREENING, new Set([APPLICATION_STATUS.TEST_PENDING, APPLICATION_STATUS.INTERVIEW, APPLICATION_STATUS.OFFER, ...OUTCOME_STATUSES])],
+  [APPLICATION_STATUS.TEST_PENDING, new Set([APPLICATION_STATUS.TEST_COMPLETED, ...OUTCOME_STATUSES])],
+  [APPLICATION_STATUS.TEST_COMPLETED, new Set([APPLICATION_STATUS.INTERVIEW, APPLICATION_STATUS.OFFER, ...OUTCOME_STATUSES])],
+  [APPLICATION_STATUS.INTERVIEW, new Set([APPLICATION_STATUS.OFFER, ...OUTCOME_STATUSES])],
   [APPLICATION_STATUS.OFFER, new Set([APPLICATION_STATUS.CLOSED])]
 ]);
 
@@ -58,7 +63,7 @@ function approvalDecision(context) {
   if (approval.status === APPROVAL_STATUS.REJECTED) return denied('approval_rejected');
   if (approval.status === APPROVAL_STATUS.EXPIRED || isExpired(approval.expiresAt, context.now)) return denied('approval_expired');
   if (approval.status !== APPROVAL_STATUS.APPROVED) return denied('approval_required');
-  if (approval.payloadChanged === true || approval.payloadHash && context.payloadHash && approval.payloadHash !== context.payloadHash) return denied('approval_payload_changed');
+  if (approval.payloadChanged === true || !isSha256(approval.payloadHash) || !isSha256(context.payloadHash) || approval.payloadHash !== context.payloadHash) return denied('approval_payload_changed');
   return allowed();
 }
 
@@ -71,14 +76,21 @@ function requiresConfirmationEvidence(context) {
 }
 
 function hasTimestamp(confirmation) {
-  return Boolean(confirmation.confirmedAt || confirmation.timestamp || confirmation.submittedAt);
+  const timestamp = confirmation.confirmedAt ?? confirmation.timestamp ?? confirmation.submittedAt;
+  return timestamp instanceof Date
+    ? Number.isFinite(timestamp.getTime())
+    : typeof timestamp === 'string' && Boolean(timestamp.trim()) && Number.isFinite(Date.parse(timestamp));
 }
 
 function hasVerifiableEvidence(context) {
   const evidence = context.evidence ?? {};
   const path = evidence.path ?? context.evidencePath;
   const sha256 = evidence.sha256 ?? context.evidenceSha256;
-  return Boolean(String(path ?? '').trim() && /^[a-f0-9]{64}$/i.test(String(sha256 ?? '')));
+  return Boolean(String(path ?? '').trim() && isSha256(sha256));
+}
+
+function isSha256(value) {
+  return /^[a-f0-9]{64}$/i.test(String(value ?? ''));
 }
 
 function isExpired(expiresAt, now) {
