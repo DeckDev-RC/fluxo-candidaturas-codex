@@ -21,7 +21,7 @@ export function validateOnboarding(input = {}) {
   return { valid: missing.length === 0, missing, errors: [] };
 }
 
-export function createOnboardingService({ rootDir, mutationLock = true, lock = () => acquireFluxoLock(rootDir) }) {
+export function createOnboardingService({ rootDir, mutationLock = true, lock = () => acquireFluxoLock(rootDir), memoryService } = {}) {
   const service = {
     async saveOnboarding(input) {
       const validation = validateOnboarding(input);
@@ -43,6 +43,11 @@ export function createOnboardingService({ rootDir, mutationLock = true, lock = (
       await writeJsonAtomic(join(rootDir, 'campanha', 'config.json'), normalizeCampaign(input.campaign));
       await ensureJson(join(rootDir, 'candidaturas', 'candidaturas.json'), []);
       await ensureJson(join(rootDir, 'fila', 'vagas.json'), []);
+      if (memoryService?.upsertFacts) {
+        const facts = REQUIRED_FIELDS.map((key) => ({ key, value: input[key], source: 'onboarding', sourceLabel: 'Configuração inicial', confirmed: true, sensitive: ['workAuthorization', 'pcd'].includes(key) }));
+        await memoryService.upsertFacts(facts);
+        if (input.resumePath) await memoryService.saveResumeVariant({ path: input.resumePath, selected: true, source: 'onboarding' });
+      }
       return { ready: true, profilePath: 'perfil/candidato.md', campaignPath: 'campanha/config.json' };
     }
   };

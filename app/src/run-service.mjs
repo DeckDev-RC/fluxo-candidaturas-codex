@@ -14,6 +14,13 @@ export function createRunService({ dbPath, maxApplicationsPerRun = 30, now = () 
       checkpoint_path text,
       agent_thread_id text,
       current_turn_id text,
+      goal text not null default '',
+      mode text not null default 'manual',
+      current_task text not null default '',
+      plan_json text not null default '[]',
+      last_observation text not null default '',
+      tool text not null default '',
+      result_json text,
       submitted_count integer not null default 0,
       started_at text not null,
       updated_at text not null,
@@ -32,17 +39,19 @@ export function createRunService({ dbPath, maxApplicationsPerRun = 30, now = () 
     );
   `);
   ensureColumn(database, 'runs', 'submitted_count', 'integer not null default 0');
+  for (const [column, definition] of [['goal', "text not null default ''"], ['mode', "text not null default 'manual'"], ['current_task', "text not null default ''"], ['plan_json', "text not null default '[]'"], ['last_observation', "text not null default ''"], ['tool', "text not null default ''"], ['result_json', 'text']]) ensureColumn(database, 'runs', column, definition);
+  database.exec(`create table if not exists run_subtasks (id text primary key, run_id text not null, parent_task text, status text not null, result_json text, created_at text not null)`);
 
   return {
-    startRun({ kind, platform = '', queueReference = '' }) {
+    startRun({ kind, platform = '', queueReference = '', goal = '', mode = 'manual' }) {
       const timestamp = now().toISOString();
       const run = {
-        id: randomUUID(), kind, status: 'running', platform, queueReference,
+        id: randomUUID(), kind, status: 'running', platform, queueReference, goal: String(goal), mode: String(mode),
         startedAt: timestamp, updatedAt: timestamp
       };
       database.prepare(`insert into runs
-        (id, kind, status, platform, queue_reference, started_at, updated_at)
-        values (?, ?, ?, ?, ?, ?, ?)`).run(run.id, run.kind, run.status, run.platform, run.queueReference, run.startedAt, run.updatedAt);
+        (id, kind, status, platform, queue_reference, started_at, updated_at, goal, mode)
+        values (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(run.id, run.kind, run.status, run.platform, run.queueReference, run.startedAt, run.updatedAt, run.goal, run.mode);
       return run;
     },
 
@@ -50,6 +59,7 @@ export function createRunService({ dbPath, maxApplicationsPerRun = 30, now = () 
       const row = database.prepare('select * from runs where id = ?').get(id);
       return row ? toRun(row) : null;
     },
+    listRuns() { return database.prepare('select * from runs order by started_at asc').all().map(toRun); },
 
     assertCanSubmit(id, submittedCount) {
       const run = this.getRun(id);
@@ -70,6 +80,12 @@ export function createRunService({ dbPath, maxApplicationsPerRun = 30, now = () 
 
     setAgentThread(id, threadId) { return updateRunFields(id, { agent_thread_id: String(threadId) }); },
     setCurrentTurn(id, turnId) { return updateRunFields(id, { current_turn_id: String(turnId) }); },
+
+    setPlan(id, plan) { return updateRunFields(id, { plan_json: JSON.stringify(plan) }); },
+    recordTask(id, { task = '', observation = '', tool = '', result = null } = {}) { return updateRunFields(id, { current_task: String(task), last_observation: String(observation), tool: String(tool), result_json: result == null ? null : JSON.stringify(result) }); },
+    addSubtask(id, { id: subtaskId = randomUUID(), parentTask = '', status = 'pending', result = null } = {}) { database.prepare('insert into run_subtasks (id, run_id, parent_task, status, result_json, created_at) values (?, ?, ?, ?, ?, ?)').run(subtaskId, id, parentTask, status, result == null ? null : JSON.stringify(result), now().toISOString()); return this.listSubtasks(id).at(-1); },
+    listSubtasks(id) { return database.prepare('select * from run_subtasks where run_id = ? order by created_at asc').all(id).map((row) => ({ id: row.id, runId: row.run_id, parentTask: row.parent_task ?? '', status: row.status, result: parseJson(row.result_json), createdAt: row.created_at })); },
+    finishRun(id, status = 'succeeded', reason = '') { const updated = updateRun(id, status, reason); return { ...updated, finishedAt: now().toISOString() }; },
 
     appendEvent({ runId = '', type, aggregateType = 'run', aggregateId = runId, payload = {}, actorType = 'system', idempotencyKey = '' }) {
       if (idempotencyKey) {
@@ -141,13 +157,18 @@ export function createRunService({ dbPath, maxApplicationsPerRun = 30, now = () 
 }
 
 function toRun(row) {
+  const plan = parseJson(row.plan_json) ?? [];
+  const result = parseJson(row.result_json);
   return {
     id: row.id, kind: row.kind, status: row.status, platform: row.platform ?? '',
     queueReference: row.queue_reference ?? '', checkpointPath: row.checkpoint_path ?? '',
     agentThreadId: row.agent_thread_id ?? '', currentTurnId: row.current_turn_id ?? '', submittedCount: row.submitted_count ?? 0,
+    goal: row.goal ?? '', mode: row.mode ?? 'manual', currentTask: row.current_task ?? '', plan, lastObservation: row.last_observation ?? '', tool: row.tool ?? '', result,
     startedAt: row.started_at, updatedAt: row.updated_at, finishedAt: row.finished_at ?? ''
   };
 }
+
+function parseJson(value) { try { return value ? JSON.parse(value) : null; } catch { return null; } }
 
 function toEvent(row) {
   return {

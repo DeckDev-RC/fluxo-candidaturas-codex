@@ -28,14 +28,27 @@ import { isLocalRequest } from './local-auth.mjs';
 import { createObservability } from './observability.mjs';
 import { createHash, randomUUID } from 'node:crypto';
 import { createSessionAuth } from './session-auth.mjs';
+import { createAutopilotService } from './autopilot-service.mjs';
+import { createMemoryService } from './memory-service.mjs';
+import { createIntakeService } from './intake-service.mjs';
+import { createDiscoveryService } from './discovery-service.mjs';
+import { createFitService } from './fit-service.mjs';
+import { createExceptionService } from './exception-service.mjs';
+import { createFollowUpMonitor } from './follow-up-monitor.mjs';
+import { createAuditService } from './audit-service.mjs';
+import { createCodexAuthService } from './codex-auth-service.mjs';
+import { createCodexHarnessService } from './codex-harness-service.mjs';
+import { createCodexSettingsService } from './codex-settings-service.mjs';
 
 const PUBLIC_DIR = new URL('../public/', import.meta.url);
 const STATIC_FILES = new Map([
   ['/', ['index.html', 'text/html; charset=utf-8']],
   ['/app.js', ['app.js', 'text/javascript; charset=utf-8']],
   ['/preflight-summary.js', ['preflight-summary.js', 'text/javascript; charset=utf-8']],
+  ['/oauth-window.js', ['oauth-window.js', 'text/javascript; charset=utf-8']],
   ['/styles.css', ['styles.css', 'text/css; charset=utf-8']],
-  ['/favicon.svg', ['favicon.svg', 'image/svg+xml']]
+  ['/favicon.svg', ['favicon.svg', 'image/svg+xml']],
+  ['/fixtures/ui-state.json', ['fixtures/ui-state.json', 'application/json; charset=utf-8']]
 ]);
 
 const JSON_HEADERS = {
@@ -43,15 +56,16 @@ const JSON_HEADERS = {
   'cache-control': 'no-store'
 };
 
-export function createServer({ rootDir, queueService = createQueueService({ rootDir }), exportService = { createShareableExport: () => createShareableExport({ rootDir, mutationLock: false }) }, preflightService, followUpService: injectedFollowUpService, messageService: injectedMessageService, onboardingService: injectedOnboardingService, resumeService: injectedResumeService, evidenceService: injectedEvidenceService, assessmentService: injectedAssessmentService, legacyImportService: injectedLegacyImportService, pendingService: injectedPendingService, checkpointService: injectedCheckpointService, metricsService: injectedMetricsService, agentAdapter, observability = createObservability(), requireSession = false, stateStore, applicationFlow, runService: injectedRunService, approvalService: injectedApprovalService }) {
+export function createServer({ rootDir, queueService = createQueueService({ rootDir }), exportService = { createShareableExport: () => createShareableExport({ rootDir, mutationLock: false }) }, preflightService, followUpService: injectedFollowUpService, followUpMonitor: injectedFollowUpMonitor, messageService: injectedMessageService, onboardingService: injectedOnboardingService, resumeService: injectedResumeService, evidenceService: injectedEvidenceService, assessmentService: injectedAssessmentService, legacyImportService: injectedLegacyImportService, pendingService: injectedPendingService, checkpointService: injectedCheckpointService, metricsService: injectedMetricsService, agentAdapter, autopilotService: injectedAutopilotService, memoryService: injectedMemoryService, intakeService: injectedIntakeService, discoveryService: injectedDiscoveryService, fitService: injectedFitService, exceptionService: injectedExceptionService, auditService: injectedAuditService, authService: injectedAuthService, codexHarnessService: injectedCodexHarnessService, codexSettingsService: injectedCodexSettingsService, observability = createObservability(), requireSession = false, stateStore, applicationFlow, runService: injectedRunService, approvalService: injectedApprovalService }) {
   mkdirSync(join(rootDir, 'estado'), { recursive: true });
   const runService = injectedRunService ?? createRunService({ dbPath: join(rootDir, 'estado', 'harness.sqlite') });
   const approvalService = injectedApprovalService ?? createApprovalService({ dbPath: join(rootDir, 'estado', 'harness.sqlite') });
   const campaignService = createCampaignService({ rootDir });
+  const memoryService = injectedMemoryService ?? createMemoryService({ rootDir, mutationLock: false });
   const effectivePreflightService = preflightService ?? { runPreflight: (options) => runPreflight({ rootDir, ...options }) };
   const followUpService = injectedFollowUpService ?? createFollowUpService({ rootDir });
   const messageService = injectedMessageService ?? createMessageService({ rootDir });
-  const onboardingService = injectedOnboardingService ?? createOnboardingService({ rootDir });
+  const onboardingService = injectedOnboardingService ?? createOnboardingService({ rootDir, memoryService });
   const resumeService = injectedResumeService ?? createResumeService({ rootDir });
   const evidenceService = injectedEvidenceService ?? createEvidenceService({ rootDir });
   const assessmentService = injectedAssessmentService ?? createAssessmentService({ rootDir });
@@ -64,6 +78,16 @@ export function createServer({ rootDir, queueService = createQueueService({ root
   const ownsApprovalService = !injectedApprovalService;
   const ownsStateStore = !stateStore;
   const preparedApplications = new Map();
+  const autopilotService = injectedAutopilotService ?? createAutopilotService({ rootDir, runService, agentAdapter });
+  const intakeService = injectedIntakeService ?? createIntakeService({ rootDir, memoryService });
+  const discoveryService = injectedDiscoveryService ?? createDiscoveryService({ rootDir, queueService, adapters: {} });
+  const fitService = injectedFitService ?? createFitService();
+  const exceptionService = injectedExceptionService ?? createExceptionService({ rootDir, runService });
+  const followUpMonitor = injectedFollowUpMonitor ?? createFollowUpMonitor({ rootDir, adapters: {} });
+  const auditService = injectedAuditService ?? createAuditService({ rootDir });
+  const authService = injectedAuthService ?? createCodexAuthService();
+  const codexHarnessService = injectedCodexHarnessService ?? (agentAdapter?.request ? createCodexHarnessService({ request: (method, params) => agentAdapter.request(method, params) }) : createUnavailableCodexHarness());
+  const codexSettingsService = injectedCodexSettingsService ?? createCodexSettingsService({ rootDir, readModels: async () => (await codexHarnessService.snapshot()).models ?? [], mutationLock: false });
   const sessionAuth = createSessionAuth({ required: requireSession });
   const server = createHttpServer(async (request, response) => {
     const path = new URL(request.url ?? '/', 'http://127.0.0.1').pathname;
@@ -80,7 +104,7 @@ export function createServer({ rootDir, queueService = createQueueService({ root
     let releaseMutation;
     const isMutation = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method);
     const queueMutationHandled = path.startsWith('/api/v1/queue/') && queueService.handlesMutationLock;
-    const serviceMutationHandled = queueMutationHandled || path === '/api/v1/campaign' && campaignService.handlesMutationLock || path === '/api/v1/onboarding' && onboardingService.handlesMutationLock || path === '/api/v1/state/checkpoint' && checkpointService.handlesMutationLock || path === '/api/v1/evidence' && evidenceService.handlesMutationLock || path.startsWith('/api/v1/assessments') && assessmentService.handlesMutationLock || path === '/api/v1/imports/legacy' && legacyImportService.handlesMutationLock || /^\/api\/v1\/applications\/[^/]+\/events$/.test(path) && followUpService.handlesMutationLock || path === '/api/v1/messages/draft' && messageService.handlesMutationLock;
+    const serviceMutationHandled = queueMutationHandled || path === '/api/v1/campaign' && campaignService.handlesMutationLock || path === '/api/v1/onboarding' && onboardingService.handlesMutationLock || path === '/api/v1/state/checkpoint' && checkpointService.handlesMutationLock || path === '/api/v1/evidence' && evidenceService.handlesMutationLock || path.startsWith('/api/v1/assessments') && assessmentService.handlesMutationLock || path === '/api/v1/imports/legacy' && legacyImportService.handlesMutationLock || /^\/api\/v1\/applications\/[^/]+\/events$/.test(path) && followUpService.handlesMutationLock || path === '/api/v1/messages/draft' && messageService.handlesMutationLock || path.startsWith('/api/v1/memory') && memoryService.handlesMutationLock || path === '/api/v1/intake/commit' && memoryService.handlesMutationLock || path.startsWith('/api/v1/exceptions') && exceptionService.handlesMutationLock || path.startsWith('/api/v1/discovery') && discoveryService.handlesMutationLock;
     if (isMutation && !serviceMutationHandled) {
       try {
         releaseMutation = await acquireFluxoLock(rootDir);
@@ -130,6 +154,9 @@ export function createServer({ rootDir, queueService = createQueueService({ root
       sendJson(response, 200, sessionAuth.bootstrap(response));
       return;
     }
+    if (request.method === 'GET' && path === '/api/v1/auth/openai') { try { sendJson(response, 200, await authService.status()); } catch (error) { sendDomainError(response, error); } return; }
+    if (request.method === 'POST' && path === '/api/v1/auth/openai/login') { try { sendJson(response, 202, await authService.startLogin(await readJsonBody(request))); } catch (error) { sendDomainError(response, error); } return; }
+    if (request.method === 'POST' && path === '/api/v1/auth/openai/logout') { try { sendJson(response, 200, await authService.logout()); } catch (error) { sendDomainError(response, error); } return; }
 
     if (request.method === 'GET' && path === '/api/v1/state') {
       try {
@@ -167,6 +194,26 @@ export function createServer({ rootDir, queueService = createQueueService({ root
       return;
     }
 
+    if (request.method === 'GET' && path === '/api/v1/memory') { try { sendJson(response, 200, await memoryService.safeSummary()); } catch (error) { sendDomainError(response, error); } return; }
+    if (request.method === 'POST' && path === '/api/v1/memory/facts') { try { sendJson(response, 200, await memoryService.upsertFacts((await readJsonBody(request)).facts ?? [])); } catch (error) { sendDomainError(response, error); } return; }
+    const memoryFactMatch = path.match(/^\/api\/v1\/memory\/facts\/([^/]+)$/);
+    if (request.method === 'DELETE' && memoryFactMatch) { try { sendJson(response, 200, await memoryService.removeFact(decodeURIComponent(memoryFactMatch[1]))); } catch (error) { sendDomainError(response, error); } return; }
+    if (request.method === 'POST' && path === '/api/v1/intake/preview') { try { sendJson(response, 200, await intakeService.preview(await readJsonBody(request))); } catch (error) { sendDomainError(response, error); } return; }
+    if (request.method === 'POST' && path === '/api/v1/intake/commit') { try { sendJson(response, 200, await intakeService.commit(await readJsonBody(request))); } catch (error) { sendDomainError(response, error); } return; }
+    if (request.method === 'POST' && path === '/api/v1/discovery') { try { sendJson(response, 200, await discoveryService.discover(await readJsonBody(request))); } catch (error) { sendDomainError(response, error); } return; }
+    if (request.method === 'POST' && path === '/api/v1/discovery/resume') { try { sendJson(response, 200, await discoveryService.resume(await readJsonBody(request))); } catch (error) { sendDomainError(response, error); } return; }
+    if (request.method === 'POST' && path === '/api/v1/fit') { try { sendJson(response, 200, fitService.shortlist(await readJsonBody(request))); } catch (error) { sendDomainError(response, error); } return; }
+    if (request.method === 'POST' && path === '/api/v1/fit/override') { try { sendJson(response, 200, await fitService.override(await readJsonBody(request))); } catch (error) { sendDomainError(response, error); } return; }
+    if (request.method === 'GET' && path === '/api/v1/exceptions') { try { sendJson(response, 200, await exceptionService.list(Object.fromEntries(new URL(request.url ?? '/', 'http://127.0.0.1').searchParams))); } catch (error) { sendDomainError(response, error); } return; }
+    if (request.method === 'POST' && path === '/api/v1/exceptions') { try { sendJson(response, 201, await exceptionService.create(await readJsonBody(request))); } catch (error) { sendDomainError(response, error); } return; }
+    const exceptionResponseMatch = path.match(/^\/api\/v1\/exceptions\/([^/]+)\/respond$/);
+    if (request.method === 'POST' && exceptionResponseMatch) { try { sendJson(response, 200, await exceptionService.respond(decodeURIComponent(exceptionResponseMatch[1]), await readJsonBody(request))); } catch (error) { sendDomainError(response, error); } return; }
+    if (request.method === 'POST' && path === '/api/v1/followup/check') { try { sendJson(response, 200, await followUpMonitor.check(await readJsonBody(request))); } catch (error) { sendDomainError(response, error); } return; }
+    const auditRunMatch = path.match(/^\/api\/v1\/audit\/([^/]+)$/);
+    const auditExportMatch = path.match(/^\/api\/v1\/audit\/([^/]+)\/export$/);
+    if (request.method === 'GET' && auditRunMatch) { try { sendJson(response, 200, await auditService.list(decodeURIComponent(auditRunMatch[1]))); } catch (error) { sendDomainError(response, error); } return; }
+    if (request.method === 'POST' && auditExportMatch) { try { sendJson(response, 200, await auditService.exportPackage({ runId: decodeURIComponent(auditExportMatch[1]) })); } catch (error) { sendDomainError(response, error); } return; }
+
     if (request.method === 'POST' && path === '/api/v1/onboarding') {
       try {
         sendJson(response, 200, await onboardingService.saveOnboarding(await readJsonBody(request)));
@@ -191,6 +238,11 @@ export function createServer({ rootDir, queueService = createQueueService({ root
       sendJson(response, 200, await readRuntimeConfig(rootDir));
       return;
     }
+
+    if (request.method === 'GET' && path === '/api/v1/codex') { try { sendJson(response, 200, await codexSnapshot(codexHarnessService, codexSettingsService)); } catch (error) { sendDomainError(response, error); } return; }
+    if (request.method === 'POST' && path === '/api/v1/codex/refresh') { try { sendJson(response, 200, await codexSnapshot(codexHarnessService, codexSettingsService, true)); } catch (error) { sendDomainError(response, error); } return; }
+    if (request.method === 'GET' && path === '/api/v1/codex/settings') { try { sendJson(response, 200, await codexSettingsService.get()); } catch (error) { sendDomainError(response, error); } return; }
+    if (request.method === 'PUT' && path === '/api/v1/codex/settings') { try { sendJson(response, 200, await codexSettingsService.update(await readJsonBody(request))); } catch (error) { sendDomainError(response, error); } return; }
 
     if (request.method === 'GET' && path === '/api/v1/applications') {
       sendJson(response, 200, (await readFluxoState(rootDir)).applications);
@@ -342,6 +394,15 @@ export function createServer({ rootDir, queueService = createQueueService({ root
       return;
     }
 
+    if (request.method === 'POST' && path === '/api/v1/autopilot/start') {
+      try {
+        sendJson(response, 201, await autopilotService.start(await readJsonBody(request)));
+      } catch (error) {
+        sendDomainError(response, error);
+      }
+      return;
+    }
+
     if (request.method === 'POST' && path === '/api/v1/applications/prepare') {
       if (!applicationFlow) {
         sendJson(response, 503, { error: { code: 'application_flow_unavailable', message: 'Fluxo de candidatura ainda não está configurado.' } });
@@ -483,9 +544,9 @@ export function createServer({ rootDir, queueService = createQueueService({ root
       return;
     }
 
-    const knownPath = path === '/health' || path === '/api/v1/state' || path === '/api/v1/state/preflight' || path === '/api/v1/state/checkpoint' || path === '/api/v1/profile' || path === '/api/v1/onboarding' || path === '/api/v1/resumes/extract' || path === '/api/v1/resumes/select' || path === '/api/v1/jobs/fit' || path === '/api/v1/evidence' || path === '/api/v1/assessments' || path === '/api/v1/assessments/prepare' || path === '/api/v1/imports/legacy' || path === '/api/v1/pending' || path === '/api/v1/metrics' || path === '/api/v1/runtime-config' || path === '/api/v1/applications' || path === '/api/v1/preflight/run' || path === '/api/v1/messages/draft' || path === '/api/v1/queue' || path === '/api/v1/queue/search'
-      || path === '/api/v1/queue/items' || path === '/api/v1/runs' || path === '/api/v1/approvals' || path === '/api/v1/exports/shareable' || path === '/api/v1/sync/reconcile' || path === '/api/v1/applications/prepare'
-      || path === '/api/v1/campaign' || path === '/api/v1/platforms' || path === '/api/v1/observability' || path === '/api/v1/operations' || path === '/api/v1/auth/session' || Boolean(claimMatch) || Boolean(failureMatch) || Boolean(runMatch) || Boolean(runActionMatch) || Boolean(runEventsMatch) || Boolean(approvalMatch) || Boolean(approvalPreviewMatch) || Boolean(applicationEventMatch) || Boolean(applicationRunMatch) || Boolean(agentTurnMatch) || Boolean(agentThreadMatch);
+    const knownPath = path === '/health' || path === '/api/v1/state' || path === '/api/v1/state/preflight' || path === '/api/v1/state/checkpoint' || path === '/api/v1/profile' || path === '/api/v1/onboarding' || path === '/api/v1/resumes/extract' || path === '/api/v1/resumes/select' || path === '/api/v1/jobs/fit' || path === '/api/v1/evidence' || path === '/api/v1/assessments' || path === '/api/v1/assessments/prepare' || path === '/api/v1/imports/legacy' || path === '/api/v1/pending' || path === '/api/v1/metrics' || path === '/api/v1/runtime-config' || path === '/api/v1/applications' || path === '/api/v1/preflight/run' || path === '/api/v1/messages/draft' || path === '/api/v1/queue' || path === '/api/v1/queue/search' || path === '/api/v1/memory' || path === '/api/v1/intake/preview' || path === '/api/v1/intake/commit' || path === '/api/v1/discovery' || path === '/api/v1/discovery/resume' || path === '/api/v1/fit' || path === '/api/v1/fit/override' || path === '/api/v1/exceptions' || path === '/api/v1/followup/check'
+      || path === '/api/v1/queue/items' || path === '/api/v1/runs' || path === '/api/v1/autopilot/start' || path === '/api/v1/approvals' || path === '/api/v1/exports/shareable' || path === '/api/v1/sync/reconcile' || path === '/api/v1/applications/prepare'
+      || path === '/api/v1/campaign' || path === '/api/v1/platforms' || path === '/api/v1/observability' || path === '/api/v1/operations' || path === '/api/v1/auth/session' || path === '/api/v1/auth/openai' || path === '/api/v1/auth/openai/login' || path === '/api/v1/auth/openai/logout' || path === '/api/v1/codex' || path === '/api/v1/codex/refresh' || path === '/api/v1/codex/settings' || Boolean(claimMatch) || Boolean(failureMatch) || Boolean(runMatch) || Boolean(runActionMatch) || Boolean(runEventsMatch) || Boolean(approvalMatch) || Boolean(approvalPreviewMatch) || Boolean(applicationEventMatch) || Boolean(applicationRunMatch) || Boolean(agentTurnMatch) || Boolean(agentThreadMatch) || Boolean(memoryFactMatch) || Boolean(exceptionResponseMatch) || Boolean(auditRunMatch) || Boolean(auditExportMatch);
     if (knownPath) {
       sendJson(response, 405, { error: { code: 'method_not_allowed', message: 'Método não permitido.' } });
       return;
@@ -573,3 +634,6 @@ function hashTargets(paths) {
   for (const path of paths) if (existsSync(path)) { found = true; hash.update(readFileSync(path)); }
   return found ? hash.digest('hex') : '';
 }
+
+async function codexSnapshot(harness, settings, refresh = false) { const snapshot = refresh && harness.refresh ? await harness.refresh() : await harness.snapshot(); return { ...snapshot, settings: await settings.get() }; }
+function createUnavailableCodexHarness() { const value = { status: 'unavailable', account: null, usage: null, rateLimits: null, models: [], error: { code: 'agent_unavailable', message: 'Codex app-server local não está configurado.' } }; return { async snapshot() { return value; }, async refresh() { return value; } }; }

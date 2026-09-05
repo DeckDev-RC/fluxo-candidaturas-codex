@@ -19,6 +19,24 @@ npm start
 
 Abra `http://127.0.0.1:4173`.
 
+## Login com ChatGPT (OAuth)
+
+O Autopilot usa o login do ChatGPT/Codex local por OAuth; não é necessário configurar `OPENAI_API_KEY`. O status do CLI pode ser consultado com:
+
+```powershell
+codex login status
+```
+
+Na interface, clique em **Entrar com ChatGPT** para iniciar o OAuth do próprio `codex app-server`; o endereço devolvido pelo servidor é aberto no navegador. Em ambiente sem navegador local, o endpoint aceita `{ "device": true }` e devolve código/endereço de dispositivo. O status do `codex login` é apenas diagnóstico: a sessão do app-server é autenticada pelo método `account/login/start`.
+
+O transporte remove `OPENAI_API_KEY`, `CODEX_API_KEY` e `CODEX_ACCESS_TOKEN` do ambiente do agente quando `AUTH_MODE=chatgpt` (padrão). Para uma execução deliberadamente baseada em API key, configure `AUTH_MODE=api-key` no `.env` local.
+
+Em `AUTH_MODE=chatgpt`, o processo do app-server também usa `estado/codex-home`, um diretório privado do Fluxo, separado do `CODEX_HOME` usado pelo Codex instalado. Por isso, o login deve ser concluído pelo botão **Entrar com ChatGPT** deste app; a sessão do CLI não é reutilizada nem sobrescrita.
+
+Referências: [Codex SDK/app-server](https://learn.chatgpt.com/docs/codex-sdk), [OAuth no OpenClaw](https://github.com/openclaw/openclaw/blob/main/docs/concepts/oauth.md) e [integração OpenAI do OpenClaw](https://github.com/openclaw/openclaw/blob/main/docs/providers/openai.md).
+
+Na vista **Operações**, o bloco **Codex Harness** mostra a conta/plano, tokens acumulados, percentual das janelas de uso e horários de reset, além do catálogo de modelos e efforts suportados. A configuração salva (`estado/codex-settings.json`) é aplicada automaticamente aos próximos turns do Autopilot.
+
 O dashboard inicia em modo somente leitura. O onboarding, preflight, claim, exportação, aprovação e execução de navegador são ações separadas e sujeitas às políticas do Fluxo. O runtime exige sessão local com cookie e CSRF, aceita somente conexões loopback, aplica CSP, atribui `x-request-id` e mantém mutações serializadas por `estado/harness.lock`.
 
 ## API local
@@ -32,6 +50,7 @@ O dashboard inicia em modo somente leitura. O onboarding, preflight, claim, expo
 - `GET /api/v1/approvals`;
 - `GET /api/v1/operations`;
 - `GET /api/v1/auth/session`, `GET /api/v1/observability`, `GET /api/v1/metrics`;
+- `GET /api/v1/codex`, `POST /api/v1/codex/refresh`, `GET/PUT /api/v1/codex/settings`;
 - `GET /api/v1/pending`, `GET /api/v1/assessments`;
 - `GET /api/v1/runs/:id/events`;
 - `POST /api/v1/onboarding`;

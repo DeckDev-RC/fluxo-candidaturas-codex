@@ -1,4 +1,4 @@
-export function createAgentAdapter({ transport, transportFactory, onNotification = () => {} }) {
+export function createAgentAdapter({ transport, transportFactory, onNotification = () => {}, settingsService } = {}) {
   let initialized = false;
   let activeTransport = transport;
   let activeRunId = '';
@@ -25,17 +25,25 @@ export function createAgentAdapter({ transport, transportFactory, onNotification
       return (await getTransport()).request('thread/start', params);
     },
 
-    async runTurn(threadId, text) {
+    async request(method, params) {
       await this.initialize();
+      return (await getTransport()).request(method, params);
+    },
+
+    async runTurn(threadId, text, overrides = {}) {
+      await this.initialize();
+      let settings = {};
+      try { settings = settingsService?.get ? await settingsService.get() : {}; } catch { settings = {}; }
       return (await getTransport()).request('turn/start', {
         threadId,
-        input: [{ type: 'text', text }]
+        input: [{ type: 'text', text }],
+        ...turnSettings({ ...settings, ...overrides })
       });
     },
 
-    async runTurnForRun(runId, threadId, text) {
+    async runTurnForRun(runId, threadId, text, overrides = {}) {
       activeRunId = String(runId);
-      try { return await this.runTurn(threadId, text); } finally { activeRunId = ''; }
+      try { return await this.runTurn(threadId, text, overrides); } finally { activeRunId = ''; }
     },
 
     async close() {
@@ -46,4 +54,13 @@ export function createAgentAdapter({ transport, transportFactory, onNotification
   function handleNotification(message) {
     onNotification(message, activeRunId);
   }
+}
+
+function turnSettings(settings = {}) {
+  const value = {};
+  if (String(settings.model ?? '').trim()) value.model = String(settings.model).trim();
+  if (String(settings.effort ?? '').trim()) value.effort = String(settings.effort).trim();
+  const summary = String(settings.summary ?? settings.reasoningSummary ?? '').trim();
+  if (summary && summary !== 'auto') value.summary = summary;
+  return value;
 }

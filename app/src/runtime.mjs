@@ -19,6 +19,20 @@ import { createLegacyImportService } from './legacy-import-service.mjs';
 import { createPendingService } from './pending-service.mjs';
 import { createCheckpointService } from './checkpoint-service.mjs';
 import { createMetricsService } from './metrics-service.mjs';
+import { createMemoryService } from './memory-service.mjs';
+import { createIntakeService } from './intake-service.mjs';
+import { createDiscoveryService } from './discovery-service.mjs';
+import { createFitService } from './fit-service.mjs';
+import { createExceptionService } from './exception-service.mjs';
+import { createFollowUpMonitor } from './follow-up-monitor.mjs';
+import { createAuditService } from './audit-service.mjs';
+import { createAutopilotOrchestrator } from './orchestrator-service.mjs';
+import { createFixtureAgents, createFixtureDiscoveryAdapters } from './fixture-agent-set.mjs';
+import { createAutopilotService } from './autopilot-service.mjs';
+import { createCodexAuthService } from './codex-auth-service.mjs';
+import { createCodexHarnessService } from './codex-harness-service.mjs';
+import { createCodexSettingsService } from './codex-settings-service.mjs';
+import { createPlaywrightDiscoveryAdapter } from './discovery-service.mjs';
 
 export async function createLocalRuntime({ rootDir }) {
   await mkdir(join(rootDir, 'estado'), { recursive: true });
@@ -38,7 +52,17 @@ export async function createLocalRuntime({ rootDir }) {
   const legacyImportService = createLegacyImportService({ rootDir });
   const pendingService = createPendingService({ rootDir });
   const checkpointService = createCheckpointService({ rootDir, mutationLock: false });
-  const metricsService = createMetricsService({ rootDir, readOperations: async () => stateStore.listOperations() });
+  const metricsService = createMetricsService({ rootDir, readOperations: async () => stateStore.listOperations(), readRuns: async () => runService.listRuns(), readExceptions: async () => exceptionService.list(), readTraces: async () => [] });
+  const memoryService = createMemoryService({ rootDir, mutationLock: false });
+  const intakeService = createIntakeService({ rootDir, memoryService });
+  const discoveryDriver = createPlaywrightCliDriver({ session: runtimeConfig.playwrightSession, cwd: rootDir });
+  const fixtureDiscoveryAdapters = createFixtureDiscoveryAdapters();
+  const discoveryService = createDiscoveryService({ rootDir, queueService, adapters: Object.fromEntries(Object.keys(fixtureDiscoveryAdapters).map((platform) => [platform, createPlaywrightDiscoveryAdapter({ driver: discoveryDriver, platform })])), fixtureAdapters: fixtureDiscoveryAdapters, mutationLock: false });
+  const fitService = createFitService();
+  const exceptionService = createExceptionService({ rootDir, runService, mutationLock: false });
+  const followUpMonitor = createFollowUpMonitor({ rootDir, adapters: {} });
+  const auditService = createAuditService({ rootDir });
+  const orchestrator = createAutopilotOrchestrator({ runService, memoryService, auditService, agents: createFixtureAgents({ rootDir, intakeService, discoveryService, fitService, followUpMonitor }) });
   const browserCapture = browserAdapter.captureEvidence.bind(browserAdapter);
   browserAdapter.captureEvidence = async (input) => {
     const sourcePath = await browserCapture(input);
@@ -64,13 +88,18 @@ export async function createLocalRuntime({ rootDir }) {
       });
     }
   });
+  const codexSettingsService = createCodexSettingsService({ rootDir, readModels: async () => (await codexHarnessService.snapshot()).models ?? [], mutationLock: false });
   const agentAdapter = createAgentAdapter({
-    transportFactory: ({ onNotification }) => createStdioAgentTransport({ cwd: rootDir, onNotification }),
+    settingsService: codexSettingsService,
+    transportFactory: ({ onNotification }) => createStdioAgentTransport({ cwd: rootDir, authMode: runtimeConfig.authMode, onNotification }),
     onNotification(message, runId) {
       if (!runId) return;
       runService.appendEvent({ runId, type: message.method || 'agent.notification', payload: message.params ?? {}, actorType: 'agent' });
     }
   });
+  const codexHarnessService = createCodexHarnessService({ request: (method, params) => agentAdapter.request(method, params) });
+  const authService = createCodexAuthService({ agentAdapter });
+  const autopilotService = createAutopilotService({ runService, agentAdapter, orchestrator });
   runService.reconcile();
   await stateStore.syncFromFiles();
 
@@ -84,6 +113,7 @@ export async function createLocalRuntime({ rootDir }) {
     agentAdapter,
     applicationFlow,
     resumeService, evidenceService, assessmentService, legacyImportService, pendingService, checkpointService, metricsService,
+    memoryService, intakeService, discoveryService, fitService, exceptionService, followUpMonitor, auditService, authService, codexHarnessService, codexSettingsService, orchestrator, autopilotService,
     async close() {
       await agentAdapter.close();
       stateStore.close();

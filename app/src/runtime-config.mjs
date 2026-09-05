@@ -10,7 +10,12 @@ const DEFAULTS = {
   maxApplicationsPerRun: 30,
   maxConsecutiveFailures: 3,
   checkpointAfterEachAction: true,
-  evidenceMode: 'confirmation'
+  evidenceMode: 'confirmation',
+  modelProvider: 'local',
+  localModel: '',
+  cloudEnabled: false,
+  cloudModel: '',
+  authMode: 'chatgpt'
 };
 
 const FIELDS = {
@@ -22,7 +27,12 @@ const FIELDS = {
   MAX_APPLICATIONS_PER_RUN: ['maxApplicationsPerRun', 'integer'],
   MAX_CONSECUTIVE_FAILURES: ['maxConsecutiveFailures', 'integer'],
   CHECKPOINT_AFTER_EACH_ACTION: ['checkpointAfterEachAction', 'boolean'],
-  EVIDENCE_MODE: ['evidenceMode', 'string']
+  EVIDENCE_MODE: ['evidenceMode', 'string'],
+  MODEL_PROVIDER: ['modelProvider', 'string'],
+  LOCAL_MODEL: ['localModel', 'string'],
+  CLOUD_ENABLED: ['cloudEnabled', 'boolean'],
+  CLOUD_MODEL: ['cloudModel', 'string'],
+  AUTH_MODE: ['authMode', 'string']
 };
 
 export async function readRuntimeConfig(rootDir) {

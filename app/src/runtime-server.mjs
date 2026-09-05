@@ -18,6 +18,17 @@ export async function createRuntimeServer({ rootDir, port = 4173 } = {}) {
     checkpointService: runtime.checkpointService,
     metricsService: runtime.metricsService,
     agentAdapter: runtime.agentAdapter,
+    autopilotService: runtime.autopilotService,
+    memoryService: runtime.memoryService,
+    intakeService: runtime.intakeService,
+    discoveryService: runtime.discoveryService,
+    fitService: runtime.fitService,
+    exceptionService: runtime.exceptionService,
+    followUpMonitor: runtime.followUpMonitor,
+    auditService: runtime.auditService,
+    authService: runtime.authService,
+    codexHarnessService: runtime.codexHarnessService,
+    codexSettingsService: runtime.codexSettingsService,
     requireSession: true
   });
   return { runtime, server, port };

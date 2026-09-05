@@ -32,4 +32,5 @@ test('runtime config returns safe defaults without env file', async () => {
   assert.equal(config.requireFinalConfirmation, true);
   assert.equal(config.allowAutomatedSubmission, false);
   assert.equal(config.maxApplicationsPerRun, 30);
+  assert.equal(config.authMode, 'chatgpt');
 });
