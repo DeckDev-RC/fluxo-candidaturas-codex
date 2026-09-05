@@ -3,11 +3,32 @@ import { buildSubmissionReview } from './review-service.mjs';
 import { createRecoveryGuidance } from './recovery-service.mjs';
 import { assertNoSilentFallback, resolveAiMode } from './ai-modes.mjs';
 
-export function createFinalReleaseRoutes({
+// Rotas da versão final: importação, memória, agenda, notificações, jornada,
+// revisão, recuperação, sessões, consistência e limites.
+const CAMINHOS = new Set([
+  '/api/v1/resumes/import', '/api/v1/memory/answers', '/api/v1/runtime/health', '/api/v1/product/policy',
+  '/api/v1/ai/mode', '/api/v1/scheduler/jobs', '/api/v1/notifications', '/api/v1/autopilot/human',
+  '/api/v1/reviews/preview', '/api/v1/recovery/guide', '/api/v1/sessions', '/api/v1/consistency', '/api/v1/campaign/limits'
+]);
+const PADROES = [
+  /^\/api\/v1\/memory\/conflicts\/([^/]+)\/resolve$/,
+  /^\/api\/v1\/notifications\/([^/]+)\/open$/,
+  /^\/api\/v1\/autopilot\/([^/]+)\/continue$/,
+  /^\/api\/v1\/autopilot\/([^/]+)\/cancel$/
+];
+
+export function createFinalReleaseRoutes(services = {}) {
+  return {
+    knows: (path) => CAMINHOS.has(path) || PADROES.some((padrao) => padrao.test(path)),
+    handle: createHandler(services)
+  };
+}
+
+function createHandler({
   resumeImportService, memoryService, schedulerService, notificationService,
   runtimeHealth, orchestrator, campaignService, runtimeConfig, sessionStore,
   consistencyService, budget
-} = {}) {
+}) {
   return async function handle(request, response, { path, sendJson, sendDomainError, readJsonBody }) {
     try {
       if (request.method === 'POST' && path === '/api/v1/resumes/import') {

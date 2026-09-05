@@ -30,7 +30,8 @@ async function createDistributionFixture(root) {
   for (const file of ['AGENTS.md', 'README.md', 'VERSION', 'CHANGELOG.md', '.env.example', '.gitignore', '.gitattributes']) {
     await writeFile(join(root, file), file === 'VERSION' ? '1.0.0' : `safe ${file}`);
   }
-  await writeFile(join(root, 'scripts', 'exportar-compartilhavel.ps1'), await importExistingExporter());
+  // O script real do repositório, localizado a partir deste arquivo e não do cwd.
+  await copyFile(new URL('../../scripts/exportar-compartilhavel.ps1', import.meta.url), join(root, 'scripts', 'exportar-compartilhavel.ps1'));
   for (const directory of ['config', 'docs', 'templates', 'scripts']) {
     if (directory !== 'scripts') await writeFile(join(root, directory, 'README.md'), `safe ${directory}`);
   }
@@ -40,9 +41,4 @@ async function createDistributionFixture(root) {
   await writeFile(join(root, 'curriculo', 'candidate-secret.pdf'), 'private');
   await writeFile(join(root, 'candidaturas', 'candidaturas.json'), 'private');
   await writeFile(join(root, '.env'), 'GUPY_PASSWORD=private');
-}
-
-async function importExistingExporter() {
-  const currentWorktree = join(process.cwd(), '..');
-  return (await import('node:fs/promises')).readFile(join(currentWorktree, 'scripts', 'exportar-compartilhavel.ps1'), 'utf8');
 }

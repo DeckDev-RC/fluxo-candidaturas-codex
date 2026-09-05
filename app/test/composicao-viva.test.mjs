@@ -71,11 +71,10 @@ test('nenhum módulo da interface fica fora do grafo carregado pela página', as
 });
 
 test('toda rota chamada pela interface existe no servidor', async () => {
-  // As rotas com parâmetro são expressões regulares no servidor: comparo sem as escapas.
-  const servidor = [
-    await readFile(new URL('http-server.mjs', FONTE), 'utf8'),
-    await readFile(new URL('final-release-routes.mjs', FONTE), 'utf8')
-  ].join('\n').replaceAll('\\', '');
+  // As rotas vivem no servidor e nos grupos de rota; as com parâmetro são expressões
+  // regulares, então comparo sem as escapas.
+  const arquivosDeRota = ['http-server.mjs', 'final-release-routes.mjs', ...(await listar(FONTE, /\.mjs$/)).filter((nome) => nome.startsWith('routes/'))];
+  const servidor = (await Promise.all(arquivosDeRota.map((nome) => readFile(new URL(nome, FONTE), 'utf8')))).join('\n').replaceAll('\\', '');
 
   const rotas = new Set();
   for (const nome of await listar(PUBLICO, /\.(mjs|js)$/)) {
