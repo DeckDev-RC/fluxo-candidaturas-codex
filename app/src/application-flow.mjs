@@ -1,7 +1,8 @@
 import { createPolicyGateway } from './policy.mjs';
 import { createProcessManager } from './process-manager.mjs';
+import { buildSubmissionReview, reviewIdentity } from './review-service.mjs';
 
-export function createApplicationFlow({ queueService, runService, approvalService, policyGateway: injectedPolicyGateway, browserAdapter, recordApplication, checkpointService, checkpointAfterEachAction = true, evidenceMode = '', preflightReady = async () => true }) {
+export function createApplicationFlow({ queueService, runService, approvalService, policyGateway: injectedPolicyGateway, browserAdapter, recordApplication, checkpointService, checkpointAfterEachAction = true, evidenceMode = '', preflightReady = async () => true, formController }) {
   const policyGateway = injectedPolicyGateway ?? createPolicyGateway({ approvalService });
   const manager = createProcessManager({ runService });
   return {
@@ -40,7 +41,11 @@ export function createApplicationFlow({ queueService, runService, approvalServic
     async fillConfirmed(prepared, facts = {}) {
       if (!prepared?.run?.id || typeof browserAdapter.fillConfirmed !== 'function') throw domainError('application_form_unavailable', 'O formulário observado não aceita preenchimento guiado.');
       if (browserAdapter.assertContext) await browserAdapter.assertContext(prepared.snapshot, prepared.item);
-      const snapshot = await browserAdapter.fillConfirmed(facts);
+      // O controlador de formulário respeita o tipo de cada campo observado e
+      // recusa campo sensível sem fato confirmado; sem ele, cai no preenchimento simples.
+      const snapshot = formController
+        ? (await formController.fill(`${prepared.run.id}:application`, {}, facts)).snapshot
+        : await browserAdapter.fillConfirmed(facts);
       prepared.snapshot = snapshot;
       manager.save(prepared.run.id, { phase: 'prepared', prepared });
       runService.appendEvent({ runId: prepared.run.id, type: 'application.fields.filled', payload: { fields: Object.keys(facts).filter((key) => facts[key]?.confirmed === true), url: snapshot?.url ?? prepared.snapshot?.url ?? '' } });
@@ -52,7 +57,13 @@ export function createApplicationFlow({ queueService, runService, approvalServic
       const saved = manager.get(runId);
       if (saved && payload.queueItemId && payload.queueItemId !== saved.prepared.item.id) throw domainError('approval_payload_changed', 'A vaga não corresponde à execução.');
       const approval = policyGateway.requestApproval({ runId, action: { kind: 'submission', version: 'v1' }, payload, context: { requireFinalConfirmation: true } });
-      if (saved) manager.save(runId, { approvalId: approval.id, approvedPayload: payload });
+      // A aprovação fica amarrada à identidade da revisão: plataforma, vaga, tela e currículo.
+      const identity = saved ? reviewIdentity(buildSubmissionReview({
+        item: saved.prepared.item,
+        snapshot: saved.prepared.snapshot,
+        resume: { path: payload.resume ?? '', sha256: payload.resumeSha256 ?? '' }
+      })) : '';
+      if (saved) manager.save(runId, { approvalId: approval.id, approvedPayload: payload, reviewIdentity: identity });
       return approval;
     },
 
@@ -76,6 +87,15 @@ export function createApplicationFlow({ queueService, runService, approvalServic
       let confirmation = saved?.phase === 'confirmed' ? saved.confirmation : null;
       if (!confirmation) {
         if (browserAdapter.assertContext) await browserAdapter.assertContext(prepared.snapshot, prepared.item);
+        // A revisão executada precisa ser a mesma que foi aprovada.
+        if (saved?.reviewIdentity) {
+          const atual = reviewIdentity(buildSubmissionReview({
+            item: prepared.item,
+            snapshot: prepared.snapshot,
+            resume: { path: payload?.resume ?? '', sha256: payload?.resumeSha256 ?? '' }
+          }));
+          if (atual !== saved.reviewIdentity) throw domainError('approval_payload_changed', 'A revisão aprovada não corresponde à tela atual. Revise novamente antes do envio.');
+        }
         if (browserAdapter.validatePrepared) await browserAdapter.validatePrepared(prepared.snapshot);
         manager.save(prepared.run.id, { phase: 'submitting', prepared, approvalId, approvedPayload: payload });
         try {

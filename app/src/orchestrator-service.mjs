@@ -78,9 +78,23 @@ export function createAutopilotOrchestrator({ runService, agents = {}, memorySer
     browserLease: lease
   };
 
+  // Cada etapa depende da anterior. Guardar isso permite retomar sabendo o que
+  // já terminou, em vez de refazer a jornada inteira.
   function persistTasks(runId, plan) {
     if (!runService.addSubtask) return;
-    for (const step of plan) runService.addSubtask(runId, { id: `${runId}:${step.id}`, parentTask: step.id, status: step.status });
+    for (const [indice, step] of plan.entries()) {
+      runService.addSubtask(runId, {
+        id: `${runId}:${step.id}`,
+        parentTask: step.id,
+        status: step.status,
+        dependsOn: indice === 0 ? [] : [PLAN[indice - 1]]
+      });
+    }
+  }
+
+  function marcarTarefa(runId, nome, dados) {
+    if (!runService.updateSubtask) return;
+    try { runService.updateSubtask(`${runId}:${nome}`, dados); } catch {}
   }
 
   function saveContext(context) {
@@ -111,10 +125,15 @@ export function createAutopilotOrchestrator({ runService, agents = {}, memorySer
         if (runService.recordTask) runService.recordTask(run.id, { task: agentName, observation: 'Iniciando tarefa.', tool: 'local', result: null });
         runService.appendEvent({ runId: run.id, type: 'autopilot.task.started', payload: { task: agentName, index } });
         if (['application', 'discovery', 'followup'].includes(agentName)) lease.acquire(`${run.id}:${agentName}`);
+        // A tarefa filha recebe um orçamento derivado: consumo e falha contam na
+        // campanha, e um cancelamento da campanha vale para ela na hora.
+        context.budget = campaignBudget.childBudget();
+        marcarTarefa(run.id, agentName, { status: 'running' });
         const result = await withRetry(agent, context, agentName, run.id);
         if (['application', 'discovery', 'followup'].includes(agentName)) lease.release(`${run.id}:${agentName}`);
         if (result?.status === 'waiting_user') {
           plan[index].status = 'waiting_user';
+          marcarTarefa(run.id, agentName, { status: 'waiting_user' });
           if (runService.setPlan) runService.setPlan(run.id, plan);
           campaignBudget.waitForUser();
           if (runService.pauseRun) try { runService.pauseRun(run.id, result.observation); } catch {}
@@ -125,7 +144,9 @@ export function createAutopilotOrchestrator({ runService, agents = {}, memorySer
           return pause;
         }
         if (result?.confirmed !== true && agentName === 'application') throw domainError('unconfirmed_result', 'A candidatura não possui confirmação observada.');
-        plan[index].status = 'succeeded'; if (plan[index + 1]) plan[index + 1].status = 'running';
+        plan[index].status = 'succeeded';
+        marcarTarefa(run.id, agentName, { status: 'succeeded', result: safeResult(result?.result ?? null) });
+        if (plan[index + 1]) plan[index + 1].status = 'running';
         if (runService.setPlan) runService.setPlan(run.id, plan);
         context.outputs[agentName] = result?.result ?? result;
         if (runService.recordTask) runService.recordTask(run.id, { task: agentName, observation: result?.observation ?? 'Tarefa concluída.', tool: result?.tool ?? 'local', result: result?.result ?? result });
@@ -144,7 +165,8 @@ export function createAutopilotOrchestrator({ runService, agents = {}, memorySer
       return { run: finished, plan, status: 'succeeded', message: 'A jornada foi concluída com resultados confirmados.' };
     } catch (error) {
       const classified = classifyError(error);
-      const failedPlan = plan.find((step) => step.status === 'running'); if (failedPlan) failedPlan.status = 'needs_attention';
+      const failedPlan = plan.find((step) => step.status === 'running');
+      if (failedPlan) { failedPlan.status = 'needs_attention'; marcarTarefa(run.id, failedPlan.id, { status: 'needs_attention' }); }
       if (runService.setPlan) runService.setPlan(run.id, plan);
       if (runService.pauseRun) { try { runService.pauseRun(run.id, error.message); } catch {} }
       runService.appendEvent({ runId: run.id, type: 'autopilot.exception', payload: { task: failedPlan?.id ?? '', message: error.message, retryable: classified.retryable, action: classified.action } });
@@ -156,8 +178,18 @@ export function createAutopilotOrchestrator({ runService, agents = {}, memorySer
 
   async function withRetry(agent, context, agentName, runId) {
     for (let attempt = 0; ; attempt += 1) {
-      try { return await agent.run({ ...context, task: agentName }); }
-      catch (error) { if (attempt >= maxRetries || error?.retryable !== true) throw error; runService.appendEvent({ runId, type: 'autopilot.retry', payload: { task: agentName, attempt: attempt + 1 } }); }
+      try {
+        // Cada tentativa passa pelo orçamento da tarefa antes de agir.
+        context.budget?.assertCanAct(agentName === 'followup' ? 'read' : 'external');
+        const result = await agent.run({ ...context, task: agentName });
+        context.budget?.recordSuccess();
+        return result;
+      } catch (error) {
+        context.budget?.recordFailure();
+        marcarTarefa(runId, agentName, { incrementAttempts: true });
+        if (attempt >= maxRetries || error?.retryable !== true) throw error;
+        runService.appendEvent({ runId, type: 'autopilot.retry', payload: { task: agentName, attempt: attempt + 1 } });
+      }
     }
   }
 }

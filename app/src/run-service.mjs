@@ -43,6 +43,9 @@ export function createRunService({ dbPath, maxApplicationsPerRun = 30, now = () 
   ensureColumn(database, 'runs', 'submitted_count', 'integer not null default 0');
   for (const [column, definition] of [['goal', "text not null default ''"], ['mode', "text not null default 'manual'"], ['current_task', "text not null default ''"], ['plan_json', "text not null default '[]'"], ['last_observation', "text not null default ''"], ['tool', "text not null default ''"], ['result_json', 'text']]) ensureColumn(database, 'runs', column, definition);
   database.exec(`create table if not exists run_subtasks (id text primary key, run_id text not null, parent_task text, status text not null, result_json text, created_at text not null)`);
+  // Dependências e tentativas por tarefa: sem elas, retomar depois de reiniciar
+  // não sabe o que já estava pronto nem quantas vezes cada etapa foi tentada.
+  for (const [column, definition] of [['depends_on', "text not null default ''"], ['attempts', 'integer not null default 0'], ['updated_at', "text not null default ''"]]) ensureColumn(database, 'run_subtasks', column, definition);
 
   return {
     getWorkflow(runId) { const row = database.prepare('select payload_json from application_workflows where run_id = ?').get(runId); return row ? JSON.parse(row.payload_json) : null; },
@@ -98,8 +101,31 @@ export function createRunService({ dbPath, maxApplicationsPerRun = 30, now = () 
 
     setPlan(id, plan) { return updateRunFields(id, { plan_json: JSON.stringify(plan) }); },
     recordTask(id, { task = '', observation = '', tool = '', result = null } = {}) { return updateRunFields(id, { current_task: String(task), last_observation: String(observation), tool: String(tool), result_json: result == null ? null : JSON.stringify(result) }); },
-    addSubtask(id, { id: subtaskId = randomUUID(), parentTask = '', status = 'pending', result = null } = {}) { database.prepare('insert into run_subtasks (id, run_id, parent_task, status, result_json, created_at) values (?, ?, ?, ?, ?, ?)').run(subtaskId, id, parentTask, status, result == null ? null : JSON.stringify(result), now().toISOString()); return this.listSubtasks(id).at(-1); },
-    listSubtasks(id) { return database.prepare('select * from run_subtasks where run_id = ? order by created_at asc').all(id).map((row) => ({ id: row.id, runId: row.run_id, parentTask: row.parent_task ?? '', status: row.status, result: parseJson(row.result_json), createdAt: row.created_at })); },
+    addSubtask(id, { id: subtaskId = randomUUID(), parentTask = '', status = 'pending', result = null, dependsOn = [], attempts = 0 } = {}) {
+      const timestamp = now().toISOString();
+      database.prepare('insert into run_subtasks (id, run_id, parent_task, status, result_json, created_at, depends_on, attempts, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?) on conflict(id) do update set status=excluded.status, depends_on=excluded.depends_on, updated_at=excluded.updated_at')
+        .run(subtaskId, id, parentTask, status, result == null ? null : JSON.stringify(result), timestamp, [dependsOn].flat().filter(Boolean).join(','), Number(attempts) || 0, timestamp);
+      return this.getSubtask(subtaskId);
+    },
+    updateSubtask(subtaskId, { status, result, attempts, incrementAttempts = false } = {}) {
+      const atual = this.getSubtask(subtaskId);
+      if (!atual) return null;
+      const tentativas = incrementAttempts ? atual.attempts + 1 : attempts ?? atual.attempts;
+      database.prepare('update run_subtasks set status = ?, result_json = ?, attempts = ?, updated_at = ? where id = ?')
+        .run(status ?? atual.status, result === undefined ? (atual.result == null ? null : JSON.stringify(atual.result)) : (result == null ? null : JSON.stringify(result)), tentativas, now().toISOString(), subtaskId);
+      return this.getSubtask(subtaskId);
+    },
+    getSubtask(subtaskId) {
+      const row = database.prepare('select * from run_subtasks where id = ?').get(subtaskId);
+      return row ? toSubtask(row) : null;
+    },
+    listSubtasks(id) { return database.prepare('select * from run_subtasks where run_id = ? order by created_at asc').all(id).map(toSubtask); },
+    // Uma tarefa só está pronta para executar quando tudo de que ela depende terminou.
+    readySubtasks(id) {
+      const tarefas = this.listSubtasks(id);
+      const concluidas = new Set(tarefas.filter((item) => item.status === 'succeeded').map((item) => item.parentTask));
+      return tarefas.filter((item) => item.status !== 'succeeded' && item.dependsOn.every((nome) => concluidas.has(nome)));
+    },
     finishRun(id, status = 'succeeded', reason = '') { const updated = updateRun(id, status, reason); return { ...updated, finishedAt: now().toISOString() }; },
 
     appendEvent({ runId = '', type, aggregateType = 'run', aggregateId = runId, payload = {}, actorType = 'system', idempotencyKey = '' }) {
@@ -205,6 +231,20 @@ function toEvent(row) {
     id: row.id, runId: row.run_id, aggregateType: row.aggregate_type, aggregateId: row.aggregate_id,
     type: row.type, payloadJson: row.payload_json, actorType: row.actor_type,
     createdAt: row.created_at, idempotencyKey: row.idempotency_key
+  };
+}
+
+function toSubtask(row) {
+  return {
+    id: row.id,
+    runId: row.run_id,
+    parentTask: row.parent_task ?? '',
+    status: row.status,
+    result: parseJson(row.result_json),
+    dependsOn: String(row.depends_on ?? '').split(',').filter(Boolean),
+    attempts: Number(row.attempts ?? 0),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at ?? row.created_at
   };
 }
 

@@ -1,39 +1,41 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
-import { join } from 'node:path';
 import { acquireFluxoLock, wrapMutations } from './lock.mjs';
+import { createStateDocument } from './state-document.mjs';
 
 const TYPES = new Set(['pause', 'divergence', 'reconciliation', 'mfa', 'captcha', 'missing_data', 'access_lost', 'session_lost', 'page_lost', 'evidence_missing']);
 const HIGH_PRIORITY = new Set(['mfa', 'captcha', 'divergence', 'reconciliation', 'session_lost', 'access_lost']);
 
-export function createExceptionService({ rootDir = '', runService, orchestrator, now = () => new Date(), mutationLock = true, lock = () => acquireFluxoLock(rootDir) } = {}) {
+export function createExceptionService({ rootDir = '', persistence, runService, orchestrator, now = () => new Date(), mutationLock = true, lock = () => acquireFluxoLock(rootDir) } = {}) {
   let boundOrchestrator = orchestrator;
+  const documento = createStateDocument({ rootDir, persistence, name: 'exceptions', file: 'estado/excecoes.json', fallback: [] });
   const service = {
+    close() { documento.close(); },
+    async authority() { return documento.authority(); },
     setOrchestrator(value) { boundOrchestrator = value; },
     async create(input = {}) {
       const type = String(input.type ?? 'pause');
       if (!TYPES.has(type)) throw domainError('invalid_exception_type', 'Tipo de exceção inválido.');
       const timestamp = now().toISOString();
       const exception = { id: randomUUID(), runId: String(input.runId ?? ''), platform: String(input.platform ?? ''), type, priority: HIGH_PRIORITY.has(type) ? 'alta' : 'normal', status: 'open', message: humanMessage(type, input), unblocks: unblockMessage(type, input), nextAction: String(input.action ?? defaultAction(type)), createdAt: timestamp, updatedAt: timestamp, response: '' };
-      const state = await readExceptions(rootDir);
+      const state = await readExceptions(documento);
       state.push(exception);
-      await writeExceptions(rootDir, state);
+      await writeExceptions(documento, state);
       if (exception.runId && runService?.pauseRun) { try { runService.pauseRun(exception.runId, exception.message); } catch {} }
       return exception;
     },
 
     async list({ status = '' } = {}) {
-      const values = await readExceptions(rootDir);
+      const values = await readExceptions(documento);
       return values.filter((item) => !status || item.status === status).sort((left, right) => priorityRank(left.priority) - priorityRank(right.priority) || String(right.updatedAt).localeCompare(String(left.updatedAt))).map(safeException);
     },
 
     async respond(id, { response = '' } = {}) {
       if (!String(response).trim()) throw domainError('exception_response_required', 'Explique o que foi resolvido para retomar.');
-      const values = await readExceptions(rootDir);
+      const values = await readExceptions(documento);
       const exception = values.find((item) => item.id === id);
       if (!exception) throw domainError('exception_not_found', 'Exceção não encontrada.');
       exception.status = 'resolved'; exception.response = String(response).trim(); exception.updatedAt = now().toISOString();
-      await writeExceptions(rootDir, values);
+      await writeExceptions(documento, values);
       if (exception.runId && runService?.resumeRun) { try { runService.resumeRun(exception.runId); } catch {} }
       if (exception.runId && boundOrchestrator?.handleHumanEvent) await boundOrchestrator.handleHumanEvent({ runId: exception.runId, kind: 'provided', taskId: exception.id, payload: { response: exception.response } });
       return safeException(exception);
@@ -50,6 +52,6 @@ function unblockMessage(type, input) { if (type === 'captcha') return 'Resolver 
 function defaultAction(type) { return type === 'missing_data' ? 'Informe o dado para continuar.' : 'Resolva a pendência e retome a execução.'; }
 function safeException(item) { const { response, ...safe } = item; return { ...safe, hasResponse: Boolean(response) }; }
 function priorityRank(priority) { return priority === 'alta' ? 1 : 2; }
-async function readExceptions(rootDir) { try { const data = JSON.parse(await readFile(join(rootDir, 'estado', 'excecoes.json'), 'utf8')); return Array.isArray(data) ? data : []; } catch (error) { if (error?.code === 'ENOENT') return []; throw error; } }
-async function writeExceptions(rootDir, value) { const path = join(rootDir, 'estado', 'excecoes.json'); await mkdir(join(rootDir, 'estado'), { recursive: true }); const temp = `${path}.${process.pid}.${randomUUID()}.tmp`; await writeFile(temp, JSON.stringify(value, null, 2), 'utf8'); await rename(temp, path); }
+async function readExceptions(documento) { const data = await documento.read(); return Array.isArray(data) ? data : []; }
+async function writeExceptions(documento, value) { return documento.write(Array.isArray(value) ? value : []); }
 function domainError(code, message) { const error = new Error(message); error.code = code; return error; }

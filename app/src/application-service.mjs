@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import { resolve, relative } from 'node:path';
 import { createAutoPersistence } from './persistence-authority.mjs';
+import { APPLICATION_STATUS, transitionApplication } from './domain/application-status.mjs';
 
 export function createApplicationService({ rootDir = '', persistence: injectedPersistence, now = () => new Date(), scriptRunner = (name, args) => runAllowedScript(name, args, { rootDir, persistence }), mutationLock = true, lock = () => acquireFluxoLock(rootDir) }) {
   const ownedPersistence = injectedPersistence ? null : createAutoPersistence({ rootDir });
@@ -29,12 +30,22 @@ export function createApplicationService({ rootDir = '', persistence: injectedPe
           throw domainError('application_duplicate', 'Esta candidatura já está registrada com outra evidência; reconcilie antes de registrar novamente.');
         }
         const timestamp = now().toISOString();
+        // A máquina de estados decide se "enviada" é permitido: exige confirmação
+        // com horário e evidência verificável, além do estado de origem válido.
+        // Situação da fila não é situação de candidatura: quando o item vem da fila,
+        // o ponto de partida é "pronta para revisão".
+        const conhecidos = new Set(Object.values(APPLICATION_STATUS));
+        const transicao = transitionApplication(
+          { status: conhecidos.has(item.status) ? item.status : APPLICATION_STATUS.READY_FOR_REVIEW },
+          APPLICATION_STATUS.SUBMITTED,
+          { confirmation, evidenceMode: 'confirmation', evidence: evidenceMetadata, now: now() }
+        );
         const record = {
           ...item,
           id: randomUUID().replaceAll('-', ''),
           queueItemId: item.id ?? '',
           key,
-          status: 'enviada',
+          status: transicao.status,
           submittedAt: timestamp,
           appliedAt: timestamp,
           applicationId: String(applicationId ?? ''),

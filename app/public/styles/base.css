@@ -1,0 +1,99 @@
+/* Base tipográfica, foco visível e comportamento de leitura (U7, U8). */
+
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html { color-scheme: light; }
+
+body {
+  margin: 0;
+  background: var(--mineral);
+  color: var(--tinta);
+  font-family: var(--fonte);
+  font-size: var(--texto-base);
+  line-height: var(--altura-leitura);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4 {
+  margin: 0;
+  line-height: var(--altura-densa);
+  font-weight: var(--peso-medio);
+  letter-spacing: -0.01em;
+}
+
+h1 { font-size: var(--texto-xl); }
+h2 { font-size: var(--texto-lg); }
+h3 { font-size: var(--texto-md); }
+h4 { font-size: var(--texto-base); }
+
+p { margin: 0; }
+ul, ol { margin: 0; padding: 0; list-style: none; }
+dl, dd, dt { margin: 0; }
+
+a {
+  color: var(--terracota);
+  text-underline-offset: 0.2em;
+}
+
+a:hover { color: var(--terracota-escura); }
+
+/* Foco sempre visível e com contraste próprio, inclusive sobre terracota. */
+:focus-visible {
+  outline: 2px solid var(--tinta);
+  outline-offset: 2px;
+  border-radius: var(--raio-sm);
+}
+
+.etiqueta {
+  font-size: var(--texto-xs);
+  letter-spacing: var(--traco-etiqueta);
+  text-transform: uppercase;
+  color: var(--tinta-suave);
+  font-weight: var(--peso-medio);
+}
+
+.numero {
+  font-family: var(--fonte-numeros);
+  font-variant-numeric: tabular-nums;
+}
+
+.secundario { color: var(--tinta-media); }
+.apoio { color: var(--tinta-suave); font-size: var(--texto-sm); }
+.leitura { max-width: var(--leitura-maxima); }
+
+.pular-para-conteudo {
+  position: absolute;
+  left: var(--e3);
+  top: var(--e3);
+  z-index: 50;
+  padding: var(--e2) var(--e3);
+  background: var(--papel);
+  border: 1px solid var(--linha-controle);
+  border-radius: var(--raio);
+  transform: translateY(-200%);
+  transition: transform var(--duracao-curta) var(--curva);
+}
+
+.pular-para-conteudo:focus-visible { transform: translateY(0); }
+
+.apenas-leitor {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Texto longo permanece legível: quebra em palavra e nunca corta ação (U8-04). */
+.quebra { overflow-wrap: anywhere; }
+
+@media (forced-colors: active) {
+  .cartao, .painel, .item-lista { border: 1px solid CanvasText; }
+  :focus-visible { outline: 2px solid Highlight; }
+}

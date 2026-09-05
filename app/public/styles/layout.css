@@ -1,0 +1,141 @@
+/* Composição: navegação compacta, centro dedicado à tarefa, detalhe contextual (U2-04, U8-03). */
+
+/* Três faixas: cabeçalho, área de trabalho com rolagem própria e conversa.
+   Nada flutua sobre o conteúdo, então nenhuma ação fica coberta. */
+.aplicacao {
+  display: grid;
+  grid-template-columns: var(--nav-largura) minmax(0, 1fr);
+  height: 100vh;
+}
+
+.coluna-trabalho {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 0;
+}
+
+/* Navegação lateral */
+.navegacao {
+  display: flex;
+  flex-direction: column;
+  gap: var(--e5);
+  padding: var(--e4) var(--e3);
+  background: var(--papel);
+  border-right: 1px solid var(--linha);
+}
+
+.marca {
+  display: flex;
+  align-items: center;
+  gap: var(--e2);
+  padding: 0 var(--e2);
+  font-weight: var(--peso-forte);
+  letter-spacing: -0.02em;
+  font-size: var(--texto-md);
+}
+
+.marca svg { flex: none; }
+
+.navegacao nav ul { display: flex; flex-direction: column; gap: 2px; }
+
+.navegacao a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--e2);
+  padding: var(--e2) var(--e2);
+  border-radius: var(--raio);
+  color: var(--tinta);
+  text-decoration: none;
+  font-weight: var(--peso-medio);
+}
+
+.navegacao a:hover { background: var(--selecao); }
+
+.navegacao a[aria-current="page"] {
+  background: var(--selecao);
+  /* O traço de percurso marca a área ativa; não depende só de cor (U8-01). */
+  box-shadow: inset 3px 0 0 var(--terracota);
+}
+
+.navegacao-rodape { margin-top: auto; display: flex; flex-direction: column; gap: 2px; }
+
+/* Cabeçalho compacto: objetivo ativo e decisões sempre visíveis (U2-02, U2-03) */
+.cabecalho {
+  display: flex;
+  align-items: center;
+  gap: var(--e4);
+  flex-wrap: wrap;
+  padding: var(--e3) var(--e5);
+  background: var(--mineral);
+  border-bottom: 1px solid var(--linha);
+}
+
+.objetivo-ativo { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.objetivo-ativo strong { font-size: var(--texto-md); font-weight: var(--peso-medio); }
+.cabecalho-acoes { display: flex; align-items: center; gap: var(--e2); }
+
+.area {
+  padding: var(--e5);
+  overflow: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--e5);
+}
+
+.area-titulo { display: flex; flex-direction: column; gap: var(--e1); }
+
+/* Lista + detalhe: a lista não recomeça ao voltar do detalhe */
+.lista-detalhe {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--detalhe-largura);
+  gap: var(--e5);
+  align-items: start;
+}
+
+.lista-detalhe[data-detalhe="fechado"] { grid-template-columns: minmax(0, 1fr); }
+.lista-detalhe[data-detalhe="fechado"] .detalhe { display: none; }
+
+.detalhe {
+  position: sticky;
+  top: 0;
+  max-height: calc(100vh - 12rem);
+  overflow: auto;
+}
+
+/* Janela estreita: o detalhe passa a ocupar a página inteira (U8-03) */
+@media (max-width: 68rem) {
+  .aplicacao { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
+  .navegacao {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--e3);
+    overflow-x: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--linha);
+  }
+  .navegacao nav ul { flex-direction: row; }
+  .navegacao-rodape { margin-top: 0; flex-direction: row; }
+  .navegacao a[aria-current="page"] { box-shadow: inset 0 -3px 0 var(--terracota); }
+  .lista-detalhe { grid-template-columns: minmax(0, 1fr); }
+  .detalhe { position: static; max-height: none; }
+  .lista-detalhe[data-detalhe="aberto"] .lista { display: none; }
+}
+
+@media (max-width: 48rem) {
+  .area { padding: var(--e4); }
+  .cabecalho { padding: var(--e3) var(--e4); }
+  .conversa { padding: var(--e3) var(--e4); }
+}
+
+/* Conversa no rodapé da área de trabalho, em faixa própria (U4-06) */
+.conversa {
+  display: flex;
+  gap: var(--e2);
+  padding: var(--e3) var(--e5);
+  background: var(--mineral);
+  border-top: 1px solid var(--linha);
+}
+
+.conversa input { flex: 1; }

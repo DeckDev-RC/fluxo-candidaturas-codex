@@ -1,168 +1,78 @@
 <!doctype html>
 <html lang="pt-BR">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#101411" />
-    <title>Fluxo — candidaturas</title>
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css" />
-  </head>
-  <body>
-    <div id="toast-region" class="toast-region" role="status" aria-live="polite" aria-atomic="true"></div>
-    <header class="topbar">
-      <a class="brand" href="/" aria-label="Fluxo início">
-        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
-        <span>Fluxo</span>
-      </a>
-      <div class="topbar-context"><span class="status-dot" aria-hidden="true"></span> Fluxo de candidaturas · local</div>
-      <div class="openai-auth"><span id="openai-auth-status" class="screen-state">Verificando ChatGPT…</span><button id="openai-auth-button" class="refresh-button" type="button">Entrar com ChatGPT</button></div>
-      <nav id="primary-nav" class="primary-nav nav-label" aria-label="Navegação principal">
-        <a href="#home" aria-current="page">Início</a><a href="#setup">Configuração</a><a href="#queue">Fila</a><a href="#applications">Candidaturas</a><a href="#operations">Operações</a><a href="#followup">Acompanhamento</a>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fluxo — sua busca de emprego</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/styles/tokens.css" />
+  <link rel="stylesheet" href="/styles/base.css" />
+  <link rel="stylesheet" href="/styles/layout.css" />
+  <link rel="stylesheet" href="/styles/components.css" />
+</head>
+<body>
+  <a class="pular-para-conteudo" href="#conteudo">Ir para o conteúdo</a>
+
+  <div class="aplicacao">
+    <div class="navegacao">
+      <p class="marca">
+        <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true" focusable="false">
+          <path d="M3 16.5C6.5 16.5 6.5 5.5 11 5.5s4.5 11 8 11" fill="none" stroke="#b44832" stroke-width="2.2" stroke-linecap="round" />
+          <circle cx="19" cy="16.5" r="2.2" fill="#20262b" />
+        </svg>
+        Fluxo
+      </p>
+
+      <nav aria-label="Áreas do Fluxo">
+        <ul id="navegacao-principal">
+          <li><a href="#agora" data-rota="agora">Agora</a></li>
+          <li><a href="#oportunidades" data-rota="oportunidades">Oportunidades</a></li>
+          <li><a href="#candidaturas" data-rota="candidaturas">Candidaturas</a></li>
+          <li><a href="#perfil" data-rota="perfil">Meu perfil</a></li>
+        </ul>
       </nav>
-      <button id="refresh" class="refresh-button" type="button">Atualizar <span>↻</span></button>
-    </header>
 
-    <main id="app-main" class="shell">
-      <nav class="breadcrumbs" aria-label="Você está em"><a href="#home">Início</a><span aria-hidden="true">/</span><span>Operação local</span></nav>
-      <section id="screen-context" class="intro screen-context" aria-labelledby="screen-title">
-        <div>
-          <p id="screen-kicker" class="eyebrow">painel operacional</p>
-          <h1 id="screen-title">Visão geral</h1>
-          <p id="screen-description" class="lede">Uma leitura local do preflight, da campanha e do ponto de retomada.</p>
-        </div>
-        <div class="screen-context-actions"><button id="screen-back" class="secondary-button" type="button" hidden>Voltar</button><div class="freshness" id="freshness">Lendo o Fluxo…</div><span id="screen-state" class="screen-state" role="status">Carregando</span></div>
-        <div id="fixture-banner" class="fixture-banner" role="status" hidden>Modo demonstração · dados fictícios locais</div>
-        <p id="lifecycle-banner" class="muted">A agenda funciona enquanto o aplicativo estiver aberto e retoma ao reabrir. Não há execução com o computador desligado. Mensagens a recrutadores são rascunho nesta versão.</p>
-      </section>
-
-      <section class="status-line" data-view="home" aria-label="Estado da instalação">
-        <div class="status-label"><span class="status-dot" id="installation-dot"></span><strong id="installation-status">Carregando</strong></div>
-        <div class="status-actions"><span id="preflight-summary" class="muted">Verificando preflight</span><button id="run-preflight" class="inline-action" type="button">Executar preflight</button></div>
-      </section>
-
-      <section id="autopilot-panel" data-view="home" class="autopilot-panel" aria-labelledby="autopilot-title">
-        <div class="autopilot-intro"><p class="eyebrow">autopilot</p><h2 id="autopilot-title">Deixe o Fluxo trabalhar</h2><p class="lede">Você define o objetivo. A IA conduz perfil, vagas, candidaturas e acompanhamento.</p></div>
-        <div class="autopilot-inputs"><label>O que você quer alcançar?<textarea id="autopilot-intent" rows="2" placeholder="Ex.: encontrar vagas remotas de dados e conduzir os processos compatíveis"></textarea></label><label>Seu currículo (opcional)<input id="autopilot-resume" type="file" accept=".pdf,.docx,.txt" /><small class="field-help">A IA extrai os dados e pergunta apenas o que faltar.</small></label></div>
-        <div class="autopilot-action"><button id="autopilot-start" class="primary-button" type="button">Iniciar Autopilot</button><span id="autopilot-status" class="autopilot-status" role="status">Pronto para começar</span></div>
-        <ol id="autopilot-plan" class="autopilot-plan" aria-label="Plano do Autopilot"><li data-status="pending"><span>01</span>Entender seu perfil</li><li data-status="pending"><span>02</span>Encontrar oportunidades</li><li data-status="pending"><span>03</span>Comparar aderência</li><li data-status="pending"><span>04</span>Conduzir candidaturas</li><li data-status="pending"><span>05</span>Acompanhar processos</li></ol>
-        <ol id="autopilot-timeline" class="autopilot-timeline" aria-label="Atividade da IA"><li>Pronto para entender seu objetivo.</li></ol>
-        <div id="autopilot-exception" class="autopilot-exception" role="alert" hidden></div>
-        <section id="autopilot-decisions" class="autopilot-subsection" aria-labelledby="autopilot-decisions-title" hidden><p id="autopilot-decisions-title" class="eyebrow">sua decisão</p><form id="autopilot-answers-form"><div id="autopilot-answers-fields"></div><div class="form-actions"><button id="autopilot-answers-submit" class="primary-button" type="submit">Responder e continuar</button></div><small id="autopilot-answers-feedback" class="field-help" role="status"></small></form></section>
-        <section id="autopilot-memory" class="autopilot-subsection" aria-labelledby="autopilot-memory-title"><p id="autopilot-memory-title" class="eyebrow">memória ativa</p><div>Carregando o contexto confirmado…</div></section>
-        <section id="autopilot-results" class="autopilot-subsection" aria-labelledby="autopilot-results-title"><p id="autopilot-results-title" class="eyebrow">resultados encontrados</p><div>Nenhum resultado ainda. A IA mostrará oportunidades quando a busca terminar.</div></section>
-        <section id="autopilot-exceptions" class="autopilot-subsection" aria-labelledby="autopilot-exceptions-title"><p id="autopilot-exceptions-title" class="eyebrow">atenção necessária</p><div>Nenhuma exceção aberta.</div></section>
-        <div class="autopilot-controls" aria-label="Ações do Autopilot"><button id="autopilot-pause" class="secondary-button" type="button">Pausar</button><button id="autopilot-resume-run" class="secondary-button" type="button">Retomar</button><button id="autopilot-change-goal" class="secondary-button" type="button">Mudar objetivo</button><button id="autopilot-evidence" class="secondary-button" type="button">Ver evidências</button></div>
-      </section>
-
-      <section id="next-action" data-view="home" class="next-action secondary-next-action" aria-labelledby="next-action-title">
-        <div><p class="eyebrow">agora</p><h2 id="next-action-title">Próxima ação</h2><p id="next-action-copy" class="lede">Calculando o melhor próximo passo…</p></div>
-        <button id="next-action-button" class="primary-button" type="button">Ver orientação</button>
-      </section>
-
-      <section id="onboarding-section" data-view="setup" class="onboarding-section" aria-labelledby="onboarding-title">
-        <div class="section-heading"><p class="eyebrow">primeiro uso</p><h2 id="onboarding-title">Configurar perfil e campanha</h2></div>
-        <p class="muted">Os dados ficam neste computador. Credenciais de plataforma não são solicitadas aqui.</p>
-        <form id="onboarding-form" action="/api/v1/onboarding">
-          <div id="onboarding-progress" class="wizard-progress" aria-label="Progresso da configuração"><span aria-controls="wizard-step-identity">1 Perfil</span><span aria-controls="wizard-step-objective">2 Objetivo</span><span aria-controls="wizard-step-preferences">3 Preferências</span><span aria-controls="wizard-step-campaign">4 Campanha</span><span aria-controls="wizard-step-review">5 Revisão</span></div>
-          <div id="onboarding-error-summary" class="error-summary" role="alert" tabindex="-1" hidden></div>
-          <div class="form-grid">
-            <label>Nome<input id="onboarding-name" name="name" required /></label>
-            <label>E-mail<input id="onboarding-email" name="email" type="email" required /></label>
-            <label>Telefone<input name="phone" required /></label>
-            <label>Localização<input name="location" required /></label>
-            <label>Cargos-alvo<input id="onboarding-target-roles" name="targetRoles" required placeholder="Ex.: Desenvolvedor backend" /></label>
-            <label>Senioridade<select name="seniority" required><option value="">Escolha</option><option>Júnior</option><option>Pleno</option><option>Sênior</option><option>Liderança</option></select></label>
-            <label>Foco técnico<input name="technicalFocus" required /></label>
-            <label>Modalidade<select name="workModes" required><option value="">Escolha</option><option>Remoto</option><option>Híbrido</option><option>Presencial</option><option>Remoto ou híbrido</option></select></label>
-            <label>Localidades aceitas<input name="acceptedLocations" required /></label>
-            <label>Tipo de contrato<select name="contracts" required><option value="">Escolha</option><option>CLT</option><option>PJ</option><option>CLT ou PJ</option><option>Outro</option></select></label>
-            <label>Remuneração mínima<input name="minimumSalary" type="number" min="0" required /></label>
-            <label>Disponibilidade<input name="availability" type="date" required /></label>
-            <label>Formação<input name="education" required /></label>
-            <label>Idiomas<input name="languages" required /></label>
-            <label>Autorização de trabalho<input name="workAuthorization" required /></label>
-            <label>Viagens<select name="travel" required><option value="">Escolha</option><option>Não</option><option>Sim</option><option>A negociar</option></select></label>
-            <label>Vagas PcD<select name="pcd" required><option value="">Escolha</option><option>Não</option><option>Sim</option><option>Prefiro não informar</option></select></label>
-          </div>
-          <label>Resumo profissional<textarea name="professionalSummary" rows="3" required></textarea></label>
-          <label>Pontos fortes<textarea name="strengths" rows="2" required></textarea></label>
-          <fieldset id="onboarding-campaign"><legend>Metas da campanha</legend><div class="form-grid">
-            <label>Meta total<input name="totalGoal" type="number" min="0" value="0" required /></label>
-            <label>Meta diária<input name="dailyGoal" type="number" min="0" value="0" required /></label>
-            <label>Meta semanal<input name="weeklyGoal" type="number" min="0" value="0" required /></label>
-            <fieldset class="platform-choices"><legend>Onde buscar</legend><label><input type="checkbox" name="platforms" value="GUPY" checked /> Gupy</label><label><input type="checkbox" name="platforms" value="INFOJOBS" /> InfoJobs</label><label><input type="checkbox" name="platforms" value="PANDAPE" /> PandaPé</label><label><input type="checkbox" name="platforms" value="LINKEDIN" /> LinkedIn</label><label><input type="checkbox" name="platforms" value="CATHO" /> Catho</label><label><input type="checkbox" name="platforms" value="VAGASCOM" /> Vagas.com</label><label><input type="checkbox" name="platforms" value="SOLIDES" /> Sólides</label></fieldset>
-            <label>Início do período (opcional)<input id="onboarding-period-start" name="periodStart" type="date" /></label>
-            <label>Fim do período (opcional)<input name="periodEnd" type="date" /></label>
-            <label>Exclusões (opcional)<input id="onboarding-exclusions" name="exclusions" placeholder="estágio, empresa" /></label>
-            <label>Cargos filtrados (opcional)<input name="rolesFilter" placeholder="backend, engenharia" /></label>
-            <label>Senioridades filtradas (opcional)<input name="seniorityFilter" placeholder="pleno, sênior" /></label>
-          </div></fieldset>
-          <div id="onboarding-review" class="review-summary" hidden></div>
-          <div class="form-actions"><button class="primary-button" type="submit">Salvar configuração local</button><button id="onboarding-clear-draft" class="secondary-button" type="button">Limpar rascunho</button><span id="onboarding-feedback" class="muted" role="status"></span></div>
-        </form>
-      </section>
-
-      <section class="overview-section" data-view="home" aria-labelledby="overview-title">
-        <div class="section-heading"><p class="eyebrow">visão geral</p><h2 id="overview-title">Campanha</h2></div>
-        <div class="metrics-row" id="campaign-metrics" aria-live="polite"></div>
-        <div class="platform-list" id="campaign-platforms" aria-label="Metas por plataforma"></div>
-      </section>
-
-      <div class="content-grid">
-        <section class="data-section" data-view="queue" aria-labelledby="queue-title">
-          <div class="section-heading inline"><div><p class="eyebrow">prioridade e aderência</p><h2 id="queue-title">Fila</h2></div><span class="count" id="queue-count">0 vagas</span></div>
-          <form id="queue-search" class="inline-form"><input name="query" placeholder="Pesquisar empresa, cargo ou ID" aria-label="Pesquisar fila" /><select id="queue-status-filter" name="status" aria-label="Filtrar por status"><option value="">Todos os status</option><option>na fila</option><option>em andamento</option><option>bloqueada</option></select><input id="queue-fit-filter" name="minFit" type="number" min="0" max="100" placeholder="Aderência mínima" aria-label="Aderência mínima" /><button class="inline-action" type="submit">Filtrar</button><button id="queue-clear-filter" class="secondary-button" type="button">Limpar</button></form>
-          <form id="queue-add" class="inline-form"><select name="platform" aria-label="Plataforma" required><option value="">Plataforma</option><option>GUPY</option><option>INFOJOBS</option><option>PANDAPE</option><option>LINKEDIN</option><option>CATHO</option><option>VAGASCOM</option><option>SOLIDES</option></select><input name="company" placeholder="Empresa" aria-label="Empresa" required /><input name="role" placeholder="Cargo" aria-label="Cargo" required /><input name="identifierOrUrl" placeholder="ID ou URL" aria-label="ID ou URL" required /><button class="inline-action" type="submit">Adicionar vaga</button></form>
-          <div class="data-list" id="queue-list"></div>
-        </section>
-
-        <section class="data-section" data-view="applications" aria-labelledby="applications-title">
-          <div class="section-heading inline"><div><p class="eyebrow">histórico confirmado</p><h2 id="applications-title">Candidaturas</h2></div><span class="count" id="application-count">0 registros</span></div>
-          <form id="application-tools" class="inline-form"><div id="application-stepper" class="mini-stepper" aria-label="Etapas da candidatura"><span>1 Preparar</span><span>2 Revisar</span><span>3 Aprovar</span><span>4 Confirmar</span></div><select name="platform" aria-label="Plataforma para preparar"><option value="">Qualquer plataforma elegível</option><option>GUPY</option><option>INFOJOBS</option><option>PANDAPE</option><option>LINKEDIN</option><option>CATHO</option><option>VAGASCOM</option><option>SOLIDES</option></select><button class="inline-action" data-application-action="prepare" type="button">Preparar próxima</button><button class="inline-action" data-application-action="approve" type="button" disabled>Solicitar aprovação</button><button class="inline-action" data-application-action="submit" type="button" disabled>Confirmar envio</button><span id="application-feedback" class="muted" role="status"></span></form>
-          <div id="application-review" class="application-review" hidden><p id="application-status" class="muted"></p><dl id="application-review-facts"></dl></div>
-          <div class="data-list" id="applications-list"></div>
-        </section>
+      <div class="navegacao-rodape">
+        <a href="#configuracoes" data-rota="configuracoes">Configurações</a>
+        <a href="#ajuda" data-rota="ajuda">Ajuda</a>
       </div>
+    </div>
 
-      <section class="checkpoint-section" data-view="home" aria-labelledby="checkpoint-title">
-        <div class="section-heading"><p class="eyebrow">retomada</p><h2 id="checkpoint-title">Checkpoint</h2></div>
-        <div id="checkpoint-content" class="checkpoint-content"></div>
-      </section>
+    <div class="coluna-trabalho">
+      <header class="cabecalho">
+        <div class="objetivo-ativo">
+          <span class="etiqueta">objetivo ativo</span>
+          <strong id="objetivo-texto">Carregando…</strong>
+          <span class="apoio" id="estado-trabalho">Lendo os dados deste computador</span>
+        </div>
+        <div class="cabecalho-acoes">
+          <a class="contador-decisoes" id="indicador-decisoes" href="#decisoes" data-vazio="true">
+            <span id="indicador-decisoes-texto">Nenhuma decisão pendente</span>
+          </a>
+          <button class="botao-secundario botao" id="editar-objetivo" type="button">Mudar objetivo</button>
+          <button class="botao-secundario botao" id="atualizar" type="button">Atualizar</button>
+        </div>
+      </header>
 
-      <section class="approval-section" data-view="applications" aria-labelledby="approval-title">
-        <div class="section-heading inline"><div><p class="eyebrow">decisão humana</p><h2 id="approval-title">Aprovações</h2></div><span class="count">ações sensíveis</span></div>
-        <div id="approval-list" class="approval-list"></div>
-      </section>
+      <main id="conteudo" class="area" tabindex="-1">
+        <div class="regiao-mensagens" id="mensagens" role="status" aria-live="polite"></div>
+        <div id="tela"></div>
+      </main>
 
-      <section class="operations-section" data-view="operations" aria-labelledby="operations-title">
-        <div class="section-heading"><p class="eyebrow">qualificação e acompanhamento</p><h2 id="operations-title">Ferramentas da operação</h2></div>
-        <section id="codex-control-center" class="codex-control-center" aria-labelledby="codex-control-title"><div class="section-heading inline"><div><p class="eyebrow">Codex Harness</p><h3 id="codex-control-title">Inteligência e consumo</h3></div><button id="codex-refresh" class="secondary-button" type="button">Atualizar Codex</button></div><div class="codex-control-grid"><div id="codex-account" class="codex-card">Conta Codex: carregando…</div><div id="codex-usage" class="codex-card">Uso: carregando…</div><div id="codex-limits" class="codex-card">Limites: carregando…</div></div><form id="codex-settings-form" class="codex-settings"><label>Modelo<select id="codex-model" name="model"><option value="">Carregando modelos…</option></select></label><label>Reasoning effort<select id="codex-effort" name="effort"><option value="medium">medium</option></select></label><label>Verbosity<select name="verbosity"><option>low</option><option selected>medium</option><option>high</option></select></label><label>Resumo de raciocínio<select name="reasoningSummary"><option>auto</option><option>concise</option><option>detailed</option><option>off</option></select></label><button class="primary-button" type="submit">Salvar configuração</button><span id="codex-settings-feedback" class="muted" role="status"></span></form></section>
-        <form id="resume-tools" class="tool-form">
-          <label>Descrição da vaga<textarea id="resume-job-description" name="jobDescription" rows="3" required></textarea></label>
-          <label>Arquivo para extração<input id="resume-file" type="file" accept=".pdf,.docx,.txt" aria-label="Selecionar currículo local" /><small class="field-help">Selecione um arquivo já salvo em Fluxo/curriculo.</small><input id="resume-source-path" name="sourcePath" placeholder="curriculo/cv.pdf" /></label>
-          <label>Currículo extraído<input name="resumeTextPath" placeholder="curriculo/cv.txt" /></label>
-          <div class="form-actions"><button class="inline-action" data-operation="extract" type="button">Extrair currículo</button><button class="inline-action" data-operation="fit" type="submit">Calcular aderência</button><button class="inline-action" data-operation="select" type="button">Selecionar currículo</button><span id="resume-feedback" class="muted" role="status"></span></div>
-        </form>
-        <div class="operations-grid"><div><p class="eyebrow">métricas</p><div id="metrics-detail" class="compact-list"></div></div><div><p class="eyebrow">pendências</p><div id="pending-list" class="compact-list"></div></div><div><p class="eyebrow">testes e questionários</p><div id="assessment-list" class="compact-list"></div></div></div>
-        <form id="assessment-prep-form" class="inline-form"><input name="name" placeholder="Nome do questionário" aria-label="Nome do questionário" required /><input name="durationSeconds" type="number" min="0" placeholder="Duração (s)" aria-label="Duração" /><input name="question1" placeholder="Pergunta 1" aria-label="Pergunta 1" required /><input name="question2" placeholder="Pergunta 2 (opcional)" aria-label="Pergunta 2" /><input name="question3" placeholder="Pergunta 3 (opcional)" aria-label="Pergunta 3" /><button class="inline-action" type="submit">Preparar questionário</button><span id="assessment-timer" class="muted" role="timer">Sem cronômetro</span><button id="assessment-pause" class="inline-action" type="button" disabled>Pausar</button></form>
-        <form id="assessment-result-form" class="inline-form"><input name="reference" placeholder="ID da candidatura" aria-label="ID da candidatura" required /><input name="testName" placeholder="Nome do teste" aria-label="Nome do teste" required /><input name="score" placeholder="Pontuação" aria-label="Pontuação" /><input name="total" placeholder="Total" aria-label="Total" /><button class="inline-action" type="submit">Registrar resultado</button><span id="assessment-feedback" class="muted" role="status"></span></form>
-      </section>
+      <form class="conversa" id="conversa" aria-label="Falar com o Fluxo">
+        <label class="apenas-leitor" for="conversa-texto">Pergunte ou ajuste seu objetivo</label>
+        <input id="conversa-texto" name="mensagem" type="text" placeholder="Pergunte ou ajuste seu objetivo. Ex.: quero apenas vagas remotas" autocomplete="off" />
+        <button class="botao" type="submit">Enviar</button>
+      </form>
+    </div>
+  </div>
 
-      <section class="stream-section" data-view="applications" aria-labelledby="stream-title">
-        <div class="section-heading"><p class="eyebrow">execução ao vivo</p><h2 id="stream-title">Progresso do run</h2></div>
-        <div class="form-actions"><label>Run atual · preenchido automaticamente<input id="run-stream-id" placeholder="será preenchido ao preparar" /></label><button id="connect-run-stream" class="inline-action" type="button">Conectar streaming</button><span id="stream-feedback" class="muted" role="status"></span></div>
-        <pre id="run-events" class="run-events" aria-live="polite">Nenhum evento conectado.</pre>
-      </section>
+  <dialog id="dialogo">
+    <h2 id="dialogo-titulo"></h2>
+    <div id="dialogo-corpo"></div>
+    <div class="dialogo-acoes" id="dialogo-acoes"></div>
+  </dialog>
 
-      <section class="follow-up-section" data-view="followup" aria-labelledby="follow-up-title">
-        <div class="section-heading"><p class="eyebrow">registro manual</p><h2 id="follow-up-title">Acompanhamento e importação</h2></div>
-        <form id="follow-up-form" class="inline-form"><input name="reference" placeholder="ID da candidatura" aria-label="Referência" required /><select name="type" aria-label="Tipo"><option>status</option><option>entrevista</option><option>teste</option><option>mensagem</option><option>observação</option></select><input name="note" placeholder="Nota ou próxima ação" aria-label="Nota" /><button class="inline-action" type="submit">Registrar evento</button><button id="follow-up-check" class="secondary-button" type="button">Acompanhar agora</button></form>
-        <form id="legacy-import-form" class="inline-form"><input name="directory" placeholder="Diretório de controles legados" aria-label="Diretório legado" required /><button class="inline-action" type="submit">Importar controles</button><span id="follow-up-feedback" class="muted" role="status"></span></form>
-      </section>
-    </main>
-
-    <footer class="footer"><span>Fluxo · leitura local</span><div class="footer-actions"><span id="footer-version">estado sem sincronização externa</span><button id="export-shareable" class="footer-button" type="button">Exportar pacote</button></div></footer>
-    <script type="module" src="/app.js"></script>
-  </body>
+  <script type="module" src="/app.js"></script>
+</body>
 </html>

@@ -47,26 +47,34 @@ import { createSchedulerService } from './scheduler-service.mjs';
 import { createNotificationService } from './notification-service.mjs';
 import { createRuntimeHealth } from './runtime-health.mjs';
 import { createSessionStore } from './session-store.mjs';
+import { createConsistencyService } from './consistency-service.mjs';
 
 const PUBLIC_DIR = new URL('../public/', import.meta.url);
-const STATIC_FILES = new Map([
-  ['/', ['index.html', 'text/html; charset=utf-8']],
-  ['/app.js', ['app.js', 'text/javascript; charset=utf-8']],
-  ['/persistence.js', ['persistence.js', 'text/javascript; charset=utf-8']],
-  ['/preflight-summary.js', ['preflight-summary.js', 'text/javascript; charset=utf-8']],
-  ['/oauth-window.js', ['oauth-window.js', 'text/javascript; charset=utf-8']],
-  ['/autopilot-decisions.js', ['autopilot-decisions.js', 'text/javascript; charset=utf-8']],
-  ['/styles.css', ['styles.css', 'text/css; charset=utf-8']],
-  ['/favicon.svg', ['favicon.svg', 'image/svg+xml']],
-  ['/fixtures/ui-state.json', ['fixtures/ui-state.json', 'application/json; charset=utf-8']]
+
+// A interface é modular: em vez de listar cada arquivo, servimos a pasta pública
+// com nome restrito e extensão conhecida. Nenhum caminho relativo escapa da pasta.
+const STATIC_TYPES = new Map([
+  ['.html', 'text/html; charset=utf-8'],
+  ['.js', 'text/javascript; charset=utf-8'],
+  ['.mjs', 'text/javascript; charset=utf-8'],
+  ['.css', 'text/css; charset=utf-8'],
+  ['.svg', 'image/svg+xml'],
+  ['.json', 'application/json; charset=utf-8']
 ]);
+
+export function resolveStaticAsset(path) {
+  const requested = path === '/' ? 'index.html' : String(path ?? '').replace(/^\/+/, '');
+  if (!/^[A-Za-z0-9._/-]+$/.test(requested) || requested.includes('..')) return null;
+  const type = STATIC_TYPES.get(requested.slice(requested.lastIndexOf('.')).toLowerCase());
+  return type ? [requested, type] : null;
+}
 
 const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
   'cache-control': 'no-store'
 };
 
-export function createServer({ rootDir, queueService = createQueueService({ rootDir }), exportService = { createShareableExport: () => createShareableExport({ rootDir, mutationLock: false }) }, preflightService, followUpService: injectedFollowUpService, followUpMonitor: injectedFollowUpMonitor, messageService: injectedMessageService, onboardingService: injectedOnboardingService, resumeService: injectedResumeService, evidenceService: injectedEvidenceService, assessmentService: injectedAssessmentService, legacyImportService: injectedLegacyImportService, pendingService: injectedPendingService, checkpointService: injectedCheckpointService, metricsService: injectedMetricsService, agentAdapter, autopilotService: injectedAutopilotService, memoryService: injectedMemoryService, intakeService: injectedIntakeService, discoveryService: injectedDiscoveryService, fitService: injectedFitService, exceptionService: injectedExceptionService, auditService: injectedAuditService, authService: injectedAuthService, codexHarnessService: injectedCodexHarnessService, codexSettingsService: injectedCodexSettingsService, resumeImportService: injectedResumeImportService, schedulerService: injectedSchedulerService, notificationService: injectedNotificationService, runtimeHealth: injectedRuntimeHealth, sessionStore: injectedSessionStore, orchestrator: injectedOrchestrator, observability = createObservability(), requireSession = false, stateStore, applicationFlow, runService: injectedRunService, approvalService: injectedApprovalService, policyGateway: injectedPolicyGateway, actorResolver = ({ authorization }) => authorization.actor }) {
+export function createServer({ rootDir, queueService = createQueueService({ rootDir }), exportService = { createShareableExport: () => createShareableExport({ rootDir, mutationLock: false }) }, preflightService, followUpService: injectedFollowUpService, followUpMonitor: injectedFollowUpMonitor, messageService: injectedMessageService, onboardingService: injectedOnboardingService, resumeService: injectedResumeService, evidenceService: injectedEvidenceService, assessmentService: injectedAssessmentService, legacyImportService: injectedLegacyImportService, pendingService: injectedPendingService, checkpointService: injectedCheckpointService, metricsService: injectedMetricsService, agentAdapter, autopilotService: injectedAutopilotService, memoryService: injectedMemoryService, intakeService: injectedIntakeService, discoveryService: injectedDiscoveryService, fitService: injectedFitService, exceptionService: injectedExceptionService, auditService: injectedAuditService, authService: injectedAuthService, codexHarnessService: injectedCodexHarnessService, codexSettingsService: injectedCodexSettingsService, resumeImportService: injectedResumeImportService, schedulerService: injectedSchedulerService, notificationService: injectedNotificationService, runtimeHealth: injectedRuntimeHealth, sessionStore: injectedSessionStore, orchestrator: injectedOrchestrator, consistencyService: injectedConsistencyService, budget: injectedBudget, observability = createObservability(), requireSession = false, stateStore, applicationFlow, runService: injectedRunService, approvalService: injectedApprovalService, policyGateway: injectedPolicyGateway, actorResolver = ({ authorization }) => authorization.actor }) {
   mkdirSync(join(rootDir, 'estado'), { recursive: true });
   const runService = injectedRunService ?? createRunService({ dbPath: join(rootDir, 'estado', 'harness.sqlite') });
   const approvalService = injectedApprovalService ?? createApprovalService({ dbPath: join(rootDir, 'estado', 'harness.sqlite') });
@@ -108,7 +116,12 @@ export function createServer({ rootDir, queueService = createQueueService({ root
   const finalReleaseRoutes = createFinalReleaseRoutes({
     resumeImportService, memoryService, schedulerService, notificationService, runtimeHealth,
     orchestrator: injectedOrchestrator ?? injectedAutopilotService,
-    campaignService, runtimeConfig: {}, sessionStore
+    campaignService, runtimeConfig: {}, sessionStore, budget: injectedBudget,
+    consistencyService: injectedConsistencyService ?? createConsistencyService({
+      readState: () => readFluxoState(rootDir),
+      readRuns: async () => runService.listRuns(),
+      listEvents: (runId) => runService.listEvents(runId).map((event) => ({ type: event.type }))
+    })
   });
   // A revisão precisa mostrar o que será enviado: fatos confirmados no formulário observado
   // e a variante de currículo realmente selecionada.
@@ -614,7 +627,7 @@ export function createServer({ rootDir, queueService = createQueueService({ root
       return;
     }
 
-    if (STATIC_FILES.has(path) && request.method !== 'GET') {
+    if (resolveStaticAsset(path) && request.method !== 'GET') {
       sendJson(response, 405, { error: { code: 'method_not_allowed', message: 'Método não permitido.' } });
       return;
     }
@@ -632,7 +645,7 @@ export function createServer({ rootDir, queueService = createQueueService({ root
       return;
     }
 
-    const staticFile = STATIC_FILES.get(path);
+    const staticFile = resolveStaticAsset(path);
     if (request.method === 'GET' && staticFile) {
       try {
         if (path === '/') sessionAuth.bootstrap(response);
@@ -642,7 +655,11 @@ export function createServer({ rootDir, queueService = createQueueService({ root
           'cache-control': 'no-store'
         });
         response.end(body);
-      } catch {
+      } catch (error) {
+        if (error?.code === 'ENOENT') {
+          sendJson(response, 404, { error: { code: 'not_found', message: 'Recurso não encontrado.' } });
+          return;
+        }
         sendJson(response, 500, {
           error: { code: 'asset_read_failed', message: 'Não foi possível carregar a interface local.' }
         });

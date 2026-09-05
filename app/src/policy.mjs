@@ -1,7 +1,23 @@
 import { createDomainError } from './domain/errors.mjs';
+import { EXTERNAL_ACTIONS, assertHumanDecision } from './product-policy.mjs';
 
 const APPROVAL_KINDS = new Set(['submission', 'sensitive_data', 'timed_test', 'message', 'withdrawal', 'profile_change']);
 const DEFAULT_ACTION_VERSION = 'v1';
+
+// Nome da ação no gateway → nome na política do produto.
+const ACAO_EXTERNA_EQUIVALENTE = {
+  submission: 'submit',
+  sensitive_data: 'fill_sensitive',
+  message: 'recruiter_message',
+  timed_test: 'timed_test'
+};
+
+// Decisão pessoal que autorização de campanha nunca dispensa (F0-05). O envio
+// continua governado pela configuração: é o único ponto em que a pessoa pode
+// autorizar antecipadamente uma campanha inteira.
+const NUNCA_DISPENSADAS = new Set(Object.entries(ACAO_EXTERNA_EQUIVALENTE)
+  .filter(([kind, externa]) => kind !== 'submission' && EXTERNAL_ACTIONS[externa]?.decider === 'user')
+  .map(([kind]) => kind));
 
 export function evaluateAction(action = {}, context = {}) {
   const normalizedAction = normalizeAction(action);
@@ -13,7 +29,7 @@ export function evaluateAction(action = {}, context = {}) {
   }
 
   const requiresApproval = APPROVAL_KINDS.has(normalizedAction.kind)
-    && (context.requireFinalConfirmation !== false || normalizedAction.kind !== 'submission' || context.allowAutomatedSubmission !== true);
+    && (NUNCA_DISPENSADAS.has(normalizedAction.kind) || context.requireFinalConfirmation !== false || normalizedAction.kind !== 'submission' || context.allowAutomatedSubmission !== true);
   return policyResult(normalizedAction, {
     allowed: !requiresApproval,
     requiresApproval,

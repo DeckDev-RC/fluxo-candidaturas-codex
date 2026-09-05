@@ -1,0 +1,84 @@
+/* Direção Trajetória — tokens da interface do Fluxo (U1-04).
+   Contraste medido contra a superfície de uso, WCAG 2.2 AA:
+   tinta/mineral 13,7:1 · terracota/mineral 4,9:1 · branco/terracota 5,4:1
+   sucesso 5,9:1 · atenção 5,3:1 · erro 6,8:1 · informação 6,3:1
+   borda de controle/papel 3,7:1 (mínimo 3:1 de 1.4.11). */
+
+:root {
+  /* Superfícies e tinta */
+  --mineral: #f4f3ef;
+  --papel: #ffffff;
+  --tinta: #20262b;
+  --tinta-media: #4d565d;
+  --tinta-suave: #6b7479;
+
+  /* Ação e identidade */
+  --terracota: #b44832;
+  --terracota-escura: #8f3826;
+  --terracota-fraca: #f6e7e2;
+
+  /* Funções semânticas: nunca substituídas pela cor da marca */
+  --sucesso: #1f6b4a;
+  --sucesso-fraca: #e4efe9;
+  --atencao: #8a5a00;
+  --atencao-fraca: #f6ecd9;
+  --erro: #a32116;
+  --erro-fraca: #f7e4e2;
+  --informacao: #2c5c8a;
+  --informacao-fraca: #e5edf4;
+  --selecao: #e8e6df;
+
+  /* Linhas: decorativa e de controle */
+  --linha: #dcd9d1;
+  --linha-controle: #8c8578;
+
+  /* Tipografia: pilha do sistema, disponível offline e sem licença extra.
+     Segoe UI no Windows distingue bem 1/l e 0/O. */
+  --fonte: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Noto Sans", Arial, sans-serif;
+  --fonte-numeros: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --texto-xs: 0.75rem;
+  --texto-sm: 0.8125rem;
+  --texto-base: 0.9375rem;
+  --texto-md: 1.0625rem;
+  --texto-lg: 1.375rem;
+  --texto-xl: 1.75rem;
+  --altura-densa: 1.35;
+  --altura-leitura: 1.55;
+  --peso-normal: 400;
+  --peso-medio: 600;
+  --peso-forte: 700;
+  --traco-etiqueta: 0.04em;
+
+  /* Espaçamento em escala de 4 */
+  --e1: 0.25rem;
+  --e2: 0.5rem;
+  --e3: 0.75rem;
+  --e4: 1rem;
+  --e5: 1.5rem;
+  --e6: 2rem;
+  --e7: 3rem;
+
+  /* Bordas e elevação: contida, sem sombra em todo bloco */
+  --raio-sm: 3px;
+  --raio: 6px;
+  --raio-lg: 10px;
+  --elevacao-painel: 0 1px 2px rgba(32, 38, 43, 0.06);
+  --elevacao-flutuante: 0 8px 24px rgba(32, 38, 43, 0.16);
+
+  /* Movimento: curto e explicativo; desligado por preferência do sistema */
+  --duracao-curta: 120ms;
+  --duracao-media: 200ms;
+  --curva: cubic-bezier(0.2, 0, 0.2, 1);
+
+  /* Estrutura */
+  --nav-largura: 13.5rem;
+  --detalhe-largura: 26rem;
+  --leitura-maxima: 42rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duracao-curta: 0ms;
+    --duracao-media: 0ms;
+  }
+}

@@ -1,12 +1,14 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { createHash, randomUUID } from 'node:crypto';
-import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { readFluxoState } from './state-reader.mjs';
+import { createStateDocument } from './state-document.mjs';
 
-export function createFollowUpMonitor({ rootDir = '', adapters = {}, now = () => new Date() } = {}) {
+export function createFollowUpMonitor({ rootDir = '', persistence, adapters = {}, now = () => new Date() } = {}) {
+  const documento = createStateDocument({ rootDir, persistence, name: 'followup', file: 'estado/followup.json', fallback: { known: {}, events: [], checkedAt: '' } });
   return {
+    close() { documento.close(); },
+    async authority() { return documento.authority(); },
     async check({ applications = [], platforms = [], instruction = '' } = {}) {
-      const state = await readState(rootDir);
+      const state = await readState(documento);
       const requestedApplications = applications.length ? applications : (await readFluxoState(rootDir)).applications.items;
       const selected = platforms.length ? platforms.map((value) => String(value).toUpperCase()) : [...new Set(requestedApplications.map((item) => String(item.platform ?? '').toUpperCase()).filter(Boolean))];
       const newEvents = []; const failures = [];
@@ -28,7 +30,7 @@ export function createFollowUpMonitor({ rootDir = '', adapters = {}, now = () =>
       }
       state.checkedAt = now().toISOString();
       state.events = [...state.events, ...newEvents].slice(-500);
-      await writeState(rootDir, state);
+      await writeState(documento, state);
       const alerts = newEvents.filter((event) => ['entrevista', 'teste', 'prazo', 'convite'].some((term) => `${event.type} ${event.status}`.toLocaleLowerCase().includes(term))).map((event) => ({ ...event, priority: 'alta' }));
       const missingAdapter = failures.some((item) => /não configurado/i.test(item.message));
       const summary = missingAdapter
@@ -40,6 +42,8 @@ export function createFollowUpMonitor({ rootDir = '', adapters = {}, now = () =>
 }
 
 function normalizeEvent(raw, application, platform, now) { const occurredAt = String(raw.occurredAt ?? now().toISOString()); return { id: String(raw.id ?? ''), reference: String(raw.reference ?? application.id ?? application.key ?? ''), company: String(application.company ?? ''), role: String(application.role ?? ''), platform, type: String(raw.type ?? 'status'), status: String(raw.status ?? ''), note: String(raw.note ?? ''), nextAction: String(raw.nextAction ?? 'Acompanhar novamente'), deadline: String(raw.deadline ?? ''), source: platform, evidence: String(raw.evidence ?? ''), occurredAt }; }
-async function readState(rootDir) { try { const value = JSON.parse(await readFile(join(rootDir, 'estado', 'followup.json'), 'utf8')); return { known: value.known ?? {}, events: Array.isArray(value.events) ? value.events : [], checkedAt: value.checkedAt ?? '' }; } catch (error) { if (error?.code === 'ENOENT') return { known: {}, events: [], checkedAt: '' }; throw error; } }
-async function writeState(rootDir, value) { const path = join(rootDir, 'estado', 'followup.json'); await mkdir(join(rootDir, 'estado'), { recursive: true }); const temp = `${path}.${process.pid}.${randomUUID()}.tmp`; await writeFile(temp, JSON.stringify(value, null, 2), 'utf8'); await rename(temp, path); }
-async function readApplications(rootDir) { try { const value = JSON.parse(await readFile(join(rootDir, 'candidaturas', 'candidaturas.json'), 'utf8')); return Array.isArray(value) ? value : []; } catch (error) { if (error?.code === 'ENOENT') return []; throw error; } }
+async function readState(documento) {
+  const value = await documento.read();
+  return { known: value?.known ?? {}, events: Array.isArray(value?.events) ? value.events : [], checkedAt: value?.checkedAt ?? '' };
+}
+async function writeState(documento, value) { return documento.write(value); }
