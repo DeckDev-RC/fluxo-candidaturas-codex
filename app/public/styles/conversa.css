@@ -1,0 +1,116 @@
+/* Mesa principal: conversa à esquerda, acompanhamento fixo à direita.
+   A linha do tempo rola com a área de trabalho; nada tem rolagem própria. */
+
+/* Avisos persistentes continuam visíveis aqui (U7-05): a linha da conversa
+   registra o histórico, mas rola; o aviso fica até ser dispensado. */
+.area[data-area="agora"] > #tela,
+.area[data-area="agora"] > .regiao-mensagens { max-width: 78rem; }
+
+.mesa {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 19rem;
+  gap: var(--e6);
+  align-items: start;
+}
+
+.conversa-coluna { min-width: 0; width: 100%; max-width: 46rem; margin-inline: auto; }
+.linha-do-tempo { display: flex; flex-direction: column; gap: var(--e4); padding-bottom: var(--e4); }
+
+/* Balões: o Fluxo fala sem moldura, com a marca; a pessoa fala em tinta. */
+.balao {
+  display: grid;
+  grid-template-columns: 1.5rem minmax(0, 1fr);
+  gap: var(--e3);
+  align-items: start;
+}
+
+.balao-corpo { display: flex; flex-direction: column; gap: 2px; min-width: 0; line-height: var(--altura-leitura); }
+.balao-hora { font-size: var(--texto-xs); color: var(--texto-3); font-variant-numeric: tabular-nums; }
+
+.balao[data-tom="sucesso"] .balao-corpo,
+.balao[data-tom="atencao"] .balao-corpo,
+.balao[data-tom="erro"] .balao-corpo { border-left: 2px solid var(--informacao); padding-left: var(--e3); }
+.balao[data-tom="sucesso"] .balao-corpo { border-left-color: var(--sucesso); }
+.balao[data-tom="atencao"] .balao-corpo { border-left-color: var(--atencao); }
+.balao[data-tom="erro"] .balao-corpo { border-left-color: var(--erro); }
+
+.balao[data-autor="voce"] { grid-template-columns: minmax(0, 1fr); justify-items: end; }
+.balao[data-autor="voce"] .balao-corpo {
+  max-width: 80%;
+  padding: var(--e2) var(--e3);
+  border-radius: var(--raio-xl) var(--raio-xl) var(--raio-sm) var(--raio-xl);
+  background: var(--acao);
+  color: var(--texto-inverso);
+}
+
+.balao[data-autor="voce"] .balao-hora { color: inherit; opacity: 0.7; align-self: flex-end; }
+
+.balao-avatar { display: block; width: 1.5rem; height: 1.5rem; margin-top: 1px; color: var(--acao); }
+
+/* Fala atual: cartão com a situação, o que ela pede e as ações possíveis. */
+.balao-atual .balao-corpo {
+  gap: var(--e2);
+  padding: var(--e4) var(--e5);
+  border: 1px solid var(--linha);
+  border-radius: var(--raio-xl);
+  border-top-left-radius: var(--raio-sm);
+  background: var(--superficie);
+  box-shadow: var(--elevacao-painel);
+}
+
+.mesa[data-estado-agora="decisao-pendente"] .balao-atual .balao-corpo { border-color: var(--acento); box-shadow: 0 0 0 3px var(--acento-fraco); }
+.balao-atual .balao-hora { display: none; }
+
+.balao-cartao { margin-top: var(--e2); }
+.balao-cartao .painel { border: 0; padding: 0; box-shadow: none; }
+.balao-cartao .painel > .painel-cabecalho { display: none; }
+
+/* Acompanhamento: coluna fixa, leitura rápida, sem ação de envio. */
+.acompanhamento {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--e5);
+  padding: var(--e4);
+  border: 1px solid var(--linha);
+  border-radius: var(--raio-xl);
+  background: var(--fundo);
+}
+
+.acompanhamento-secao { display: flex; flex-direction: column; gap: var(--e2); }
+.acompanhamento-cabecalho { display: flex; justify-content: space-between; align-items: baseline; gap: var(--e2); }
+.acompanhamento-cabecalho h3 { font-size: var(--texto-xs); font-weight: var(--peso-medio); color: var(--texto-3); letter-spacing: var(--traco-etiqueta); }
+.acompanhamento-cabecalho .botao-texto { font-size: var(--texto-xs); padding: 0 var(--e1); }
+.acompanhamento-estado { font-weight: var(--peso-forte); letter-spacing: var(--traco-titulo); }
+.acompanhamento-lista { display: flex; flex-direction: column; gap: var(--e2); }
+.acompanhamento-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--e2); align-items: start; }
+.acompanhamento-item .item-titulo { font-size: var(--texto-sm); }
+.acompanhamento-item .apoio { font-size: var(--texto-xs); }
+.acompanhamento .percurso li { padding-bottom: var(--e2); }
+.acompanhamento .percurso li > div { flex-direction: column; align-items: flex-start; gap: 2px; }
+
+/* Metas por plataforma: barra proporcional a confirmações reais. */
+.meta { display: flex; flex-direction: column; gap: var(--e1); }
+.meta-linha { display: flex; justify-content: space-between; gap: var(--e2); font-size: var(--texto-sm); }
+.meta-rotulo { color: var(--texto-2); }
+.meta-valor { color: var(--texto-2); }
+.meta[data-destaque="true"] .meta-rotulo,
+.meta[data-destaque="true"] .meta-valor { color: var(--texto); font-weight: var(--peso-medio); }
+.meta-barra { height: 6px; border-radius: 999px; background: var(--superficie-2); border: 1px solid var(--linha); overflow: hidden; }
+.meta-barra span { display: block; height: 100%; border-radius: inherit; background: var(--acento); transition: width var(--duracao-media) var(--curva); }
+.meta[data-completa="true"] .meta-barra span { background: var(--sucesso); }
+
+/* A barra de escrita pertence à coluna da conversa: mesma margem e sem
+   avançar sob o acompanhamento (19rem + intervalo). */
+.coluna-trabalho:has(#conteudo[data-area="agora"]) .conversa {
+  padding-right: calc(max(var(--e5), (100% - 78rem) / 2) + 19rem + var(--e6));
+  padding-left: max(var(--e5), calc((100% - 78rem) / 2));
+}
+
+@media (max-width: 68rem) {
+  .mesa { grid-template-columns: minmax(0, 1fr); gap: var(--e5); }
+  .acompanhamento { position: static; order: -1; }
+  .conversa-coluna { max-width: none; }
+  .coluna-trabalho:has(#conteudo[data-area="agora"]) .conversa { padding-right: var(--e5); padding-left: var(--e5); }
+}

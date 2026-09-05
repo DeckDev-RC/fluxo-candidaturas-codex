@@ -1,82 +1,93 @@
-/* Composição: navegação compacta, centro dedicado à tarefa, detalhe contextual (U2-04, U8-03). */
+/* Composição: navegação discreta à esquerda, coluna de trabalho clara com
+   largura de leitura, conversa fixa na base. Nada flutua sobre o conteúdo. */
 
-/* Três faixas: cabeçalho, área de trabalho com rolagem própria e conversa.
-   Nada flutua sobre o conteúdo, então nenhuma ação fica coberta. */
 .aplicacao {
   display: grid;
   grid-template-columns: var(--nav-largura) minmax(0, 1fr);
   height: 100vh;
+  background: var(--fundo);
 }
 
 .coluna-trabalho {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   min-height: 0;
+  background: var(--superficie);
+  border-left: 1px solid var(--linha);
 }
 
-/* Navegação lateral */
+/* Navegação lateral: mesma cor do fundo, sem moldura; a hierarquia vem do texto. */
 .navegacao {
   display: flex;
   flex-direction: column;
   gap: var(--e5);
   padding: var(--e4) var(--e3);
-  background: var(--papel);
-  border-right: 1px solid var(--linha);
+  min-width: 0;
 }
 
 .marca {
   display: flex;
   align-items: center;
   gap: var(--e2);
-  padding: 0 var(--e2);
+  padding: var(--e1) var(--e2);
   font-weight: var(--peso-forte);
-  letter-spacing: -0.02em;
+  letter-spacing: var(--traco-titulo);
   font-size: var(--texto-md);
+  color: var(--texto);
 }
 
-.marca svg { flex: none; }
+.marca svg { flex: none; color: var(--acao); }
 
-.navegacao nav ul { display: flex; flex-direction: column; gap: 2px; }
+.navegacao nav ul,
+.navegacao-rodape { display: flex; flex-direction: column; gap: 2px; }
 
 .navegacao a {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--e2);
-  padding: var(--e2) var(--e2);
+  gap: 0.625rem;
+  padding: 0.375rem var(--e2);
   border-radius: var(--raio);
-  color: var(--tinta);
+  color: var(--texto-2);
   text-decoration: none;
+  font-size: var(--texto-sm);
   font-weight: var(--peso-medio);
+  line-height: 1.4;
+  transition: background var(--duracao-curta) var(--curva), color var(--duracao-curta) var(--curva);
 }
 
-.navegacao a:hover { background: var(--selecao); }
+.navegacao a svg { flex: none; width: 1rem; height: 1rem; color: var(--texto-3); }
+.navegacao a:hover { background: var(--superficie-2); color: var(--texto); text-decoration: none; }
+.navegacao a:hover svg { color: var(--texto-2); }
 
 .navegacao a[aria-current="page"] {
-  background: var(--selecao);
-  /* O traço de percurso marca a área ativa; não depende só de cor (U8-01). */
-  box-shadow: inset 3px 0 0 var(--terracota);
+  background: var(--superficie-2);
+  color: var(--texto);
+  font-weight: var(--peso-forte);
 }
 
-.navegacao-rodape { margin-top: auto; display: flex; flex-direction: column; gap: 2px; }
+.navegacao a[aria-current="page"] svg { color: var(--acento); }
+.navegacao-rodape { margin-top: auto; }
 
-/* Cabeçalho compacto: objetivo ativo e decisões sempre visíveis (U2-02, U2-03) */
+/* Cabeçalho: uma linha, objetivo à esquerda e ações leves à direita. */
 .cabecalho {
   display: flex;
   align-items: center;
   gap: var(--e4);
-  flex-wrap: wrap;
-  padding: var(--e3) var(--e5);
-  background: var(--mineral);
+  min-height: 3.5rem;
+  padding: var(--e2) var(--e5);
   border-bottom: 1px solid var(--linha);
 }
 
-.objetivo-ativo { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
-.objetivo-ativo strong { font-size: var(--texto-md); font-weight: var(--peso-medio); }
-.cabecalho-acoes { display: flex; align-items: center; gap: var(--e2); }
+.objetivo-ativo { display: flex; flex-direction: column; gap: 0; min-width: 0; flex: 1; }
+.objetivo-ativo .etiqueta { display: none; }
+.objetivo-ativo strong { font-size: var(--texto-base); font-weight: var(--peso-forte); letter-spacing: var(--traco-titulo); }
+.objetivo-ativo .apoio { font-size: var(--texto-xs); }
+.cabecalho-acoes { display: flex; align-items: center; gap: var(--e2); flex-wrap: wrap; justify-content: flex-end; }
+.cabecalho-acoes .botao { min-height: 2rem; padding: var(--e1) var(--e3); font-size: var(--texto-sm); }
 
+/* Área de trabalho: rolagem própria e conteúdo em largura de leitura. */
 .area {
-  padding: var(--e5);
+  padding: var(--e6) var(--e5);
   overflow: auto;
   min-height: 0;
   display: flex;
@@ -84,13 +95,17 @@
   gap: var(--e5);
 }
 
-.area-titulo { display: flex; flex-direction: column; gap: var(--e1); }
+.area > * { width: 100%; max-width: var(--conteudo-maximo); margin-inline: auto; }
+.area .area { padding: 0; }
+
+.area-titulo { display: flex; flex-direction: column; gap: var(--e2); padding-bottom: var(--e2); }
+.area-titulo .etiqueta { display: none; }
 
 /* Lista + detalhe: a lista não recomeça ao voltar do detalhe */
 .lista-detalhe {
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--detalhe-largura);
-  gap: var(--e5);
+  gap: var(--e4);
   align-items: start;
 }
 
@@ -102,22 +117,46 @@
   top: 0;
   max-height: calc(100vh - 12rem);
   overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--e2);
 }
 
-/* Janela estreita: o detalhe passa a ocupar a página inteira (U8-03) */
+/* Conversa: faixa fixa na base, alinhada à largura de leitura. */
+.conversa {
+  display: flex;
+  gap: var(--e2);
+  padding: var(--e3) max(var(--e5), calc((100% - var(--conteudo-maximo)) / 2)) var(--e4);
+  border-top: 1px solid var(--linha);
+  background: var(--superficie);
+}
+
+.conversa input {
+  flex: 1;
+  min-height: 2.75rem;
+  padding: var(--e2) var(--e4);
+  border-radius: var(--raio-lg);
+  border-color: var(--linha-forte);
+  background: var(--fundo);
+  font-size: var(--texto-base);
+}
+
+.conversa input:focus-visible { outline: none; border-color: var(--acento); box-shadow: 0 0 0 3px var(--acento-fraco); }
+
+.conversa .botao {
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+  padding: 0 var(--e3);
+  border-radius: var(--raio-lg);
+}
+
+/* Janela estreita: a navegação vira faixa e o detalhe ocupa a página. */
 @media (max-width: 68rem) {
   .aplicacao { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
-  .navegacao {
-    flex-direction: row;
-    align-items: center;
-    gap: var(--e3);
-    overflow-x: auto;
-    border-right: 0;
-    border-bottom: 1px solid var(--linha);
-  }
-  .navegacao nav ul { flex-direction: row; }
-  .navegacao-rodape { margin-top: 0; flex-direction: row; }
-  .navegacao a[aria-current="page"] { box-shadow: inset 0 -3px 0 var(--terracota); }
+  .coluna-trabalho { border-left: 0; border-top: 1px solid var(--linha); }
+  .navegacao { flex-direction: row; align-items: center; gap: var(--e3); overflow-x: auto; padding: var(--e2) var(--e3); }
+  .navegacao nav ul, .navegacao-rodape { flex-direction: row; }
+  .navegacao-rodape { margin-top: 0; margin-left: auto; }
   .lista-detalhe { grid-template-columns: minmax(0, 1fr); }
   .detalhe { position: static; max-height: none; }
   .lista-detalhe[data-detalhe="aberto"] .lista { display: none; }
@@ -125,17 +164,8 @@
 
 @media (max-width: 48rem) {
   .area { padding: var(--e4); }
-  .cabecalho { padding: var(--e3) var(--e4); }
+  .cabecalho { padding: var(--e2) var(--e4); }
   .conversa { padding: var(--e3) var(--e4); }
+  .navegacao a span { display: none; }
+  .navegacao a { padding: var(--e2); }
 }
-
-/* Conversa no rodapé da área de trabalho, em faixa própria (U4-06) */
-.conversa {
-  display: flex;
-  gap: var(--e2);
-  padding: var(--e3) var(--e5);
-  background: var(--mineral);
-  border-top: 1px solid var(--linha);
-}
-
-.conversa input { flex: 1; }

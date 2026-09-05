@@ -24,16 +24,7 @@ export function journeyPanel(jornada) {
     id: 'painel-percurso',
     children: [
       conexao,
-      el('ol', { class: 'percurso', id: 'percurso' }, (jornada.plano ?? []).map((etapa) => {
-        const [rotulo, tom] = SITUACOES[etapa.status] ?? SITUACOES.pending;
-        return el('li', { dataset: { status: etapa.status ?? 'pending' } }, [
-          el('span', { class: 'marco', 'aria-hidden': 'true' }),
-          el('div', {}, [
-            el('p', { class: 'etapa-nome', text: etapa.label ?? etapa.id }),
-            badge(rotulo, tom)
-          ])
-        ]);
-      })),
+      journeySteps(jornada),
       el('details', { class: 'suporte' }, [
         el('summary', { text: 'Ver o trabalho dos especialistas' }),
         el('div', { class: 'regiao-mensagens' }, (jornada.atualizacoes ?? []).slice(-8).reverse().map((item) => el('p', {
@@ -45,6 +36,20 @@ export function journeyPanel(jornada) {
       ])
     ]
   });
+}
+
+// Só a lista de etapas, para compor em outros lugares (acompanhamento).
+export function journeySteps(jornada) {
+  return el('ol', { class: 'percurso', id: 'percurso' }, (jornada.plano ?? []).map((etapa) => {
+    const [rotulo, tom] = SITUACOES[etapa.status] ?? SITUACOES.pending;
+    return el('li', { dataset: { status: etapa.status ?? 'pending' } }, [
+      el('span', { class: 'marco', 'aria-hidden': 'true' }),
+      el('div', {}, [
+        el('p', { class: 'etapa-nome', text: etapa.label ?? etapa.id }),
+        badge(rotulo, tom)
+      ])
+    ]);
+  }));
 }
 
 async function exportarEvidencias() {

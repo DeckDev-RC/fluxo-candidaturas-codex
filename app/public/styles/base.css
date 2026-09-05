@@ -1,26 +1,37 @@
-/* Base tipográfica, foco visível e comportamento de leitura (U7, U8). */
+/* Base tipográfica, foco visível e comportamento de leitura. */
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/InterVariable.woff2") format("woff2");
+}
 
 *,
 *::before,
 *::after { box-sizing: border-box; }
 
-html { color-scheme: light; }
+html { color-scheme: light dark; }
 
 body {
   margin: 0;
-  background: var(--mineral);
-  color: var(--tinta);
+  background: var(--fundo);
+  color: var(--texto);
   font-family: var(--fonte);
   font-size: var(--texto-base);
   line-height: var(--altura-leitura);
+  font-feature-settings: "cv11", "ss01";
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 h1, h2, h3, h4 {
   margin: 0;
   line-height: var(--altura-densa);
-  font-weight: var(--peso-medio);
-  letter-spacing: -0.01em;
+  font-weight: var(--peso-forte);
+  letter-spacing: var(--traco-titulo);
+  text-wrap: balance;
 }
 
 h1 { font-size: var(--texto-xl); }
@@ -31,36 +42,41 @@ h4 { font-size: var(--texto-base); }
 p { margin: 0; }
 ul, ol { margin: 0; padding: 0; list-style: none; }
 dl, dd, dt { margin: 0; }
+svg { display: block; }
 
 a {
-  color: var(--terracota);
+  color: var(--acento);
+  text-decoration: none;
   text-underline-offset: 0.2em;
 }
 
-a:hover { color: var(--terracota-escura); }
+a:hover { color: var(--acento-forte); text-decoration: underline; }
 
-/* Foco sempre visível e com contraste próprio, inclusive sobre terracota. */
+/* Foco sempre visível, com anel próprio, inclusive sobre o botão de ação. */
 :focus-visible {
-  outline: 2px solid var(--tinta);
+  outline: 2px solid var(--anel-foco);
   outline-offset: 2px;
   border-radius: var(--raio-sm);
 }
 
+/* Rótulo de seção: pequeno e discreto, sem gritar em caixa alta. */
 .etiqueta {
   font-size: var(--texto-xs);
   letter-spacing: var(--traco-etiqueta);
-  text-transform: uppercase;
-  color: var(--tinta-suave);
+  color: var(--texto-3);
   font-weight: var(--peso-medio);
 }
+
+.etiqueta::first-letter { text-transform: uppercase; }
 
 .numero {
   font-family: var(--fonte-numeros);
   font-variant-numeric: tabular-nums;
+  letter-spacing: var(--traco-titulo);
 }
 
-.secundario { color: var(--tinta-media); }
-.apoio { color: var(--tinta-suave); font-size: var(--texto-sm); }
+.secundario { color: var(--texto-2); }
+.apoio { color: var(--texto-3); font-size: var(--texto-sm); }
 .leitura { max-width: var(--leitura-maxima); }
 
 .pular-para-conteudo {
@@ -69,7 +85,7 @@ a:hover { color: var(--terracota-escura); }
   top: var(--e3);
   z-index: 50;
   padding: var(--e2) var(--e3);
-  background: var(--papel);
+  background: var(--superficie);
   border: 1px solid var(--linha-controle);
   border-radius: var(--raio);
   transform: translateY(-200%);
@@ -90,8 +106,13 @@ a:hover { color: var(--terracota-escura); }
   border: 0;
 }
 
-/* Texto longo permanece legível: quebra em palavra e nunca corta ação (U8-04). */
+/* Texto longo permanece legível: quebra em palavra e nunca corta ação. */
 .quebra { overflow-wrap: anywhere; }
+
+::selection { background: var(--acento-fraco); }
+
+/* Barra de rolagem discreta, coerente com a superfície. */
+* { scrollbar-width: thin; scrollbar-color: var(--linha-forte) transparent; }
 
 @media (forced-colors: active) {
   .cartao, .painel, .item-lista { border: 1px solid CanvasText; }

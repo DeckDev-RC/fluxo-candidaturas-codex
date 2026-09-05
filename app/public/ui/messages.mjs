@@ -5,8 +5,17 @@ import { el, replace } from '../core/dom.mjs';
 
 const mensagens = [];
 const AGRUPAR_MS = 4000;
+const espelhos = new Set();
+
+// Quem quiser refletir os avisos em outro lugar (a conversa, por exemplo)
+// registra aqui. O aviso continua persistente na região própria.
+export function onNotice(listener) {
+  espelhos.add(listener);
+  return () => espelhos.delete(listener);
+}
 
 export function notice(texto, tom = 'informacao', { acao } = {}) {
+  for (const espelho of espelhos) espelho(texto, tom);
   const agora = Date.now();
   const anterior = mensagens.at(-1);
   if (anterior && anterior.texto === texto && agora - anterior.em < AGRUPAR_MS) {

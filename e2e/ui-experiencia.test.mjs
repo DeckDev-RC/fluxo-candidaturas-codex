@@ -22,7 +22,7 @@ test('U10-04 — teclado, foco e diálogo sem armadilha', { timeout: 120_000 }, 
     await page.keyboard.press('Tab');
     rotulos.push(await foco(page));
   }
-  for (const area of ['Agora', 'Oportunidades', 'Candidaturas', 'Meu perfil']) {
+  for (const area of ['Conversa', 'Oportunidades', 'Candidaturas', 'Meu perfil']) {
     assert.ok(rotulos.includes(area), `${area} precisa estar na ordem de foco; observado: ${rotulos.join(' | ')}`);
   }
 

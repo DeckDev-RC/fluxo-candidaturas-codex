@@ -4,8 +4,8 @@
 import { badge, button, el, field, panel } from '../core/dom.mjs';
 import { dataHora, duracao, numero } from '../core/format.mjs';
 import { read, send } from '../core/api.mjs';
-import { loadAiStatus, loadState, store } from '../core/store.mjs';
-import { executarPreparacao } from '../core/actions.mjs';
+import { loadAiStatus, store } from '../core/store.mjs';
+import { executarPreparacao, salvarPlataformas } from '../core/actions.mjs';
 import { notice } from '../ui/messages.mjs';
 import { openDialog } from '../ui/dialog.mjs';
 import { rerender } from '../core/router.mjs';
@@ -106,9 +106,8 @@ function plataformasPanel() {
           onClick: async () => {
             const plataformas = [...escolhas].map(([nome, campos]) => ({ name: nome, enabled: campos.habilitada.checked, goal: Number(campos.meta.value) || 0 }));
             try {
-              await send('/api/v1/campaign', { platforms: plataformas }, { method: 'PUT' });
-              notice('Plataformas e metas atualizadas. Vale para as próximas buscas.', 'sucesso');
-              await loadState();
+              const mudou = await salvarPlataformas(plataformas);
+              if (!mudou) notice('Nada mudou nas plataformas e metas.', 'informacao');
               rerender();
             } catch (error) { notice(error.message, 'erro'); }
           }

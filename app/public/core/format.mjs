@@ -10,6 +10,11 @@ export function dataHora(valor) {
   return data ? DATA_HORA.format(data) : 'não informado';
 }
 
+export function hora(valor) {
+  const data = paraData(valor);
+  return data ? HORA.format(data) : '';
+}
+
 export function dataLonga(valor) {
   const data = paraData(valor);
   return data ? DATA.format(data) : 'não informado';

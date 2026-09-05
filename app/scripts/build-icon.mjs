@@ -3,14 +3,13 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 
-// Gera o ícone do aplicativo a partir da mesma marca da interface: um traço que
-// sobe, atravessa e termina em um ponto. Sem dependência de biblioteca gráfica,
-// para o build continuar reproduzível offline.
+// Gera o ícone do aplicativo a partir da mesma marca da interface (favicon.svg):
+// quadrado de tinta com o traço que sobe e desce. Sem dependência de biblioteca
+// gráfica, para o build continuar reproduzível offline.
 
 const TAMANHO = 256;
-const MINERAL = [244, 243, 239];
-const TERRACOTA = [180, 72, 50];
-const TINTA = [32, 38, 43];
+const TINTA = [17, 17, 19];
+const BRANCO = [255, 255, 255];
 
 const TABELA_CRC = Array.from({ length: 256 }, (_, indice) => {
   let valor = indice;
@@ -26,19 +25,15 @@ console.log(`Ícone gerado: build/icon.png (${TAMANHO}×${TAMANHO}, marca do Flu
 
 function desenhar() {
   const pixels = Buffer.alloc(TAMANHO * TAMANHO * 4);
-  const raioCanto = TAMANHO * 0.22;
-  const espessura = TAMANHO * 0.085;
-  const centroPonto = { x: TAMANHO * 0.78, y: TAMANHO * 0.70 };
-  const raioPonto = TAMANHO * 0.085;
+  const raioCanto = TAMANHO * 0.25;
+  const espessura = TAMANHO * 0.094;
 
   for (let y = 0; y < TAMANHO; y += 1) {
     for (let x = 0; x < TAMANHO; x += 1) {
       const indice = (y * TAMANHO + x) * 4;
       if (!dentroDoCantoArredondado(x, y, raioCanto)) { pixels.writeUInt32BE(0, indice); continue; }
 
-      let cor = MINERAL;
-      if (distanciaAoTraco(x, y) <= espessura / 2) cor = TERRACOTA;
-      if (Math.hypot(x - centroPonto.x, y - centroPonto.y) <= raioPonto) cor = TINTA;
+      const cor = distanciaAoTraco(x, y) <= espessura / 2 ? BRANCO : TINTA;
 
       pixels[indice] = cor[0];
       pixels[indice + 1] = cor[1];
@@ -50,7 +45,7 @@ function desenhar() {
 }
 
 // Traço: sobe da esquerda, cruza o centro e desce à direita, como a passagem
-// entre etapas da jornada.
+// entre etapas da jornada. Mesma curva do favicon.svg (M7 19.5 C… 16 11.5 s… 25 19.5).
 function distanciaAoTraco(x, y) {
   let menor = Infinity;
   for (let passo = 0; passo <= 200; passo += 1) {
@@ -65,16 +60,16 @@ function distanciaAoTraco(x, y) {
 function curva(t) {
   // Bézier cúbica em coordenadas relativas ao tamanho do ícone.
   const p = [
-    { x: 0.20, y: 0.72 },
-    { x: 0.36, y: 0.72 },
-    { x: 0.40, y: 0.28 },
-    { x: 0.50, y: 0.28 }
+    { x: 0.22, y: 0.61 },
+    { x: 0.36, y: 0.61 },
+    { x: 0.36, y: 0.36 },
+    { x: 0.50, y: 0.36 }
   ];
   const q = [
-    { x: 0.50, y: 0.28 },
-    { x: 0.60, y: 0.28 },
-    { x: 0.64, y: 0.70 },
-    { x: 0.78, y: 0.70 }
+    { x: 0.50, y: 0.36 },
+    { x: 0.64, y: 0.36 },
+    { x: 0.64, y: 0.61 },
+    { x: 0.78, y: 0.61 }
   ];
   const controles = t <= 0.5 ? p : q;
   const local = t <= 0.5 ? t * 2 : (t - 0.5) * 2;

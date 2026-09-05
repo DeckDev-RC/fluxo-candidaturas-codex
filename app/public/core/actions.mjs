@@ -19,7 +19,22 @@ export async function importarCurriculo(file) {
   return resultado;
 }
 
-export async function iniciarJornada({ objetivo, curriculo }) {
+// Plataformas e metas da campanha. Só grava quando algo mudou de fato.
+export async function salvarPlataformas(plataformas, { silencioso = false } = {}) {
+  const atuais = store.estado?.campaign?.platforms ?? [];
+  const iguais = plataformas.length === atuais.length && plataformas.every((item) => {
+    const atual = atuais.find((outro) => outro.name === item.name);
+    return atual && atual.enabled === item.enabled && Number(atual.goal ?? 0) === Number(item.goal ?? 0);
+  });
+  if (iguais) return false;
+  await send('/api/v1/campaign', { platforms: plataformas }, { method: 'PUT' });
+  if (!silencioso) notice('Plataformas e metas atualizadas. Vale para as próximas buscas.', 'sucesso');
+  await loadState();
+  return true;
+}
+
+export async function iniciarJornada({ objetivo, curriculo, plataformas: escolhidas }) {
+  if (escolhidas) await salvarPlataformas(escolhidas, { silencioso: true });
   const importado = curriculo ? await importarCurriculo(curriculo) : null;
   const plataformas = (store.estado?.campaign?.platforms ?? []).filter((item) => item.enabled !== false).map((item) => item.name);
   const resposta = await send('/api/v1/autopilot/start', {
