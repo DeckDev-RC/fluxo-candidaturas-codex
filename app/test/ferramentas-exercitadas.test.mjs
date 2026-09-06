@@ -78,6 +78,16 @@ test('toda ferramenta registrada é exercitada em uma jornada real, inclusive a 
     await assert.rejects(runtime.queueService.addQueueItem({ platform: 'INFOJOBS', company: 'Antiga Ltda', role: 'Desenvolvedor Ruby Sênior', identifierOrUrl: 'https://quadro.test/jobs/ruby-1' }), { code: 'queue_duplicate' });
     assert.equal((await chamar('fluxo_shortlist', { limit: 5 }, run.id)).items.length, 1, 'a comparação ignora as descartadas');
 
+    // A lista não traz requisitos (nota neutra); ler a página da vaga mede de verdade.
+    const lida = await chamar('fluxo_read_job', { itemId: lista.items[0].id }, run.id);
+    assert.deepEqual(lida.requirements, ['SQL', 'Python']);
+    assert.equal(lida.workMode, 'Remoto');
+    assert.equal(lida.fit.score, 50, 'um de dois requisitos batem com o perfil (SQL)');
+    const relida = (await runtime.queueService.listQueue()).items.find((item) => item.id === lista.items[0].id);
+    assert.deepEqual(relida.requirements, ['SQL', 'Python']);
+    assert.equal(relida.fitScore, 50);
+    await assert.rejects(chamar('fluxo_read_job', { itemId: 'nao-existe' }, run.id), { code: 'queue_item_not_found' });
+
     const preparada = await chamar('fluxo_prepare', { itemId: lista.items[0].id }, run.id);
     assert.ok(preparada.run.id);
     await chamar('fluxo_fill', { runId: preparada.run.id, fieldMap: { name: 'name' } }, run.id);
@@ -165,6 +175,7 @@ function criarQuadro(raiz) {
       },
       async snapshot() { return { ...pagina, observedAt: new Date().toISOString() }; },
       async state() { return { ...pagina, observedAt: new Date().toISOString() }; },
+      async readJobPage() { return { url: pagina.url, title: 'Vaga', description: 'Engenharia de dados. Trabalho remoto. Requisitos: SQL, Python.', requirements: ['SQL', 'Python'], eliminators: [], workMode: 'Remoto', salary: '' }; },
       async fill(ref, value) { pagina.formValues[ref] = value; },
       async click() { quadro.cliques += 1; quadro.efeitoDoClique?.(); },
       async screenshot(path) {

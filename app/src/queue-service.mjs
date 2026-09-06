@@ -98,6 +98,25 @@ export function createQueueService({ rootDir, persistence: injectedPersistence, 
       return { updated };
     },
 
+    // Detalhes lidos na página da vaga (requisitos, descrição, modalidade, local):
+    // só campos observados sobrescrevem; nada é apagado por falta de leitura.
+    async updateItemDetails(reference, details = {}) {
+      const queuePath = join(rootDir, 'fila', 'vagas.json');
+      const queue = await readQueue(rootDir, persistence);
+      const item = queue.find((entry) => entry.id === reference || entry.key === reference || entry.identifierOrUrl === reference);
+      if (!item) throw domainError('queue_item_not_found', `Item da fila não encontrado: ${reference}`);
+      const requirements = asArray(details.requirements).map(String).map((texto) => texto.trim()).filter(Boolean);
+      if (requirements.length) item.requirements = requirements;
+      if (asArray(details.eliminators).length) item.eliminators = asArray(details.eliminators).map(String);
+      for (const campo of ['description', 'workMode', 'location', 'salary', 'deadline']) {
+        if (String(details[campo] ?? '').trim()) item[campo] = String(details[campo]).trim().slice(0, campo === 'description' ? 4000 : 200);
+      }
+      item.detailsObservedAt = now().toISOString();
+      item.updatedAt = item.detailsObservedAt;
+      await saveQueue(queuePath, queue, persistence);
+      return item;
+    },
+
     // Descarte a pedido da pessoa: por identificadores ou por texto (cargo/empresa).
     // A vaga fica registrada como "descartada": não volta como novidade na próxima busca.
     async discardItems({ ids = [], query = '', reason = '' } = {}) {
@@ -149,7 +168,7 @@ export function createQueueService({ rootDir, persistence: injectedPersistence, 
       return { reference: item.id, attempts, maximum, status: item.status, error: item.lastError };
     }
   };
-  return wrapMutations(service, ['addQueueItem', 'claimNext', 'recordFit', 'discardItems', 'recordQueueFailure'], { rootDir, mutationLock, lock });
+  return wrapMutations(service, ['addQueueItem', 'claimNext', 'recordFit', 'updateItemDetails', 'discardItems', 'recordQueueFailure'], { rootDir, mutationLock, lock });
 }
 
 async function useSqlite(persistence) { return Boolean(persistence?.isSqliteAuthority && await persistence.isSqliteAuthority()); }

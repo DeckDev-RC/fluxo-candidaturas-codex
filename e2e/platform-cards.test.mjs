@@ -47,7 +47,9 @@ test('desafios são detectados pela estrutura da página, não pelo texto das va
     // Página de visitante como a do LinkedIn: sem campo de senha, URL neutra, mas "Sign in" no topo.
     '/visitante': '<nav style="height:60px"><a href="/">Logo</a><a href="https://x.test/signup">Join now</a><a href="https://x.test/login?x=1">Sign in</a></nav><h1>Cadastre-se agora e descubra vagas</h1>',
     // Página de quem já entrou: o único "Entrar" está no rodapé, longe do topo.
-    '/entrou': '<nav style="height:60px"><a href="/">Logo</a><a href="/perfil">Minha área</a></nav><div style="height:1200px"></div><footer><a href="/login">Entrar</a></footer>'
+    '/entrou': '<nav style="height:60px"><a href="/">Logo</a><a href="/perfil">Minha área</a></nav><div style="height:1200px"></div><footer><a href="/login">Entrar</a></footer>',
+    // Página de vaga como as das plataformas: requisitos em lista sob um título, modalidade no texto.
+    '/vaga': '<main><h1>Engenheira de Dados</h1><p>Vaga 100% remota, contratação CLT. Faixa R$ 9.000 a R$ 12.000.</p><h3>Requisitos</h3><ul><li>SQL avançado</li><li>Python</li><li>Spark</li></ul><h3>Requisitos obrigatórios</h3><ul><li>Inglês fluente</li></ul><h3>Benefícios</h3><ul><li>Vale-refeição</li></ul></main>'
   };
   const servidor = createServer((request, response) => { response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); response.end(`<!doctype html><title>Teste</title>${paginas[request.url] ?? ''}`); });
   await new Promise((resolve) => servidor.listen(0, '127.0.0.1', resolve));
@@ -72,6 +74,14 @@ test('desafios são detectados pela estrutura da página, não pelo texto das va
   assert.equal((await driver.loginState()).loginPending, true, 'botão de entrar/cadastrar no topo é login pendente');
   await driver.goto(`${base}/entrou`);
   assert.equal((await driver.loginState()).loginPending, false, 'link de entrar no rodapé não conta');
+  // Leitura da página da vaga: requisitos da lista certa, obrigatórios separados, modalidade e faixa.
+  await driver.goto(`${base}/vaga`);
+  const vaga = await driver.readJobPage();
+  assert.deepEqual(vaga.requirements, ['SQL avançado', 'Python', 'Spark'], 'benefícios não entram como requisito');
+  assert.deepEqual(vaga.eliminators, ['Inglês fluente']);
+  assert.equal(vaga.workMode, 'Remoto');
+  assert.match(vaga.salary, /^R\$ 9\.000 a R\$ 12\.000/);
+  assert.match(vaga.description, /Engenheira de Dados/);
 });
 
 test('o catálogo de cartões é válido: expressões compilam e seletores são aceitos pelo navegador', { timeout: 30_000 }, async () => {

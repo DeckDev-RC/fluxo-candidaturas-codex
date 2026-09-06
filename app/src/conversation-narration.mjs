@@ -25,6 +25,7 @@ const INICIO = {
   fluxo_browser_status: () => 'Conferindo as abas do navegador.',
   fluxo_discover: (a) => `Buscando vagas em ${plataforma(a.platform)}.`,
   fluxo_discard: (a) => `Descartando ${a.query ? `as vagas de "${a.query}"` : 'as vagas indicadas'} da fila.`,
+  fluxo_read_job: () => 'Lendo a página da vaga para medir a aderência.',
   fluxo_shortlist: () => 'Comparando as vagas encontradas com os seus dados confirmados.',
   fluxo_prepare: () => 'Abrindo a vaga escolhida e o formulário de candidatura.',
   fluxo_fill: () => 'Preenchendo o formulário só com dados confirmados.',
@@ -56,6 +57,7 @@ const FIM = {
     return { texto: `${criadas} vaga(s) nova(s) observada(s) em ${plataforma(a.platform)}.` };
   },
   fluxo_discard: (a, r) => ({ texto: `${Number(r.discarded ?? 0)} vaga(s) descartada(s); ${Number(r.remaining ?? 0)} continuam na fila.` }),
+  fluxo_read_job: (a, r) => ({ texto: r.requirements?.length ? `${r.role ?? 'Vaga'} em ${r.company ?? 'empresa'}: ${r.requirements.length} requisito(s) lidos, aderência ${r.fit?.classification ?? ''} ${r.fit?.score ?? ''}%.` : `${r.role ?? 'Vaga'}: a página não lista requisitos de forma reconhecível.` }),
   fluxo_shortlist: (a, r) => ({ texto: `${(r.items ?? r.shortlist ?? []).length} vaga(s) elegível(is) após a comparação.` }),
   fluxo_prepare: (a, r) => ({ texto: `Formulário aberto para ${r.item?.role ?? 'a vaga'} em ${r.item?.company ?? 'empresa não informada'}.` }),
   fluxo_fill: () => ({ texto: 'Campos preenchidos com dados confirmados.' }),
