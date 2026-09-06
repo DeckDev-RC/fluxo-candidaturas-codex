@@ -23,17 +23,22 @@ export function lerCartoesDeVaga(catalogo, empresaDesconhecida) {
   if (!entrada) return [];
   const link = new RegExp(entrada.link, 'i');
   const texto = (elemento) => (elemento?.innerText ?? '').replace(/\s+/g, ' ').trim();
+  // Título: só a primeira linha. O LinkedIn repete o título num trecho oculto para
+  // leitores de tela, e o innerText traria "Cargo X Cargo X".
+  const primeiraLinha = (elemento) => String(elemento?.innerText ?? '').split('\n').map((linha) => linha.trim()).find(Boolean) ?? '';
   const vistos = new Set();
   const vagas = [];
   for (const ancora of document.querySelectorAll('a[href]')) {
     if (!link.test(ancora.href) || vistos.has(ancora.href)) continue;
     const cartao = ancora.closest(entrada.card) ?? ancora;
     const linhas = String(ancora.innerText ?? '').split('\n').map((linha) => linha.trim()).filter(Boolean);
-    const titulo = texto(cartao.querySelector(entrada.title)) || ancora.getAttribute('title') || linhas[linhas.length > 1 ? 1 : 0] || '';
+    const titulo = primeiraLinha(cartao.querySelector(entrada.title)) || ancora.getAttribute('title') || linhas[linhas.length > 1 ? 1 : 0] || '';
     if (!titulo) continue;
     vistos.add(ancora.href);
     const empresa = texto(cartao.querySelector(entrada.company)) || (linhas.length > 1 && linhas[0] !== titulo ? linhas[0] : '') || empresaDesconhecida;
-    vagas.push({ title: titulo, company: empresa, url: ancora.href, id: ancora.href, location: texto(cartao.querySelector(entrada.location)), requirements: [], deadline: '', source: 'card' });
+    // Sem `source`: a plataforma da vaga é a da página, não "card" (isso virava a
+    // plataforma exibida e a contagem de metas).
+    vagas.push({ title: titulo, company: empresa, url: ancora.href, id: ancora.href, location: texto(cartao.querySelector(entrada.location)), requirements: [], deadline: '', observedFrom: 'card' });
   }
   return vagas;
 }
