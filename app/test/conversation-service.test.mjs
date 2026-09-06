@@ -384,6 +384,10 @@ test('separarAcoes, contexto e narração não vazam segredo nem vocabulário t�
   assert.match(contexto, /Vagas aguardando na fila: 3/);
   assert.match(contexto, /GUPY \(login pendente\)/);
   assert.doesNotMatch(contexto, /token|senha/i);
+  assert.doesNotMatch(contexto, /Plataforma em foco/, 'sem ação anterior não há plataforma em foco');
+  // Achado real (20:00): com o LinkedIn aberto, "procure a vaga mais promissora" abriu a Gupy.
+  // A plataforma em que a IA agiu por último entra no contexto como o "aqui" implícito.
+  assert.match(montarContexto({ plataformaEmFoco: 'LINKEDIN' }), /Plataforma em foco: LINKEDIN \(foi a última em que você agiu; um pedido sem plataforma nomeada é sobre ela\)/);
   const revisao = resumirFerramenta({ tool: 'fluxo_review', arguments: { runId: 'r' }, ok: true, result: { id: 'ap-1' } });
   assert.equal(revisao.espera.kind, 'approval');
   assert.equal(revisao.espera.approvalId, 'ap-1');
@@ -406,12 +410,13 @@ test('o retrato distingue espera pela pessoa de pausa deliberada', async () => {
     memoryService: { safeSummary: async () => ({ facts: { name: { confirmed: true, value: 'Pessoa Teste' }, targetRoles: { confirmed: true, value: 'Dev' } }, gaps: [] }) },
     approvalService: { listApprovals: () => [] },
     runtimeHealth: { snapshot: async () => ({ available: true }) },
-    browserAdapter: { tabs: async () => [{ platform: 'GUPY', loginPending: false, challenge: null }] }
+    browserAdapter: { tabs: async () => [{ platform: 'GUPY', loginPending: false, challenge: null }], activePlatform: () => 'LINKEDIN' }
   };
   const comEventos = (eventos) => ({ listRuns: () => [{ id: 'r1', kind: 'autopilot', status: 'paused', goal: 'x' }], listEvents: () => eventos });
   const esperando = await retratoParaConversa({ ...base, runService: comEventos([{ type: 'autopilot.waiting_user' }]) });
   assert.match(esperando.jornada, /aguardando você/);
   assert.equal(esperando.abas[0].platform, 'GUPY');
+  assert.equal(esperando.plataformaEmFoco, 'LINKEDIN', 'a última plataforma em que a IA agiu vai ao retrato');
   const pausada = await retratoParaConversa({ ...base, runService: comEventos([{ type: 'run.paused' }]) });
   assert.match(pausada.jornada, /pausada pela pessoa/);
 });

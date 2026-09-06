@@ -46,7 +46,10 @@ export async function retratoParaConversa({ rootDir, persistence, memoryService,
     fila,
     decisoes: aprovacoes,
     jornada: descreverExecucao(execucao, pausadaPelaPessoa),
-    abas: (abas ?? []).map((aba) => ({ platform: aba.platform, loginPending: aba.loginPending === true, challenge: aba.challenge ?? null }))
+    abas: (abas ?? []).map((aba) => ({ platform: aba.platform, loginPending: aba.loginPending === true, challenge: aba.challenge ?? null })),
+    // A plataforma em que a IA agiu por último nesta sessão: é o "aqui" implícito de
+    // um pedido como "procure a vaga mais promissora" sem nomear a plataforma.
+    plataformaEmFoco: String(browserAdapter?.activePlatform?.() ?? '')
   };
 }
 
