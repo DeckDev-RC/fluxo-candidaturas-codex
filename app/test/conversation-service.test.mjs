@@ -72,6 +72,7 @@ test('um turno abre a thread com ferramentas, vincula um run e entrega a respost
   assert.equal(runService.getRun('run-1').agentThreadId, 'thread-conversa');
   assert.match(chamadas[1][1].text, /CONTEXTO ATUAL/);
   assert.match(chamadas[1][1].text, /Pessoa: oi, o que eu faço\?/);
+  assert.doesNotMatch(chamadas[1][1].text, /Sessão: app reaberto/, 'thread criada agora não é retomada');
   assert.ok(runService.eventos.some((evento) => evento.type === 'conversation.user'), 'a fala da pessoa fica no histórico do run');
 
   // A thread é persistida: a próxima mensagem não abre outra nem outro run.
@@ -137,6 +138,14 @@ test('thread gravada é retomada; se o app-server não a conhece, outra começa 
   assert.deepEqual(chamadas.filter(([m]) => m === 'thread/resume').map(([, p]) => p.threadId), ['thread-antiga']);
   assert.equal(chamadas.some(([m]) => m === 'thread/start'), false);
   assert.match(chamadas.find(([m]) => m === 'thread/resume')[1].developerInstructions, /Nunca aprove um envio/);
+  // Achado do teste real: um "oi" após reabrir fazia a IA retomar o InfoJobs sozinha.
+  // O primeiro turno após a retomada avisa que o app foi reaberto; os seguintes, não.
+  const turnos = chamadas.filter(([m]) => m === 'turn/start');
+  assert.match(turnos[0][1].text, /Sessão: app reaberto agora/);
+  const segundoFim = ate(service, 'turn.completed');
+  await service.turn('pode continuar');
+  await segundoFim;
+  assert.doesNotMatch(chamadas.filter(([m]) => m === 'turn/start')[1][1].text, /Sessão: app reaberto/);
 
   // 2) O app-server não conhece a thread nem na retomada nem no turno: nova thread, turno repetido, sem erro.
   const outraRaiz = await mkdtemp(join(tmpdir(), 'fluxo-conversa-perdida-'));

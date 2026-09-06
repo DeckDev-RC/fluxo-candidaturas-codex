@@ -4,9 +4,11 @@ import { createHash } from 'node:crypto';
 import { platformOfUrl } from './platform-search.mjs';
 import { CARTOES_DE_VAGA, EMPRESA_DESCONHECIDA, lerCartoesDeVaga } from './platform-cards.mjs';
 
-// O leitor de cartões entra na página junto com o catálogo, como texto.
+// O leitor de cartões e o detector de desafios entram na página como texto.
 // eslint-disable-next-line no-new-func
-const OBSERVAR_PAGINA = new Function('args', `const [catalogo, empresaDesconhecida] = args; const lerCartoesDeVaga = ${lerCartoesDeVaga.toString()}; return (${observePage.toString()})(catalogo, empresaDesconhecida, lerCartoesDeVaga);`);
+const OBSERVAR_PAGINA = new Function('args', `const [catalogo, empresaDesconhecida] = args; const lerCartoesDeVaga = ${lerCartoesDeVaga.toString()}; const detectarDesafio = ${detectarDesafio.toString()}; return (${observePage.toString()})(catalogo, empresaDesconhecida, lerCartoesDeVaga, detectarDesafio);`);
+// eslint-disable-next-line no-new-func
+const OBSERVAR_LOGIN = new Function(`const detectarDesafio = ${detectarDesafio.toString()}; return (${observeLogin.toString()})(detectarDesafio);`);
 // Páginas de busca renderizam a lista depois do HTML: esperar a rede assentar
 // evita fotografar a página antes das vagas aparecerem.
 const ESPERA_RENDERIZACAO_MS = 8_000;
@@ -119,19 +121,19 @@ export function createPlaywrightDriver({ rootDir, headless = false, browserType,
       await assentar(alvo);
       if (host?.showTab) await host.showTab(ativa).catch(() => {});
       else await alvo.bringToFront().catch(() => {});
-      return { platform: ativa, ...(await alvo.evaluate(observeLogin)) };
+      return { platform: ativa, ...(await alvo.evaluate(OBSERVAR_LOGIN)) };
     },
     async loginState(platform) {
       const alvo = platform ? abas.get(String(platform).toUpperCase()) : await getPage();
       if (!alvo || alvo.isClosed()) return { platform: String(platform ?? '').toUpperCase(), open: false };
-      return { platform: String(platform ?? '').toUpperCase(), open: true, ...(await alvo.evaluate(observeLogin)) };
+      return { platform: String(platform ?? '').toUpperCase(), open: true, ...(await alvo.evaluate(OBSERVAR_LOGIN)) };
     },
     async tabs() {
       const lista = [];
       for (const [plataforma, aba] of abas) {
         // A aba genérica do modo hospedado é interna: não é uma plataforma da pessoa.
         if (aba.isClosed() || plataforma === ABA_GENERICA) continue;
-        lista.push({ platform: plataforma, ...(await aba.evaluate(observeLogin).catch(() => ({ url: aba.url(), title: '', challenge: null, loginPending: false }))) });
+        lista.push({ platform: plataforma, ...(await aba.evaluate(OBSERVAR_LOGIN).catch(() => ({ url: aba.url(), title: '', challenge: null, loginPending: false }))) });
       }
       return lista;
     },
@@ -174,20 +176,33 @@ export function createPlaywrightDriver({ rootDir, headless = false, browserType,
 
 function error(code, message) { return Object.assign(new Error(message), { code }); }
 
+// Runs inside the page. Desafios são detectados pela estrutura (widgets de CAPTCHA,
+// campo de código de uso único, banner de consentimento), nunca pelo texto: em um
+// quadro de vagas qualquer palavra ("reconhecimento facial", "captcha") pode
+// estar na descrição de uma vaga.
+function detectarDesafio() {
+  const visivel = (el) => { if (!el) return false; const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+  const captcha = [...document.querySelectorAll('iframe[src*="recaptcha" i], iframe[src*="hcaptcha" i], iframe[src*="turnstile" i], iframe[src*="captcha" i], .g-recaptcha, .h-captcha, .cf-turnstile, #captcha, [id*="captcha" i]:not(a):not(script), input[name*="captcha" i]')].some(visivel);
+  const codigo = [...document.querySelectorAll('input[autocomplete="one-time-code"], input[name*="otp" i], input[id*="otp" i], input[name*="onetime" i], input[name*="verificationcode" i], input[name*="codigo" i][maxlength], input[inputmode="numeric"][maxlength="6"]')].some(visivel);
+  const challenge = captcha ? 'captcha' : codigo ? 'mfa' : null;
+  const contenedores = [...document.querySelectorAll('[role="dialog"], [aria-modal="true"], [id*="cookie" i], [class*="cookie" i], [id*="consent" i], [class*="consent" i], [id*="didomi" i], [id*="onetrust" i], [id*="cmp" i]')].filter(visivel);
+  const consentPending = contenedores.some((c) => [...c.querySelectorAll('button, [role="button"], a')].some((b) => visivel(b) && /^(aceitar|aceito|aceitar todos|accept|accept all|concordo|agree|i agree|permitir|allow)/i.test((b.innerText || '').trim())));
+  return { challenge, consentPending };
+}
+
 // Runs inside the page: só o necessário para saber se a pessoa precisa entrar.
-function observeLogin() {
-  const text = document.body?.innerText ?? '';
-  const challenge = /captcha/i.test(text) ? 'captcha' : /\bmfa\b|two.factor|multifator|c[oó]digo de verifica/i.test(text) ? 'mfa' : /(verifica|autentica|reconhecimento)\w*\s+(facial|biom\w+)|biometr\w+\s+(verification|authentication|check)/i.test(text) ? 'biometric' : null;
+function observeLogin(detectar = () => ({ challenge: null, consentPending: false })) {
+  const { challenge, consentPending } = detectar();
   const senha = Boolean(document.querySelector('input[type="password"]'));
   const urlDeLogin = /login|signin|sign-in|entrar|auth|autentica|checkpoint/i.test(location.pathname + location.search);
-  return { url: location.href, title: document.title, challenge, loginPending: senha || urlDeLogin };
+  return { url: location.href, title: document.title, challenge, consentPending, loginPending: senha || urlDeLogin };
 }
 
 // Runs inside the observed page. Only rendered facts and explicit structured job metadata are returned.
-// `lerCartoes` chega como argumento porque a função é serializada para a página.
-function observePage(catalogo = {}, empresaDesconhecida = '', lerCartoes = () => []) {
+// `lerCartoes` e `detectar` chegam como argumentos porque a função é serializada para a página.
+function observePage(catalogo = {}, empresaDesconhecida = '', lerCartoes = () => [], detectar = () => ({ challenge: null })) {
   const text = document.body?.innerText ?? '';
-  const challenge = /captcha/i.test(text) ? 'captcha' : /\bmfa\b|two.factor|multifator/i.test(text) ? 'mfa' : /(verifica|autentica|reconhecimento)\w*\s+(facial|biom\w+)|biometr\w+\s+(verification|authentication|check)/i.test(text) ? 'biometric' : null;
+  const { challenge } = detectar();
   const fields = []; const fieldDetails = []; const formValues = {};
   for (const [index, element] of [...document.querySelectorAll('input:not([type="hidden"]),textarea,select,button')].entries()) {
     const ref = element.getAttribute('data-fluxo-ref') || `field-${index}`;
