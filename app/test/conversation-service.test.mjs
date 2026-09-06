@@ -1,4 +1,4 @@
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -116,6 +116,68 @@ test('turno de sistema é rotulado, mensagem em curso bloqueia outra e a interru
   assert.equal((await falha).code, 'conversation_interrupted');
   assert.ok(chamadas.some(([metodo]) => metodo === 'turn/interrupt'));
   assert.equal(service.status().busy, false);
+});
+
+// Achado do teste real: após reinstalar, a thread gravada não existia mais no
+// app-server novo e a pessoa via "thread not found: 01a0…". A conversa deve
+// retomar a thread quando possível e, senão, abrir outra sem mostrar erro.
+test('thread gravada é retomada; se o app-server não a conhece, outra começa e o turno é repetido em silêncio', async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), 'fluxo-conversa-retomada-'));
+  await mkdir(join(rootDir, 'estado'), { recursive: true });
+  await writeFile(join(rootDir, 'estado', 'conversa.json'), JSON.stringify({ threadId: 'thread-antiga' }));
+
+  // 1) O app-server conhece a thread: retoma e não cria outra.
+  const { adapter, chamadas } = adaptadorFalso(() => [{ mensagem: 'Continuando de onde paramos.' }]);
+  adapter.resumeThread = async (threadId, params) => { chamadas.push(['thread/resume', { threadId, ...params }]); return { thread: { id: threadId } }; };
+  const service = createConversationService({ agentAdapter: adapter, rootDir, runService: runServiceFalso(), snapshot: async () => ({}) });
+  adapter.ligar(service);
+  const fim = ate(service, 'turn.completed');
+  await service.turn('oi de novo');
+  assert.equal((await fim).reply, 'Continuando de onde paramos.');
+  assert.deepEqual(chamadas.filter(([m]) => m === 'thread/resume').map(([, p]) => p.threadId), ['thread-antiga']);
+  assert.equal(chamadas.some(([m]) => m === 'thread/start'), false);
+  assert.match(chamadas.find(([m]) => m === 'thread/resume')[1].developerInstructions, /Nunca aprove um envio/);
+
+  // 2) O app-server não conhece a thread nem na retomada nem no turno: nova thread, turno repetido, sem erro.
+  const outraRaiz = await mkdtemp(join(tmpdir(), 'fluxo-conversa-perdida-'));
+  await mkdir(join(outraRaiz, 'estado'), { recursive: true });
+  await writeFile(join(outraRaiz, 'estado', 'conversa.json'), JSON.stringify({ threadId: 'thread-sumida' }));
+  const perdida = adaptadorFalso(() => [{ mensagem: 'Nova conversa, mesma pessoa.' }]);
+  perdida.adapter.resumeThread = async () => { throw new Error('thread not found: thread-sumida'); };
+  const original = perdida.adapter.runTurnForRun.bind(perdida.adapter);
+  let falhas = 0;
+  perdida.adapter.runTurnForRun = async (runId, threadId, texto) => {
+    if (threadId === 'thread-sumida') { falhas += 1; throw new Error('thread not found: thread-sumida'); }
+    return original(runId, threadId, texto);
+  };
+  const servico2 = createConversationService({ agentAdapter: perdida.adapter, rootDir: outraRaiz, runService: runServiceFalso(), snapshot: async () => ({}) });
+  perdida.adapter.ligar(servico2);
+  const eventos = [];
+  servico2.subscribe((evento) => eventos.push(evento.type));
+  const fim2 = ate(servico2, 'turn.completed');
+  await servico2.turn('ola abra o meu linkedin');
+  assert.equal((await fim2).reply, 'Nova conversa, mesma pessoa.');
+  assert.equal(falhas, 0, 'a retomada falhou antes do turno, então a thread nova já foi usada');
+  assert.equal(eventos.includes('turn.failed'), false, 'nenhum erro chega à tela');
+  assert.equal(JSON.parse(await readFile(join(outraRaiz, 'estado', 'conversa.json'), 'utf8')).threadId, 'thread-conversa');
+
+  // 3) A thread some entre a retomada e o turno: o turno é repetido numa thread nova.
+  const tardia = adaptadorFalso(() => [{ mensagem: 'Repeti seu pedido.' }]);
+  let retomadas = 0;
+  tardia.adapter.resumeThread = async (threadId) => { retomadas += 1; return { thread: { id: threadId } }; };
+  const originalTardia = tardia.adapter.runTurnForRun.bind(tardia.adapter);
+  let tentativasNaAntiga = 0;
+  tardia.adapter.runTurnForRun = async (runId, threadId, texto) => {
+    if (threadId === 'thread-antiga') { tentativasNaAntiga += 1; throw new Error('thread not found: thread-antiga'); }
+    return originalTardia(runId, threadId, texto);
+  };
+  const servico3 = createConversationService({ agentAdapter: tardia.adapter, rootDir, runService: runServiceFalso(), snapshot: async () => ({}) });
+  tardia.adapter.ligar(servico3);
+  const fim3 = ate(servico3, 'turn.completed');
+  await servico3.turn('continue');
+  assert.equal((await fim3).reply, 'Repeti seu pedido.');
+  assert.equal(tentativasNaAntiga, 1);
+  assert.equal(retomadas, 1);
 });
 
 test('notificações de outras threads são ignoradas e o turno expira com mensagem legível', async () => {
