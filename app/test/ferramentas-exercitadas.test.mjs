@@ -140,6 +140,11 @@ test('toda ferramenta registrada é exercitada em uma jornada real, inclusive a 
     await chamar('fluxo_browser_press', { platform: 'INFOJOBS', key: 'PageDown' }, run.id);
     await chamar('fluxo_browser_scroll', { platform: 'INFOJOBS', direction: 'down' }, run.id);
     await chamar('fluxo_browser_back', { platform: 'INFOJOBS' }, run.id);
+    await chamar('fluxo_browser_hover', { platform: 'INFOJOBS', role: 'link', name: 'Pessoa Alfa' }, run.id);
+    await chamar('fluxo_browser_wait', { platform: 'INFOJOBS', text: 'Convites' }, run.id);
+    const foto = await chamar('fluxo_browser_screenshot', { platform: 'INFOJOBS' }, run.id);
+    assert.match(foto.imagem, /^data:image\/png;base64,/);
+    assert.deepEqual(quadro.acoes.at(-1), { type: 'screenshot', ref: undefined, role: undefined, name: undefined });
     const aceitou = await chamar('fluxo_browser_click', { platform: 'INFOJOBS', ref: 'n2', confirmed: true }, run.id);
     assert.match(aceitou.text, /Convite aceito/);
     quadro.desafio = 'captcha';
@@ -218,8 +223,9 @@ function criarQuadro(raiz) {
       async act(platform, acao) {
         quadro.acoes.push(acao);
         if (acao.type === 'navigate') quadro.livre.url = acao.url;
-        if (acao.type === 'click' && acao.ref === 'n2') quadro.livre.texto = 'Convite aceito.';
+        if (acao.type === 'click' && (acao.ref === 'n2' || acao.name === 'Aceitar')) quadro.livre.texto = 'Convite aceito.';
         if (acao.type === 'type') quadro.livre.digitado = acao.text;
+        if (acao.type === 'screenshot') return { url: quadro.livre.url, title: 'Convites', width: 800, height: 600, imagem: `data:image/png;base64,${PNG.toString('base64')}` };
         return this.observe(platform, {});
       },
       async goto(url) {

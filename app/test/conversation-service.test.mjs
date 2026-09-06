@@ -372,7 +372,10 @@ test('separarAcoes, contexto e narração não vazam segredo nem vocabulário t�
   assert.deepEqual(separarAcoes('Confirme na tela.\nAÇÃO: limpar-conversa=sim').acoes, [{ tipo: 'limpar-conversa', valor: 'sim' }]);
   // Navegação livre e configuração narradas em pt-BR, sem nome de ferramenta.
   const livre = resumirFerramenta({ tool: 'fluxo_browser_click', arguments: { platform: 'LINKEDIN', ref: 'n2' }, ok: true, result: { url: 'https://www.linkedin.com/mynetwork/', title: 'Minha rede' } });
-  assert.equal(livre.inicio, 'Clicando na página.');
+  assert.equal(livre.inicio, 'Clicando em um elemento da página.');
+  assert.equal(resumirFerramenta({ tool: 'fluxo_browser_click', arguments: { platform: 'LINKEDIN', role: 'button', name: 'Mensagem' } }).inicio, 'Clicando em "Mensagem" da página.');
+  assert.match(resumirFerramenta({ tool: 'fluxo_browser_wait', arguments: { platform: 'LINKEDIN', text: 'Escreva uma mensagem' } }).inicio, /Esperando "Escreva uma mensagem" aparecer/);
+  assert.equal(resumirFerramenta({ tool: 'fluxo_browser_screenshot', arguments: { platform: 'LINKEDIN' } }).inicio, 'Olhando a tela.');
   assert.equal(livre.fim, 'Cliquei; agora em Minha rede.');
   assert.match(resumirFerramenta({ tool: 'fluxo_browser_navigate', arguments: { platform: 'LINKEDIN', url: 'https://www.linkedin.com/messaging/?x=1' } }).inicio, /Indo para linkedin\.com\/messaging em LinkedIn/);
   assert.match(resumirFerramenta({ tool: 'fluxo_browser_click', arguments: {}, ok: false, error: { code: 'confirmation_required', message: 'x' } }).fim, /preciso do seu sim/);
