@@ -124,7 +124,15 @@ async function start() {
     return { themeSource: nativeTheme.themeSource, escuro: nativeTheme.shouldUseDarkColors };
   });
   nativeTheme.on('updated', () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('fluxo:tema-mudou', { escuro: nativeTheme.shouldUseDarkColors }); });
-  ipcMain.handle('fluxo:abas-area', (event, retangulo) => { trusted(event); abas?.definirArea(retangulo && typeof retangulo === 'object' ? retangulo : null); return true; });
+  // O renderer mede em pixels CSS; a view é posicionada em pixels da janela.
+  // Com zoom da página (Ctrl + / Ctrl -) as duas escalas divergem: o fator vem daqui.
+  ipcMain.handle('fluxo:abas-area', (event, retangulo) => {
+    trusted(event);
+    if (!retangulo || typeof retangulo !== 'object') { abas?.definirArea(null); return true; }
+    const zoom = event.sender.getZoomFactor?.() || 1;
+    abas?.definirArea({ x: Number(retangulo.x) * zoom, y: Number(retangulo.y) * zoom, width: Number(retangulo.width) * zoom, height: Number(retangulo.height) * zoom });
+    return true;
+  });
   ipcMain.handle('fluxo:abas-mostrar', (event, platform) => { trusted(event); return abas?.mostrar(plataformaValida(platform)) ?? false; });
   ipcMain.handle('fluxo:abas-esconder', (event) => { trusted(event); abas?.esconder(); return true; });
   ipcMain.handle('fluxo:abas-listar', (event) => { trusted(event); return abas?.listar() ?? []; });

@@ -44,7 +44,7 @@
 }
 .abas-endereco { max-width: 60%; font-size: var(--texto-xs); text-align: right; }
 
-.conversa-coluna { min-width: 0; width: 100%; max-width: 46rem; margin-inline: auto; }
+.conversa-coluna { min-width: 0; width: 100%; max-width: 46rem; margin-inline: auto; container: conversa / inline-size; }
 .linha-do-tempo { display: flex; flex-direction: column; padding-bottom: var(--e4); }
 
 /* Balões: o Fluxo fala sem moldura, com a marca; a pessoa fala em tinta.
@@ -112,8 +112,14 @@
 }
 
 .situacao-fixa[data-visivel="true"] { display: grid; }
-.situacao-fixa-titulo { font-weight: var(--peso-forte); font-size: var(--texto-sm); letter-spacing: var(--traco-titulo); }
-.situacao-fixa .linha-acoes { flex-wrap: nowrap; }
+.situacao-fixa-titulo { font-weight: var(--peso-forte); font-size: var(--texto-sm); letter-spacing: var(--traco-titulo); min-width: 0; }
+.situacao-fixa .linha-acoes { flex-wrap: wrap; justify-content: flex-end; }
+/* Coluna estreita (navegador embutido ao lado): as ações descem para baixo do
+   título em vez de espremê-lo a uma letra por linha. */
+@container conversa (max-width: 36rem) {
+  .situacao-fixa { grid-template-columns: 1.5rem minmax(0, 1fr); }
+  .situacao-fixa .linha-acoes { grid-column: 2; justify-content: flex-start; }
+}
 .situacao-fixa .botao { min-height: 1.875rem; padding: var(--e1) var(--e3); font-size: var(--texto-xs); }
 .situacao-fixa .ocupado { display: none; }
 
