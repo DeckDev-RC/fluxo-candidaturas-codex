@@ -49,15 +49,45 @@ export function embeddedBrowserSection() {
     ativa ? null : el('p', { class: 'apoio', text: plataformas.length ? 'Escolha uma plataforma para vê-la aqui. A IA abre e navega nesta área; quando pedir login, você entra aqui mesmo.' : 'Habilite plataformas em "Ajustar plataformas e metas" para vê-las aqui.' })
   ]);
   acompanharArea(area);
-  return el('section', { class: 'acompanhamento-secao navegador-embutido' }, [
+  return el('section', { class: 'acompanhamento-secao navegador-embutido', dataset: { ampliado: String(ampliado) } }, [
     el('header', { class: 'acompanhamento-cabecalho' }, [
       el('h3', { text: 'Navegador' }),
-      abaAtiva ? el('span', { class: 'apoio quebra abas-endereco', text: abaAtiva.title || abaAtiva.url || '' }) : null
+      button(ampliado ? 'Reduzir' : 'Ampliar', { variant: 'texto', 'aria-pressed': String(ampliado), onClick: alternarAmpliacao })
     ]),
     faixa,
+    abaAtiva ? controlesDaAba(abaAtiva) : null,
     area,
     ativa ? el('div', { class: 'linha-acoes' }, [button('Esconder aba', { variant: 'texto', onClick: async () => { await window.fluxoDesktop.abas.esconder(); } })]) : null
   ]);
+}
+
+// Controles manuais da aba visível. A IA continua navegando pelo driver; isto é
+// para a pessoa se situar e desatar uma página presa.
+function controlesDaAba(aba) {
+  const abas = window.fluxoDesktop.abas;
+  return el('div', { class: 'abas-controles' }, [
+    button('‹', { class: 'botao botao-secundario botao-icone', 'aria-label': 'Voltar na aba', title: 'Voltar', onClick: () => abas.voltar(aba.platform) }),
+    button('↻', { class: 'botao botao-secundario botao-icone', 'aria-label': 'Recarregar a aba', title: 'Recarregar', onClick: () => abas.recarregar(aba.platform) }),
+    el('span', { class: 'abas-endereco', title: aba.url || '', text: enderecoLegivel(aba) }),
+    button('Abrir fora', { variant: 'texto', title: 'Abrir esta página no navegador do sistema', onClick: () => abas.abrirExterna(aba.platform) })
+  ]);
+}
+
+// "linkedin.com/jobs/search" em vez da URL inteira com parâmetros.
+function enderecoLegivel(aba) {
+  try {
+    const url = new URL(aba.url);
+    const caminho = url.pathname.replace(/\/$/, '');
+    return `${url.hostname.replace(/^www\./, '')}${caminho}`;
+  } catch { return aba.title || ''; }
+}
+
+let ampliado = false;
+function alternarAmpliacao() {
+  ampliado = !ampliado;
+  const atual = document.querySelector('.navegador-embutido');
+  if (atual) atual.replaceWith(embeddedBrowserSection());
+  requestAnimationFrame(publicarArea);
 }
 
 // Retorna um selo para a lista simples quando o embutido não existe.
@@ -97,7 +127,7 @@ function receberAbas(lista) {
   if (atual && mesmaEstrutura) {
     const endereco = atual.querySelector('.abas-endereco');
     const ativa = abasDaJanela.find((aba) => aba.visible);
-    if (endereco && ativa) endereco.textContent = ativa.title || ativa.url || '';
+    if (endereco && ativa) { endereco.textContent = enderecoLegivel(ativa); endereco.title = ativa.url || ''; }
     return;
   }
   if (atual) atual.replaceWith(embeddedBrowserSection());

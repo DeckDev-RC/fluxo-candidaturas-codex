@@ -20,11 +20,29 @@ function viewFalsa() {
       on(evento, fn) { ouvintes[evento] = fn; },
       setWindowOpenHandler(fn) { view.webContents.popup = fn; },
       session: { setPermissionRequestHandler(fn) { view.webContents.permissao = fn; } },
-      close() { view.webContents.fechada = true; }
+      close() { view.webContents.fechada = true; },
+      recarregadas: 0, reload() { view.webContents.recarregadas += 1; },
+      navigationHistory: { voltou: 0, canGoBack: () => view.webContents.url.includes('/jobs/'), goBack() { view.webContents.navigationHistory.voltou += 1; } }
     }
   };
   return view;
 }
+
+test('controles manuais: voltar só quando há histórico, recarregar e URL atual só http(s)', async () => {
+  const views = [];
+  const abas = createAbas({ window: janelaFalsa(), criarView: () => { const v = viewFalsa(); views.push(v); return v; } });
+  await abas.abrir('LINKEDIN', 'http://127.0.0.1:4173/aba/LINKEDIN');
+  assert.equal(abas.voltar('LINKEDIN'), false, 'na marcadora não há para onde voltar');
+  assert.equal(abas.urlAtual('LINKEDIN'), 'http://127.0.0.1:4173/aba/LINKEDIN');
+  await abas.abrir('LINKEDIN', 'https://www.linkedin.com/jobs/');
+  assert.equal(abas.voltar('linkedin'), true);
+  assert.equal(views[0].webContents.navigationHistory.voltou, 1);
+  assert.equal(abas.recarregar('LINKEDIN'), true);
+  assert.equal(views[0].webContents.recarregadas, 1);
+  assert.equal(abas.recarregar('GUPY'), false, 'aba inexistente não lança');
+  views[0].webContents.url = 'about:blank';
+  assert.equal(abas.urlAtual('LINKEDIN'), '', 'só http(s) vai para o navegador do sistema');
+});
 
 function janelaFalsa() {
   const filhos = [];
