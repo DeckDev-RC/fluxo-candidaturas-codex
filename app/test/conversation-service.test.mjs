@@ -189,6 +189,59 @@ test('thread gravada é retomada; se o app-server não a conhece, outra começa 
   assert.equal(retomadas, 1);
 });
 
+// Achados da auditoria de robustez: dois pedidos no mesmo instante passavam pela
+// checagem de "ocupado"; eventos de um turno interrompido fechavam o turno novo;
+// o Codex morto só era percebido pelo prazo de 15 minutos.
+test('dois turnos no mesmo instante: só um começa; o segundo recebe conversation_busy', async () => {
+  const { adapter, chamadas } = adaptadorFalso(() => [{ mensagem: 'ok' }]);
+  const service = createConversationService({ agentAdapter: adapter, runService: runServiceFalso(), snapshot: async () => ({}) });
+  adapter.ligar(service);
+  const fim = ate(service, 'turn.completed');
+  const resultados = await Promise.allSettled([service.turn('primeiro'), service.turn('segundo')]);
+  assert.equal(resultados[0].status, 'fulfilled');
+  assert.equal(resultados[1].status, 'rejected');
+  assert.equal(resultados[1].reason.code, 'conversation_busy');
+  await fim;
+  assert.equal(chamadas.filter(([m]) => m === 'turn/start').length, 1);
+});
+
+test('eventos de um turno interrompido não fecham nem alimentam o turno seguinte', async () => {
+  const { adapter } = adaptadorFalso(() => [], { concluir: false });
+  const service = createConversationService({ agentAdapter: adapter, runService: runServiceFalso(), snapshot: async () => ({}), timeoutMs: 5000 });
+  adapter.ligar(service);
+  await service.turn('primeiro');
+  const antigo = service.status();
+  await service.interrupt();
+  await service.turn('segundo');
+  const eventos = [];
+  service.subscribe((evento) => eventos.push(evento));
+  // O app-server ainda emite o fim do turno antigo (turn-1) e um texto dele.
+  service.handleNotification({ method: 'item/completed', params: { threadId: 'thread-conversa', turnId: 'turn-1', item: { type: 'agentMessage', text: 'resto do antigo' } } });
+  service.handleNotification({ method: 'turn/completed', params: { threadId: 'thread-conversa', turn: { id: 'turn-1', status: 'interrupted' } } });
+  assert.equal(service.status().busy, true, 'o turno novo continua em curso');
+  assert.deepEqual(eventos.map((e) => e.type), [], 'nada do turno antigo chega à tela');
+  assert.notEqual(service.status().turnId, antigo.turnId);
+  await service.interrupt();
+});
+
+test('o Codex morrer no meio do turno encerra o turno na hora, e o próximo pedido reabre', async () => {
+  const { adapter, chamadas } = adaptadorFalso(() => [], { concluir: false });
+  const service = createConversationService({ agentAdapter: adapter, runService: runServiceFalso(), snapshot: async () => ({}), timeoutMs: 60_000 });
+  adapter.ligar(service);
+  await service.turn('vai demorar');
+  const falha = ate(service, 'turn.failed');
+  assert.equal(service.handleNotification({ method: 'transport/closed', params: { code: 'agent_closed', message: 'Agente encerrou com código 1.' } }), false, 'o aviso segue para os demais ouvintes (saúde)');
+  const evento = await falha;
+  assert.equal(evento.code, 'agent_closed');
+  assert.match(evento.message, /conexão com o ChatGPT caiu/);
+  assert.equal(service.status().busy, false);
+  // Processo novo do app-server: a thread gravada é retomada antes do turno seguinte.
+  adapter.resumeThread = async (threadId) => { chamadas.push(['thread/resume', { threadId }]); return { thread: { id: threadId } }; };
+  await service.turn('de novo');
+  assert.ok(chamadas.some(([m]) => m === 'thread/resume'), 'a thread é retomada no processo novo');
+  await service.interrupt();
+});
+
 test('notificações de outras threads são ignoradas e o turno expira com mensagem legível', async () => {
   const { adapter } = adaptadorFalso(() => [], { concluir: false });
   const service = createConversationService({ agentAdapter: adapter, snapshot: async () => ({}), timeoutMs: 30 });

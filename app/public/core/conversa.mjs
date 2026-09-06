@@ -132,5 +132,7 @@ function persistir() {
 }
 
 function avisar() {
-  for (const listener of ouvintes) listener(mensagens);
+  for (const listener of ouvintes) {
+    try { listener(mensagens); } catch (error) { console.error('ouvinte da conversa falhou', error); }
+  }
 }

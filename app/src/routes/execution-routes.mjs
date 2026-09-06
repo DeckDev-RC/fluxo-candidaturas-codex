@@ -1,5 +1,5 @@
 import { readFluxoState } from '../state-reader.mjs';
-import { domainError, readJsonBody, respond, sendJson } from './http-helpers.mjs';
+import { abrirFluxo, domainError, readJsonBody, respond, sendJson } from './http-helpers.mjs';
 
 // Execuções, jornada do Autopilot, candidaturas e aprovações: onde o Fluxo age.
 const CAMINHOS = new Set(['/api/v1/runs', '/api/v1/autopilot/start', '/api/v1/applications/prepare', '/api/v1/approvals']);
@@ -143,14 +143,15 @@ function transmitirEventos(request, response, runService, runId) {
     sendJson(response, 404, { error: { code: 'run_not_found', message: 'Execução não encontrada.' } });
     return true;
   }
-  response.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache', connection: 'keep-alive' });
-  const escrever = (event) => response.write(`id: ${event.id}\nevent: ${event.type}\ndata: ${event.payloadJson}\n\n`);
+  const fluxo = abrirFluxo(request, response);
+  const escrever = (event) => fluxo.evento(event.type, event.payloadJson, event.id);
   for (const event of runService.listEvents(runId)) escrever(event);
   const stream = new URL(request.url ?? '/', 'http://127.0.0.1').searchParams.get('stream') === '1';
   if (stream && runService.subscribe) {
-    request.on('close', runService.subscribe(runId, escrever));
+    fluxo.aoEncerrar(runService.subscribe(runId, escrever));
     return true;
   }
+  fluxo.encerrar();
   response.end();
   return true;
 }

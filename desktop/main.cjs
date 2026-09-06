@@ -38,7 +38,7 @@ const diagnosticUrl = pathToFileURL(join(__dirname, 'diagnostics.html')).href;
 
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
-  app.on('second-instance', () => { mainWindow?.show(); mainWindow?.focus(); });
+  app.on('second-instance', () => { if (janelaViva(mainWindow)) { mainWindow.show(); mainWindow.focus(); } });
   app.whenReady().then(start).catch(error => { dialog.showErrorBox('Fluxo', error.message); app.quit(); });
 }
 
@@ -55,17 +55,25 @@ async function start() {
   cdpEndpoint = await lerEndpointDeDepuracao(app.getPath('userData'));
   supervisor = createSupervisor({
     launch: () => {
-      const worker = utilityProcess.fork(join(__dirname, 'backend-worker.mjs'), [workspaceRoot, cdpEndpoint], { cwd: workspaceRoot, stdio: 'ignore', serviceName: 'Fluxo local' });
+      // stdout/stderr do serviço vão para userData/logs/servico-saida.log: sem isso, um
+      // crash do backend não deixa rastro nenhum para investigar.
+      const worker = utilityProcess.fork(join(__dirname, 'backend-worker.mjs'), [workspaceRoot, cdpEndpoint], { cwd: workspaceRoot, stdio: ['ignore', 'pipe', 'pipe'], serviceName: 'Fluxo local' });
+      for (const fluxo of [worker.stdout, worker.stderr]) fluxo?.on('data', (pedaco) => registrarSaidaDoServico(pedaco));
       worker.on('message', (mensagem) => { if (mensagem?.type === 'abas') void atenderWorker(worker, mensagem); });
+      worker.on('error', (erro) => registrarErro('serviço local', erro));
       return worker;
     },
-    onExit: () => { abas?.fecharTodas(); if (!quitting && mainWindow && !mainWindow.isDestroyed()) { backendUrl = null; mainWindow.loadURL(diagnosticUrl).catch(() => {}); } }
+    onExit: (code) => {
+      registrarErro('serviço local encerrou', `código ${code}`);
+      abas?.fecharTodas();
+      if (!quitting && janelaViva(mainWindow)) { backendUrl = null; mainWindow.loadURL(diagnosticUrl).catch(() => {}); }
+    }
   });
 
   // Mínimo baixo o suficiente para 1024×768 com zoom de texto: a interface tem
   // composição de coluna única abaixo de 48rem (U8-03).
   mainWindow = new BrowserWindow({ width: 1280, height: 860, minWidth: 720, minHeight: 560, title: 'Fluxo', show: false, ...janelaBase() });
-  mainWindow.once('ready-to-show', () => mainWindow.show());
+  mainWindow.once('ready-to-show', () => { if (janelaViva(mainWindow)) mainWindow.show(); });
   nativeTheme.on('updated', () => { for (const janela of [mainWindow, diagnosticWindow]) if (janela && !janela.isDestroyed()) janela.setBackgroundColor(corDeFundo()); });
   // As abas fecham com a janela, enquanto ela ainda existe; depois disso nada toca nela.
   mainWindow.on('close', () => { abas?.destruir(); });
@@ -95,10 +103,10 @@ async function start() {
     return { themeSource: nativeTheme.themeSource, escuro: nativeTheme.shouldUseDarkColors };
   });
   nativeTheme.on('updated', () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('fluxo:tema-mudou', { escuro: nativeTheme.shouldUseDarkColors }); });
-  ipcMain.handle('fluxo:abas-area', (event, retangulo) => { trusted(event); abas.definirArea(retangulo && typeof retangulo === 'object' ? retangulo : null); return true; });
-  ipcMain.handle('fluxo:abas-mostrar', (event, platform) => { trusted(event); return abas.mostrar(String(platform ?? '')); });
-  ipcMain.handle('fluxo:abas-esconder', (event) => { trusted(event); abas.esconder(); return true; });
-  ipcMain.handle('fluxo:abas-listar', (event) => { trusted(event); return abas.listar(); });
+  ipcMain.handle('fluxo:abas-area', (event, retangulo) => { trusted(event); abas?.definirArea(retangulo && typeof retangulo === 'object' ? retangulo : null); return true; });
+  ipcMain.handle('fluxo:abas-mostrar', (event, platform) => { trusted(event); return abas?.mostrar(plataformaValida(platform)) ?? false; });
+  ipcMain.handle('fluxo:abas-esconder', (event) => { trusted(event); abas?.esconder(); return true; });
+  ipcMain.handle('fluxo:abas-listar', (event) => { trusted(event); return abas?.listar() ?? []; });
   ipcMain.handle('fluxo:select-workspace', async event => { trusted(event); return selectWorkspace(preferencesPath); });
   ipcMain.handle('fluxo:install-browser', async event => { trusted(event); return installBrowser(); });
   Menu.setApplicationMenu(Menu.buildFromTemplate([
@@ -111,12 +119,19 @@ async function start() {
     { label: 'Editar', submenu: [{ role: 'undo', label: 'Desfazer' }, { role: 'redo', label: 'Refazer' }, { type: 'separator' }, { role: 'cut', label: 'Recortar' }, { role: 'copy', label: 'Copiar' }, { role: 'paste', label: 'Colar' }, { role: 'selectAll', label: 'Selecionar tudo' }] },
     { label: 'Exibir', submenu: [{ role: 'reload', label: 'Recarregar' }, { role: 'resetZoom', label: 'Zoom original' }, { role: 'zoomIn', label: 'Ampliar' }, { role: 'zoomOut', label: 'Reduzir' }] }
   ]));
-  try { backendUrl = (await supervisor.start()).url; await mainWindow.loadURL(backendUrl); }
-  catch { await mainWindow.loadURL(diagnosticUrl); }
+  try { backendUrl = (await supervisor.start()).url; await carregarNaJanela(backendUrl); }
+  catch (error) { registrarErro('início do serviço', error); await carregarNaJanela(diagnosticUrl); }
+}
+
+// Navegar a janela principal só enquanto ela existe.
+async function carregarNaJanela(url) {
+  if (!janelaViva(mainWindow)) return;
+  await mainWindow.loadURL(url).catch((error) => registrarErro('carregar janela', error));
 }
 
 async function selectWorkspace(preferencesPath) {
   if (changingWorkspace) throw new Error('Aguarde a troca de pasta em andamento.');
+  if (quitting) throw new Error('O Fluxo está encerrando.');
   const result = await dialog.showOpenDialog(mainWindow, { title: 'Escolha a pasta de dados do Fluxo', properties: ['openDirectory', 'createDirectory'] });
   if (result.canceled) return { canceled: true };
   changingWorkspace = true;
@@ -126,14 +141,20 @@ async function selectWorkspace(preferencesPath) {
     await (await import('./workspace.mjs')).initializeWorkspace({ rootDir, bundleRoot });
     abas?.fecharTodas();
     await supervisor.stop(); backendUrl = null; workspaceRoot = rootDir;
+    if (quitting) return { canceled: true };
     backendUrl = (await supervisor.start()).url;
     await writeFile(preferencesPath, JSON.stringify({ rootDir }, null, 2), 'utf8');
-    await mainWindow.loadURL(backendUrl);
+    await carregarNaJanela(backendUrl);
     return { rootDir };
   } catch (error) {
+    // Volta para a pasta anterior; se nem ela subir, a janela mostra o diagnóstico com o motivo.
     workspaceRoot = previousRoot;
-    await supervisor.stop(); backendUrl = (await supervisor.start()).url;
-    await mainWindow.loadURL(backendUrl); throw error;
+    await supervisor.stop();
+    if (!quitting) {
+      try { backendUrl = (await supervisor.start()).url; await carregarNaJanela(backendUrl); }
+      catch (segundoErro) { registrarErro('voltar à pasta anterior', segundoErro); backendUrl = null; await carregarNaJanela(diagnosticUrl); }
+    }
+    throw error;
   } finally { changingWorkspace = false; }
 }
 
@@ -141,7 +162,7 @@ function showDiagnostics() {
   if (diagnosticWindow) { diagnosticWindow.focus(); return; }
   diagnosticWindow = new BrowserWindow({ parent: mainWindow, width: 760, height: 620, minWidth: 560, minHeight: 480, title: 'Preparação do ambiente — Fluxo', ...janelaBase() });
   protectWindow(diagnosticWindow); diagnosticWindow.on('closed', () => { diagnosticWindow = null; });
-  void diagnosticWindow.loadURL(diagnosticUrl);
+  diagnosticWindow.loadURL(diagnosticUrl).catch((error) => registrarErro('carregar diagnóstico', error));
 }
 
 let browserInstall; let browserInstaller;
@@ -159,11 +180,13 @@ function installBrowser() {
 // O worker pede abrir/mostrar/listar abas; a URL de abertura precisa ser local
 // (marcadora do backend) ou https, nunca outro esquema.
 async function atenderWorker(worker, mensagem) {
-  const { id, op, platform, url } = mensagem;
+  const { id, op, url } = mensagem;
+  const platform = plataformaValida(mensagem.platform);
   const responder = (ok, result, error) => { try { worker.postMessage({ type: 'abas-resposta', id, ok, result, error }); } catch { /* worker já encerrou */ } };
   try {
-    if (!abas) throw new Error('Janela ainda não está pronta.');
+    if (!abas || !janelaViva(mainWindow)) throw new Error('A janela do Fluxo não está disponível.');
     if (op === 'abrir') {
+      if (!platform) throw new Error('Plataforma inválida.');
       if (!/^https?:\/\//i.test(String(url ?? ''))) throw new Error('URL de aba inválida.');
       return responder(true, await abas.abrir(platform, url));
     }
@@ -174,32 +197,64 @@ async function atenderWorker(worker, mensagem) {
   } catch (error) { responder(false, null, error.message); }
 }
 
-// O Chromium grava a porta escolhida em DevToolsActivePort logo após iniciar.
+// O Chromium grava a porta escolhida em DevToolsActivePort logo após iniciar. Um
+// arquivo antigo (de um processo que caiu) pode sobreviver: a porta só vale se
+// responder ao /json/version deste processo.
 async function lerEndpointDeDepuracao(userData, tentativas = 20) {
   if (process.env.FLUXO_DESKTOP_SEM_NAVEGADOR_EMBUTIDO) return '';
   for (let i = 0; i < tentativas; i += 1) {
     try {
       const [porta] = (await readFile(join(userData, 'DevToolsActivePort'), 'utf8')).split(/\r?\n/);
-      if (Number(porta) > 0) return `http://127.0.0.1:${Number(porta)}`;
+      if (Number(porta) > 0) {
+        const endpoint = `http://127.0.0.1:${Number(porta)}`;
+        const resposta = await fetch(`${endpoint}/json/version`, { signal: AbortSignal.timeout(1_000) }).then((r) => r.ok ? r.json() : null).catch(() => null);
+        if (resposta?.webSocketDebuggerUrl) return endpoint;
+      }
     } catch { /* ainda não escrito */ }
     await new Promise(resolve => setTimeout(resolve, 150));
   }
+  registrarErro('navegador embutido', 'porta de depuração indisponível; usando navegador separado');
   return '';
 }
 
+// Nomes de plataforma vêm do worker e da interface: só o alfabeto do catálogo passa.
+function plataformaValida(valor) {
+  const nome = String(valor ?? '').toUpperCase();
+  return /^[A-Z0-9_-]{1,32}$/.test(nome) ? nome : '';
+}
+
+function janelaViva(janela) { return Boolean(janela) && !janela.isDestroyed(); }
+
+let saidaDoServico = '';
+function registrarSaidaDoServico(pedaco) {
+  saidaDoServico += String(pedaco);
+  if (saidaDoServico.length < 4_096 && !saidaDoServico.includes('\n')) return;
+  const texto = saidaDoServico; saidaDoServico = '';
+  try { const pasta = join(app.getPath('userData'), 'logs'); mkdirSync(pasta, { recursive: true }); appendFileSync(join(pasta, 'servico-saida.log'), texto); } catch { /* sem onde registrar */ }
+}
+
 function protectWindow(window) {
-  window.webContents.setWindowOpenHandler(({ url }) => { if (/^https:\/\//i.test(url)) void shell.openExternal(url); return { action: 'deny' }; });
+  window.webContents.setWindowOpenHandler(({ url }) => { if (/^https:\/\//i.test(url)) shell.openExternal(url).catch(() => {}); return { action: 'deny' }; });
   window.webContents.on('will-navigate', (event, url) => {
-    if (url !== diagnosticUrl && (!backendUrl || new URL(url).origin !== backendUrl)) event.preventDefault();
+    let origem = '';
+    try { origem = new URL(url).origin; } catch { event.preventDefault(); return; }
+    if (url !== diagnosticUrl && (!backendUrl || origem !== backendUrl)) event.preventDefault();
   });
   window.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
 }
-function showError(error) { dialog.showErrorBox('Fluxo', error.message); }
+// Caixa de mensagem assíncrona: a síncrona bloqueia o processo principal e faz
+// os pedidos do serviço (abrir aba) expirarem enquanto a pessoa lê.
+function showError(error) {
+  registrarErro('erro exibido', error);
+  const opcoes = { type: 'error', title: 'Fluxo', message: String(error?.message ?? error), buttons: ['OK'] };
+  (janelaViva(mainWindow) ? dialog.showMessageBox(mainWindow, opcoes) : dialog.showMessageBox(opcoes)).catch(() => {});
+}
 app.on('window-all-closed', () => app.quit());
 app.on('before-quit', event => {
   if (quitting) return;
   event.preventDefault(); quitting = true;
   abas?.destruir();
   browserInstaller?.kill();
-  Promise.resolve(supervisor?.stop()).finally(() => app.quit());
+  // O serviço tem tempo para fechar o banco; passe o que passar, o app sai.
+  Promise.race([Promise.resolve(supervisor?.stop()).catch((error) => registrarErro('parar serviço', error)), new Promise((resolve) => setTimeout(resolve, 12_000))]).finally(() => app.quit());
 });

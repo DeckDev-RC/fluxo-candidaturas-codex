@@ -33,8 +33,11 @@ export function subscribe(listener) {
   return () => ouvintes.delete(listener);
 }
 
+// Um ouvinte que lança não pode impedir os demais de repintar.
 export function notify() {
-  for (const listener of ouvintes) listener(store);
+  for (const listener of ouvintes) {
+    try { listener(store); } catch (error) { console.error('ouvinte do estado falhou', error); }
+  }
 }
 
 export function isDemo() {

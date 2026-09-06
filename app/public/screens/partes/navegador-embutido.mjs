@@ -122,8 +122,13 @@ function acompanharArea(elemento) {
   publicarArea();
 }
 
+let falhasDeIpc = 0;
+let proximaTentativaEm = 0;
 function publicarArea() {
   if (!window.fluxoDesktop?.abas) return;
+  // Sem seção montada não há o que informar; IPC negado (troca de pasta) espera com folga.
+  if (!areaAtual?.isConnected && ultimoEnvio === 'null') return;
+  if (Date.now() < proximaTentativaEm) return;
   let retangulo = null;
   const dialogoAberto = Boolean(document.querySelector('#dialogo')?.open);
   if (areaAtual?.isConnected && currentRoute() === 'agora' && !dialogoAberto && document.visibilityState !== 'hidden') {
@@ -137,5 +142,7 @@ function publicarArea() {
   const chave = JSON.stringify(retangulo);
   if (chave === ultimoEnvio) return;
   ultimoEnvio = chave;
-  window.fluxoDesktop.abas.area(retangulo).catch(() => { ultimoEnvio = ''; });
+  window.fluxoDesktop.abas.area(retangulo)
+    .then(() => { falhasDeIpc = 0; })
+    .catch(() => { ultimoEnvio = ''; falhasDeIpc += 1; proximaTentativaEm = Date.now() + Math.min(30_000, 1_000 * 2 ** Math.min(falhasDeIpc, 5)); });
 }

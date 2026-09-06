@@ -1,4 +1,4 @@
-import { readJsonBody, respond, sendJson } from './http-helpers.mjs';
+import { abrirFluxo, readJsonBody, respond, sendJson } from './http-helpers.mjs';
 
 // Conversa com o Fluxo: turno assíncrono, eventos em tempo real, interrupção e
 // reinício. Sem serviço de conversa (IA ausente), a rota diz isso em vez de
@@ -30,18 +30,16 @@ export function createConversationRoutes({ conversationService = null } = {}) {
 
 // Histórico recente primeiro e, com `stream=1`, os eventos novos em tempo real.
 function transmitir(request, response, conversationService) {
-  response.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache', connection: 'keep-alive' });
-  response.write(': conectado\n\n');
-  const escrever = (evento) => response.write(`id: ${evento.id}\nevent: ${evento.type}\ndata: ${JSON.stringify(evento)}\n\n`);
-  const desde = new URL(request.url ?? '/', 'http://127.0.0.1').searchParams.get('desde') ?? request.headers['last-event-id'] ?? '';
+  const parametros = new URL(request.url ?? '/', 'http://127.0.0.1').searchParams;
+  const fluxo = abrirFluxo(request, response, { batimentoMs: BATIMENTO_MS });
+  const escrever = (evento) => fluxo.evento(evento.type, evento, evento.id);
+  const desde = parametros.get('desde') ?? request.headers['last-event-id'] ?? '';
   let replay = !desde;
   for (const evento of conversationService.history()) {
     if (replay) escrever(evento);
     else if (evento.id === desde) replay = true;
   }
-  if (new URL(request.url ?? '/', 'http://127.0.0.1').searchParams.get('stream') !== '1') { response.end(); return true; }
-  const cancelar = conversationService.subscribe(escrever);
-  const batimento = setInterval(() => response.write(': vivo\n\n'), BATIMENTO_MS);
-  request.on('close', () => { cancelar(); clearInterval(batimento); });
+  if (parametros.get('stream') !== '1') { fluxo.encerrar(); response.end(); return true; }
+  fluxo.aoEncerrar(conversationService.subscribe(escrever));
   return true;
 }

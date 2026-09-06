@@ -1,10 +1,16 @@
 // Eventos do App Server. Além de registrar o turno, o consumo informado pelo
 // runtime é contabilizado no orçamento da campanha: sem isso, o limite de tokens
 // existiria na configuração sem proteger nada.
+// Deltas de texto chegam às centenas por resposta e não têm valor de auditoria:
+// não vão para o banco. O que vai fica em `try`: uma escrita falha (banco
+// ocupado) não pode derrubar o leitor de notificações.
+const SEM_REGISTRO = new Set(['item/agentMessage/delta', 'item/reasoning/delta', 'item/commandExecution/outputDelta']);
+
 export function createAgentEventHandler(runService, { budget } = {}) {
   return (message, runId) => {
-    if (!runId) return;
-    runService.appendEvent({ runId, type: message.method || 'agent.notification', payload: message.params ?? {}, actorType: 'agent' });
+    if (!runId || SEM_REGISTRO.has(message.method)) return;
+    try { runService.appendEvent({ runId, type: message.method || 'agent.notification', payload: message.params ?? {}, actorType: 'agent' }); }
+    catch (error) { process.emitWarning(`registro de evento do agente: ${error?.message ?? error}`, { code: 'FLUXO_FALHA_SILENCIOSA' }); }
     const turn = message.params?.turn;
     if (message.method !== 'turn/completed' || !turn || runService.getRun(runId)?.status !== 'running') return;
 

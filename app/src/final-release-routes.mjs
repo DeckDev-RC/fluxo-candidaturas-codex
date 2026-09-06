@@ -2,7 +2,7 @@ import { PRODUCT_POLICY, campaignLimitsFrom } from './product-policy.mjs';
 import { buildSubmissionReview } from './review-service.mjs';
 import { createRecoveryGuidance } from './recovery-service.mjs';
 import { assertNoSilentFallback, resolveAiMode } from './ai-modes.mjs';
-import { MAX_RESUME_BODY_BYTES } from './routes/http-helpers.mjs';
+import { MAX_RESUME_BODY_BYTES, abrirFluxo } from './routes/http-helpers.mjs';
 
 // Rotas da versão final: importação, memória, agenda, notificações, jornada,
 // revisão, recuperação, sessões, consistência e limites.
@@ -153,12 +153,10 @@ function readJsonQuery(request) {
 const BATIMENTO_MS = 25_000;
 
 async function transmitirSaude(request, response, runtimeHealth) {
-  response.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache', connection: 'keep-alive' });
-  const escrever = (saude) => response.write(`event: runtime.health\ndata: ${JSON.stringify(comModo(saude))}\n\n`);
+  const fluxo = abrirFluxo(request, response, { batimentoMs: BATIMENTO_MS });
+  const escrever = (saude) => fluxo.evento('runtime.health', comModo(saude));
   escrever(await runtimeHealth.snapshot());
-  const cancelar = runtimeHealth.onChange?.(escrever) ?? (() => {});
-  const batimento = setInterval(() => response.write(': vivo\n\n'), BATIMENTO_MS);
-  request.on('close', () => { cancelar(); clearInterval(batimento); });
+  fluxo.aoEncerrar(runtimeHealth.onChange?.(escrever) ?? (() => {}));
   return true;
 }
 

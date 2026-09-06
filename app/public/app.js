@@ -81,15 +81,18 @@ function ligarConversaDaIa() {
 // Atualizações agrupadas: novidade que chega enquanto a pessoa digita ou decide
 // não desloca foco nem descarta rascunho (U7-05, U8-05, U9-05).
 let repintura = null;
+let esperasPorBotao = 0;
 function agendarRepintura() {
   clearTimeout(repintura);
   repintura = setTimeout(() => {
     const ativo = document.activeElement;
     if (ativo && ['INPUT', 'TEXTAREA', 'SELECT'].includes(ativo.tagName) && ativo.id !== 'conversa-texto') return;
-    // Um botão ocupado não pode ser trocado no meio da ação: a repintura espera.
-    if (document.querySelector('#tela button[aria-busy="true"]')) { agendarRepintura(); return; }
+    // Um botão ocupado não pode ser trocado no meio da ação: a repintura espera,
+    // mas não para sempre (um handler que travou não pode congelar a tela).
+    if (document.querySelector('#tela button[aria-busy="true"]') && esperasPorBotao < 40) { esperasPorBotao += 1; agendarRepintura(); return; }
+    esperasPorBotao = 0;
     if (document.querySelector('#dialogo')?.open) return;
-    rerender();
+    try { rerender(); } catch (error) { console.error('repintura falhou', error); }
   }, 150);
 }
 
