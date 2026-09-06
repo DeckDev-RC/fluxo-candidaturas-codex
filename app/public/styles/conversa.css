@@ -88,18 +88,44 @@
 .balao[data-tom="atencao"] .balao-corpo { border-left-color: var(--atencao); }
 .balao[data-tom="erro"] .balao-corpo { border-left-color: var(--erro); }
 
-/* Passo do agente ("Abri o LinkedIn…"): linha discreta, menor e sem avatar,
-   para a narração do trabalho não competir com o que o Fluxo diz à pessoa. */
-.balao[data-tom="passo"] { margin-top: var(--e1); }
-.balao[data-tom="passo"] .balao-avatar { visibility: hidden; }
-.balao[data-tom="passo"] .balao-corpo { flex-direction: row; gap: var(--e2); font-size: var(--texto-sm); color: var(--texto-2); }
-.balao[data-tom="passo"] .balao-corpo::before { content: '›'; color: var(--texto-3); }
-.balao[data-tom="passo"] .balao-hora { display: none; }
-/* Passo em andamento: ponto pulsando e segundos decorridos; concluído: quanto levou. */
-.passo-andamento { display: inline-block; width: 0.5rem; height: 0.5rem; margin-right: var(--e2); border-radius: 50%; background: var(--acento); vertical-align: middle; animation: passo-pulso 1.2s ease-in-out infinite; }
-.passo-tempo { margin-left: var(--e1); color: var(--texto-3); font-variant-numeric: tabular-nums; }
+/* Atividade da IA: os passos seguidos ficam num bloco recolhido, discreto e sem
+   avatar. Em curso, o rótulo é o passo atual com um sinal pulsando e o tempo
+   total; concluído, "N etapas · 12s". Abrir mostra a lista compacta. */
+.balao-atividade { margin-top: var(--e1); }
+.balao-atividade .balao-avatar { visibility: hidden; }
+.atividade { border: 1px solid var(--linha); border-radius: var(--raio); background: var(--superficie); font-size: var(--texto-sm); color: var(--texto-2); overflow: hidden; }
+.atividade-resumo { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: var(--e2); padding: var(--e2) var(--e3); cursor: pointer; list-style: none; user-select: none; }
+.atividade-resumo::-webkit-details-marker { display: none; }
+.atividade-resumo:hover { background: var(--superficie-2); }
+.atividade-resumo:focus-visible { outline: 2px solid var(--acento); outline-offset: -2px; }
+.atividade-sinal { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--sucesso); }
+.atividade[data-andamento="true"] .atividade-sinal { background: var(--acento); animation: passo-pulso 1.2s ease-in-out infinite; }
+.atividade[data-falhas="true"] .atividade-sinal { background: var(--atencao); }
+.atividade-rotulo { color: var(--texto); }
+.atividade[data-andamento="false"] .atividade-rotulo { color: var(--texto-2); }
+.atividade-tempo { color: var(--texto-3); font-size: var(--texto-xs); font-variant-numeric: tabular-nums; }
+.atividade-seta { width: 0.5rem; height: 0.5rem; border-right: 1.5px solid var(--texto-3); border-bottom: 1.5px solid var(--texto-3); transform: rotate(45deg); transition: transform 160ms ease; margin-top: -3px; }
+.atividade[open] .atividade-seta { transform: rotate(-135deg); margin-top: 3px; }
+.atividade-lista { display: flex; flex-direction: column; gap: 2px; padding: var(--e1) var(--e3) var(--e3) calc(var(--e3) + 0.5rem + var(--e2)); border-top: 1px solid var(--linha); }
+.atividade-lista li { display: flex; align-items: baseline; gap: var(--e2); font-size: var(--texto-xs); color: var(--texto-2); }
+.atividade-lista li::before { content: '›'; color: var(--texto-3); }
+.atividade-lista li[data-tom="atencao"] { color: var(--atencao); }
+.atividade-lista li[data-andamento="true"] { color: var(--texto); }
+.atividade-vezes { padding: 0 var(--e1); border-radius: var(--raio-sm, 4px); background: var(--superficie-2); color: var(--texto-3); font-variant-numeric: tabular-nums; }
 @keyframes passo-pulso { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .passo-andamento { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .atividade-sinal { animation: none; } .atividade-seta { transition: none; } }
+
+/* Fala estruturada: seções curtas, listas e notas em vez de um parágrafo denso. */
+.fala-estruturada { display: flex; flex-direction: column; gap: var(--e2); }
+.fala-estruturada > p { margin: 0; }
+.fala-titulo { margin: var(--e2) 0 0; font-size: var(--texto-xs); font-weight: var(--peso-medio); color: var(--texto-3); letter-spacing: var(--traco-etiqueta); text-transform: uppercase; }
+.fala-estruturada > .fala-titulo:first-child { margin-top: 0; }
+.fala-lista { margin: 0; padding-left: 1.25rem; display: flex; flex-direction: column; gap: 2px; }
+.fala-lista-numerada { list-style: decimal; }
+.fala-lista li strong, .fala-estruturada p strong { font-weight: var(--peso-medio); color: var(--texto); }
+.fala-nota { margin: 0; padding: var(--e2) var(--e3); border-left: 2px solid var(--informacao); border-radius: 0 var(--raio) var(--raio) 0; background: var(--superficie); font-size: var(--texto-sm); }
+.fala-nota[data-tom="atencao"] { border-left-color: var(--atencao); }
+.fala-nota[data-tom="sucesso"] { border-left-color: var(--sucesso); }
 
 .balao[data-autor="voce"] { grid-template-columns: minmax(0, 1fr); justify-items: end; }
 .balao[data-autor="voce"] .balao-corpo {

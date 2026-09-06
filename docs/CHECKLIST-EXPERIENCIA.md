@@ -160,6 +160,23 @@ Sete frentes, na ordem de impacto. Cada item marcado tem teste ou verificação 
   visível; a ordem não importa) e toda mudança de visibilidade pede uma repintura
   explícita da janela (`webContents.invalidate`, agrupada em 50 ms).
 
+## Leitura da conversa (pedido de 13:56)
+
+- [x] **Bloco de atividade** (`screens/partes/atividade.mjs`): passos seguidos da IA
+      viram um `<details>` recolhido; em curso mostra o passo atual com sinal pulsando
+      e tempo total; concluído mostra "N etapas · 12s" (aviso quando houve falha).
+      Passos idênticos em sequência contam uma vez ("Estado lido. ×10"). Abrir/fechar
+      é lembrado entre repinturas.
+- [x] **Fala estruturada** (`core/fala.mjs`), inspirada na ideia de UI generativa
+      (Thesys C1: o modelo desenha a resposta, a interface renderiza componentes),
+      sem dependência externa: subconjunto seguro de marcação — `## Seção`,
+      `- item`, `1. item`, `**destaque**`, `> Atenção|Dica|Pronto: nota` — renderizado
+      com nós de texto (nunca HTML). O serviço normaliza marcação fora do subconjunto
+      (títulos de outro nível, `__x__`, `* item`, tabelas, crases).
+- [x] **Instruções**: não narrar antes de agir (a atividade já mostra), conclusão em
+      uma frase primeiro, seções por tema em revisões, uma nota por resposta, terminar
+      com próximo passo ou opções.
+
 ## Pendente de validação com conta real
 
 - Qualidade da extração de requisitos nas páginas reais de Gupy/InfoJobs/LinkedIn

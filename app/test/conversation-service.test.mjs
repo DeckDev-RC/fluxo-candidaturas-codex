@@ -344,8 +344,10 @@ test('notificações de outras threads são ignoradas e o turno expira com mensa
 
 test('separarAcoes, contexto e narração não vazam segredo nem vocabulário técnico', () => {
   const { resposta, acoes } = separarAcoes('Vou abrir suas **oportunidades**.\nAÇÃO: abrir=oportunidades');
-  assert.equal(resposta, 'Vou abrir suas oportunidades.');
+  assert.equal(resposta, 'Vou abrir suas **oportunidades**.', 'o destaque fica: a interface o desenha');
   assert.deepEqual(acoes, [{ tipo: 'abrir', valor: 'oportunidades' }]);
+  // Marcação fora do subconjunto é trazida para dentro dele.
+  assert.equal(separarAcoes('#### Perfil\n* __Nome__ ok\n| Gupy | 10 |\n|---|---|\n`x`').resposta, '## Perfil\n- **Nome** ok\n- Gupy · 10\nx');
   // Cartões da conversa: seleção para descarte, confirmação de dados e respostas rápidas.
   assert.deepEqual(separarAcoes('Marque as que quer descartar.\nAÇÃO: selecionar-descarte=todas').acoes, [{ tipo: 'selecionar-descarte', valor: 'todas' }]);
   assert.deepEqual(separarAcoes('Li isto:\nAÇÃO: confirmar=name:Pessoa Exemplo|email:pessoa@example.test').acoes, [{ tipo: 'confirmar', valor: 'name:Pessoa Exemplo|email:pessoa@example.test' }]);

@@ -297,15 +297,22 @@ export function separarAcoes(texto) {
     acoes.push({ tipo: m[1].toLowerCase(), valor: m[2].trim() });
     return false;
   });
-  return { resposta: semMarkdown(linhas.join('\n')), acoes };
+  return { resposta: normalizarMarcacao(linhas.join('\n')), acoes };
 }
 
-function semMarkdown(texto) {
+// A interface desenha um subconjunto de marcação (## seção, - item, 1. item,
+// **destaque**, > nota). O que o modelo escrever fora disso é trazido para dentro
+// dele: títulos de outros níveis viram seção, __x__ vira **x**, "* item" vira
+// "- item", linhas de tabela viram itens, crases somem.
+function normalizarMarcacao(texto) {
   return texto
-    .replace(/\*\*(.+?)\*\*/g, '$1')
-    .replace(/__(.+?)__/g, '$1')
-    .replace(/^#{1,6}\s+/gm, '')
-    .replace(/^\s*[-*]\s+/gm, '• ')
+    .replace(/__(.+?)__/g, '**$1**')
+    .replace(/^#{1,6}\s+(.+?)\s*#*\s*$/gm, '## $1')
+    .replace(/^\s*\*\s+/gm, '- ')
+    .replace(/^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/gm, '')
+    .replace(/^\s*\|(.+)\|\s*$/gm, (linha, celulas) => `- ${celulas.split('|').map((c) => c.trim()).filter(Boolean).join(' · ')}`)
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 
