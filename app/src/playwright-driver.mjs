@@ -9,6 +9,8 @@ import { CARTOES_DE_VAGA, EMPRESA_DESCONHECIDA, lerCartoesDeVaga } from './platf
 const OBSERVAR_PAGINA = new Function('args', `const [catalogo, empresaDesconhecida] = args; const lerCartoesDeVaga = ${lerCartoesDeVaga.toString()}; const detectarDesafio = ${detectarDesafio.toString()}; return (${observePage.toString()})(catalogo, empresaDesconhecida, lerCartoesDeVaga, detectarDesafio);`);
 // eslint-disable-next-line no-new-func
 const OBSERVAR_LOGIN = new Function(`const detectarDesafio = ${detectarDesafio.toString()}; return (${observeLogin.toString()})(detectarDesafio);`);
+// eslint-disable-next-line no-new-func
+const OBSERVAR_VAGA = new Function(`return (${observeJobPage.toString()})();`);
 // Páginas de busca renderizam a lista depois do HTML: esperar a rede assentar
 // evita fotografar a página antes das vagas aparecerem.
 const ESPERA_RENDERIZACAO_MS = 8_000;
@@ -146,6 +148,9 @@ export function createPlaywrightDriver({ rootDir, headless = false, browserType,
       }
       return lista;
     },
+    // Leitura da página de uma vaga: descrição e requisitos, para medir aderência de
+    // verdade antes de preparar. Só texto renderizado; nada é inventado.
+    async readJobPage() { const current = await getPage(); return current.evaluate(OBSERVAR_VAGA); },
     async snapshot() { const current = await getPage(); const observed = await current.evaluate(OBSERVAR_PAGINA, ARGUMENTOS_DA_PAGINA); const formHash = createHash('sha256').update(JSON.stringify(observed.formValues)).digest('hex'); return { ...observed, formHash, observedAt: new Date().toISOString() }; },
     async state() { return this.snapshot(); },
     async fill(ref, value) { const field = await locator(ref); if (await field.getAttribute('type') === 'file') throw error('browser_upload_required', 'Use a operação explícita de anexo.'); await field.fill(String(value)); },
@@ -201,6 +206,34 @@ function detectarDesafio() {
   const contenedores = [...document.querySelectorAll('[role="dialog"], [aria-modal="true"], [id*="cookie" i], [class*="cookie" i], [id*="consent" i], [class*="consent" i], [id*="didomi" i], [id*="onetrust" i], [id*="cmp" i]')].filter(visivel);
   const consentPending = contenedores.some((c) => [...c.querySelectorAll('button, [role="button"], a')].some((b) => visivel(b) && /^(aceitar|aceito|aceitar todos|accept|accept all|concordo|agree|i agree|permitir|allow)/i.test((b.innerText || '').trim())));
   return { challenge, consentPending };
+}
+
+// Runs inside a job page. Requisitos vêm de listas sob títulos de requisitos; sem
+// isso, das linhas com marcador no texto; a descrição é o bloco principal.
+function observeJobPage() {
+  const texto = (el) => (el?.innerText ?? '').replace(/[ \t]+/g, ' ').trim();
+  const principal = document.querySelector('main, article, [role="main"], #job-details, .description, [class*="description" i]') ?? document.body;
+  const description = texto(principal).slice(0, 6000);
+  const titulos = /requisitos|qualifica|requirements|qualifications|o que esperamos|o que buscamos|voc[eê] precisa|skills|habilidades|conhecimentos|diferenciais|pr[eé]-requisitos/i;
+  const requisitos = [];
+  const eliminadores = [];
+  for (const cabecalho of principal.querySelectorAll('h1, h2, h3, h4, h5, strong, b, p')) {
+    if (!titulos.test(texto(cabecalho)) || texto(cabecalho).length > 80) continue;
+    let proximo = cabecalho.nextElementSibling ?? cabecalho.parentElement?.nextElementSibling;
+    let passos = 0;
+    while (proximo && passos < 3 && !/^(UL|OL)$/.test(proximo.tagName)) { proximo = proximo.nextElementSibling; passos += 1; }
+    if (proximo && /^(UL|OL)$/.test(proximo.tagName)) {
+      const obrigatorio = /obrigat|mandat|imprescind|must/i.test(texto(cabecalho));
+      for (const li of proximo.querySelectorAll('li')) { const t = texto(li); if (t && t.length <= 200) (obrigatorio ? eliminadores : requisitos).push(t); }
+    }
+  }
+  if (!requisitos.length) {
+    for (const linha of description.split('\n')) { const t = linha.replace(/^[\s•\-–*·]+/, '').trim(); if (/^[•\-–*·]/.test(linha.trim()) && t.length >= 6 && t.length <= 200) requisitos.push(t); }
+  }
+  const tudo = description.toLocaleLowerCase();
+  const workMode = /\bremot[oa]\b|home ?office|100% remoto/.test(tudo) ? 'Remoto' : /h[ií]brid[oa]/.test(tudo) ? 'Híbrido' : /presencial|on-?site/.test(tudo) ? 'Presencial' : '';
+  const salary = (description.match(/R\$\s?[\d.]+(?:,\d{2})?(?:\s*(?:a|-|até)\s*R\$\s?[\d.]+(?:,\d{2})?)?/) ?? [''])[0];
+  return { url: location.href, title: document.title, description, requirements: [...new Set(requisitos)].slice(0, 40), eliminators: [...new Set(eliminadores)].slice(0, 20), workMode, salary };
 }
 
 // Runs inside the page: só o necessário para saber se a pessoa precisa entrar.

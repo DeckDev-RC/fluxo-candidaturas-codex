@@ -30,6 +30,18 @@ export function createBrowserAdapter({ driver, evidenceRoot = '' }) {
       return driver.openPlatform(platform, url);
     },
     async tabs() { return driver.tabs ? driver.tabs() : []; },
+    async loginState(platform) { return driver.loginState ? driver.loginState(platform) : { open: false }; },
+    // Abre a página da vaga e lê descrição e requisitos; desafio (CAPTCHA/login) para aqui.
+    async readJob(item) {
+      const target = String(item?.identifierOrUrl ?? '');
+      if (!/^https?:\/\//i.test(target)) throw domainError('unsupported_target_url', 'Só leio endereços http(s) da plataforma.');
+      if (driver.goto) await driver.goto(target);
+      const estado = await driver.snapshot();
+      if (estado?.challenge) throw manualIntervention(estado.challenge);
+      assertTrustedPage(estado ?? {});
+      if (!driver.readJobPage) return { url: target, description: String(estado?.text ?? '').slice(0, 6000), requirements: [], eliminators: [], workMode: '', salary: '' };
+      return driver.readJobPage();
+    },
     async open(item) {
       const target = String(item?.identifierOrUrl ?? '');
       // Recusar esquema não suportado em vez de fotografar a página que já estava aberta.

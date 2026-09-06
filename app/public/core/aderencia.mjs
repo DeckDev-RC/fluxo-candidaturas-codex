@@ -9,6 +9,9 @@ export function nivelAderencia(item) {
   const nota = Number(item?.fitScore ?? 0);
   if ([item?.eliminators].flat().filter(Boolean).length) return { rotulo: 'requisito eliminatório', tom: 'erro', nota };
   if (!nota) return { rotulo: 'aderência não calculada', tom: '', nota };
+  // Sem requisitos lidos na página da vaga, a nota é o valor neutro da lista: não
+  // é medida. Dizer "50%" induziria a uma comparação que não aconteceu.
+  if (![item?.requirements].flat().filter(Boolean).length) return { rotulo: 'aderência não medida', tom: '', nota, semRequisitos: true };
   if (nota >= LIMIAR_FORTE) return { rotulo: `aderência forte · ${nota}%`, tom: 'sucesso', nota };
   if (nota >= LIMIAR_POSSIVEL) return { rotulo: `aderência possível · ${nota}%`, tom: 'informacao', nota };
   return { rotulo: `aderência fraca · ${nota}%`, tom: '', nota };

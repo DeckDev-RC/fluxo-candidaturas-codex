@@ -12,7 +12,7 @@ const LIMITE_TEXTO_CURRICULO = 12_000;
 // Ferramentas que agem fora do computador passam pelo mesmo orçamento da campanha:
 // chamar a ferramenta direto não é caminho para furar limite (F0-06, F2-05).
 const ACAO_EXTERNA = new Set(['fluxo_discover', 'fluxo_prepare', 'fluxo_fill', 'fluxo_submit', 'fluxo_reconcile']);
-const LEITURA_EXTERNA = new Set(['fluxo_followup', 'fluxo_open_platform']);
+const LEITURA_EXTERNA = new Set(['fluxo_followup', 'fluxo_open_platform', 'fluxo_read_job']);
 const ESCOPOS_DE_ESTADO = new Set(['campaign', 'queue', 'applications', 'installation', 'preflight', 'checkpoint', 'memory', 'discovery', 'followup', 'exceptions']);
 
 export function createDomainTools({ rootDir, readState, discoveryService, fitService, memoryService, applicationFlow, browserAdapter, followUpMonitor, runService, resumeImportService, intakeService, queueService, budget, platformUrls = () => ({}) } = {}) {
@@ -82,6 +82,18 @@ export function createDomainTools({ rootDir, readState, discoveryService, fitSer
         searchUrl = busca.searchUrl;
       }
       return discoveryService.discover({ searchUrl, platforms: [plataforma] });
+    }],
+    // Ler a página da vaga transforma "aderência possível 50%" (lista sem requisitos)
+    // em medida real: requisitos, modalidade e local gravados na vaga e nota recalculada.
+    ['fluxo_read_job', 'Abrir a página da vaga e ler descrição, requisitos, modalidade e local; grava na vaga e recalcula a aderência. Use nas melhores candidatas antes de preparar.', { itemId: string }, async (input) => {
+      const item = (await readState()).queue.items.find((candidato) => candidato.id === input.itemId || candidato.key === input.itemId);
+      if (!item) throw fail('queue_item_not_found');
+      const leitura = await browserAdapter.readJob(item);
+      const atualizado = await queueService.updateItemDetails(item.id, { requirements: leitura.requirements, eliminators: leitura.eliminators, description: leitura.description, workMode: leitura.workMode, salary: leitura.salary });
+      const facts = (await memoryService.safeSummary()).facts ?? {};
+      const fit = fitService.assess({ opportunity: atualizado, facts });
+      await queueService.recordFit?.([fit]);
+      return { itemId: atualizado.id, role: atualizado.role, company: atualizado.company, requirements: atualizado.requirements ?? [], eliminators: atualizado.eliminators ?? [], workMode: atualizado.workMode ?? '', salary: atualizado.salary ?? '', description: String(atualizado.description ?? '').slice(0, 1500), fit: { score: fit.score, classification: fit.classification, matched: fit.matched, gaps: fit.gaps, explanation: fit.explanation } };
     }],
     // A pessoa manda: vagas de uma busca antiga ou que ela não quer saem da fila
     // ativa e não voltam como novidade. Descarte é decisão dela, nunca da IA sozinha.
