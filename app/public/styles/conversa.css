@@ -111,6 +111,9 @@
 .atividade-lista li::before { content: '›'; color: var(--texto-3); }
 .atividade-lista li[data-tom="atencao"] { color: var(--atencao); }
 .atividade-lista li[data-andamento="true"] { color: var(--texto); }
+/* Narração da IA no meio do trabalho ("Vou abrir o LinkedIn agora."): frase, não etapa. */
+.atividade-lista li[data-narracao="true"] { color: var(--texto-3); font-style: italic; margin-top: var(--e1); }
+.atividade-lista li[data-narracao="true"]::before { content: ''; }
 .atividade-vezes { padding: 0 var(--e1); border-radius: var(--raio-sm, 4px); background: var(--superficie-2); color: var(--texto-3); font-variant-numeric: tabular-nums; }
 @keyframes passo-pulso { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .atividade-sinal { animation: none; } .atividade-seta { transition: none; } }

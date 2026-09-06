@@ -5,7 +5,7 @@
 
 import { describeError, read, send } from './api.mjs';
 import { isDemo, loadState, setConversation, setJourney, store } from './store.mjs';
-import { amendStep, say, setThinking, settleSteps } from './conversa.mjs';
+import { amendStep, demoteToStep, say, setThinking, settleSteps } from './conversa.mjs';
 import { notificarFora } from './notificacoes.mjs';
 
 const CHAVE_ULTIMO = () => `fluxo-conversa-ia:ultimo${isDemo() ? ':demo' : ''}`;
@@ -16,6 +16,7 @@ let fonte = null;
 let tratarAcoes = () => {};
 let recarga = null;
 let esperaDoTurno = null;
+let ultimaFalaDoTurno = null; // fala da IA ainda sem ferramenta depois: pode virar narração
 
 export function agentDriving() {
   return store.ia.disponivel && !isDemo();
@@ -91,12 +92,17 @@ function tratar(evento) {
 const TRATADORES = {
   'turn.started': (evento) => {
     esperaDoTurno = null;
+    ultimaFalaDoTurno = null;
     setThinking(true);
     setConversation({ ocupada: true, aguardando: null });
     if (store.jornada.status && store.jornada.status !== 'encerrada' && !evento.system) setJourney({ status: 'trabalhando', mensagem: 'Estou conduzindo a próxima etapa.' });
     if (evento.system) setJourney({ status: 'trabalhando', mensagem: 'Continuando de onde parei.' });
   },
-  'tool.started': (evento) => { if (evento.summary) say(evento.summary, { tom: 'passo', emAndamento: true }); },
+  'tool.started': (evento) => {
+    // A fala anterior deste turno era narração do que vem agora: entra na atividade.
+    if (ultimaFalaDoTurno) { demoteToStep(ultimaFalaDoTurno); ultimaFalaDoTurno = null; }
+    if (evento.summary) say(evento.summary, { tom: 'passo', emAndamento: true });
+  },
   'tool.completed': (evento) => {
     if (evento.summary) amendStep(evento.summary, { tom: evento.ok ? 'passo' : 'atencao' });
     else settleSteps();
@@ -116,10 +122,11 @@ const TRATADORES = {
     say(`Percebi que você ${({ login: 'entrou', challenge: 'resolveu a verificação', consent: 'decidiu o aviso de cookies' })[evento.kind] ?? 'resolveu a pendência'} no ${nomePlataforma(evento.platform)}. Continuando.`, { tom: 'passo' });
   },
   'assistant.message': (evento) => {
-    if (evento.text) say(evento.text);
+    if (evento.text) ultimaFalaDoTurno = say(evento.text);
     if (evento.actions?.length) tratarAcoes(evento.actions);
   },
   'turn.completed': () => {
+    ultimaFalaDoTurno = null;
     settleSteps();
     setThinking(false);
     setConversation({ ocupada: false });

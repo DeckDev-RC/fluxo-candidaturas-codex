@@ -51,6 +51,18 @@ export function amendStep(texto, { tom = 'passo' } = {}) {
   return say(texto, { tom });
 }
 
+// Fala da IA no meio do turno ("Vou abrir o LinkedIn agora.") seguida de uma
+// ferramenta é narração, não resposta: vira parte do bloco de atividade, para a
+// mesma ação não aparecer como três mensagens separadas.
+export function demoteToStep(registro) {
+  if (!registro || !transcript().includes(registro) || registro.tom === 'passo') return;
+  registro.tom = 'passo';
+  registro.narracao = true;
+  registro.duracaoMs = 0;
+  persistir();
+  avisar();
+}
+
 // Um turno que termina (ou falha) não deixa passo "em andamento" para trás.
 export function settleSteps() {
   let mudou = false;
