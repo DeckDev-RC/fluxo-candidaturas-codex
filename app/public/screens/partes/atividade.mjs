@@ -14,7 +14,9 @@ export function ehPasso(mensagem) {
 
 // `passos` são mensagens consecutivas de passo; `chave` identifica o grupo entre repinturas.
 export function blocoDeAtividade(passos) {
-  const chave = passos[0].em;
+  // A chave é a primeira etapa real: uma narração rebaixada para dentro do bloco
+  // depois não muda a identidade dele (senão o bloco aberto fechava sozinho).
+  const chave = (passos.find((passo) => !passo.narracao) ?? passos[0]).em;
   const emCurso = passos.some((passo) => passo.emAndamento);
   const falhas = passos.filter((passo) => passo.tom === 'atencao').length;
   const itens = compactar(passos);
@@ -24,15 +26,17 @@ export function blocoDeAtividade(passos) {
   const etapas = itens.filter((item) => !item.narracao).length;
   const rotulo = emCurso ? atual.texto.replace(/\.$/, '') : `${etapas === 1 ? '1 etapa' : `${etapas} etapas`}${falhas ? ` · ${falhas} com aviso` : ''}`;
 
-  const detalhes = el('details', { class: 'atividade', dataset: { andamento: String(emCurso), falhas: String(falhas > 0) }, open: abertos.has(chave) ? '' : undefined }, [
+  // `open` é propriedade booleana: '' seria falso e o bloco fechava a cada repintura.
+  const detalhes = el('details', { class: 'atividade', dataset: { andamento: String(emCurso), falhas: String(falhas > 0) }, open: abertos.has(chave) }, [
     el('summary', { class: 'atividade-resumo' }, [
       el('span', { class: 'atividade-sinal', 'aria-hidden': 'true' }),
       el('span', { class: 'atividade-rotulo quebra', text: rotulo }),
       el('span', { class: 'atividade-tempo', dataset: emCurso ? { inicio: passos[0].em } : {}, text: duracao(fim - inicio) }),
       el('span', { class: 'atividade-seta', 'aria-hidden': 'true' })
     ]),
-    el('ol', { class: 'atividade-lista' }, itens.map((item) => el('li', { dataset: { tom: item.tom, andamento: String(item.emAndamento), narracao: String(item.narracao) } }, [
-      el('span', { class: 'quebra', text: item.texto }),
+    el('ol', { class: 'atividade-lista' }, itens.map((item) => el('li', { dataset: { tom: item.tom, andamento: String(item.emAndamento), narracao: String(item.narracao) }, title: item.narracao ? item.texto : undefined }, [
+      // Narração cabe numa linha (o texto inteiro fica no title); etapa quebra normalmente.
+      el('span', { class: item.narracao ? 'atividade-narracao' : 'quebra', text: item.texto }),
       item.vezes > 1 ? el('span', { class: 'atividade-vezes', text: `×${item.vezes}` }) : null,
       Number(item.duracaoMs) >= 3000 ? el('span', { class: 'atividade-tempo', text: duracao(item.duracaoMs) }) : null
     ])))
