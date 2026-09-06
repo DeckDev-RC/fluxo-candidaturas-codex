@@ -7,6 +7,20 @@ const [, , rootDir, cdpEndpoint = ''] = process.argv;
 let backend;
 let backendUrl = '';
 
+// O worker não tem console visível (stdio ignorado): erros vão para estado/logs.
+// Rejeição sem tratamento é registrada e o serviço segue; exceção síncrona
+// inesperada encerra o processo, e o supervisor mostra o diagnóstico.
+async function registrarErro(origem, erro) {
+  try {
+    const { appendFile, mkdir } = await import('node:fs/promises');
+    const { join } = await import('node:path');
+    await mkdir(join(rootDir, 'estado', 'logs'), { recursive: true });
+    await appendFile(join(rootDir, 'estado', 'logs', 'servico.log'), `${new Date().toISOString()} ${origem}: ${erro?.stack ?? erro}\n`);
+  } catch { /* sem onde registrar */ }
+}
+process.on('unhandledRejection', (erro) => { void registrarErro('unhandledRejection', erro); });
+process.on('uncaughtException', (erro) => { registrarErro('uncaughtException', erro).finally(() => process.exit(1)); });
+
 const pendentes = new Map();
 let proximoId = 0;
 function pedirAoPrincipal(op, payload = {}) {

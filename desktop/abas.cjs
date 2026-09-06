@@ -11,13 +11,16 @@ function createAbas({ window, criarView, aoMudar = () => {} }) {
   let visivel = '';
   let avisoPendente = null;
   let ultimoAviso = '';
+  let destruido = false;
 
   const api = {
     // Abre (ou reaproveita) a aba da plataforma e carrega a URL informada; fica oculta até `mostrar`.
     async abrir(platform, url) {
       const nome = String(platform ?? '').toUpperCase();
       if (!nome) throw new Error('Plataforma obrigatória.');
+      if (destruido || !janelaViva()) throw new Error('A janela do Fluxo não está disponível.');
       let aba = abas.get(nome);
+      if (aba && aba.view.webContents?.isDestroyed?.()) { abas.delete(nome); aba = null; }
       if (!aba) {
         const view = criarView();
         endurecer(view, nome);
@@ -50,10 +53,13 @@ function createAbas({ window, criarView, aoMudar = () => {} }) {
       notificar();
     },
     // Retângulo (coordenadas da janela) onde a aba visível deve aparecer; null oculta.
+    // Valores vêm do renderer: só números finitos, não negativos e dentro de um limite sensato.
     definirArea(retangulo) {
-      area = retangulo && retangulo.width > 0 && retangulo.height > 0
-        ? { x: Math.round(retangulo.x), y: Math.round(retangulo.y), width: Math.round(retangulo.width), height: Math.round(retangulo.height) }
+      const numero = (valor, maximo) => { const n = Math.round(Number(valor)); return Number.isFinite(n) && n >= 0 && n <= maximo ? n : null; };
+      const caixa = retangulo && typeof retangulo === 'object'
+        ? { x: numero(retangulo.x, 20_000), y: numero(retangulo.y, 20_000), width: numero(retangulo.width, 20_000), height: numero(retangulo.height, 20_000) }
         : null;
+      area = caixa && caixa.x !== null && caixa.y !== null && caixa.width > 0 && caixa.height > 0 ? caixa : null;
       for (const aba of abas.values()) posicionar(aba);
     },
     listar() { return [...abas.values()].map(retrato); },
@@ -61,16 +67,21 @@ function createAbas({ window, criarView, aoMudar = () => {} }) {
       const nome = String(platform ?? '').toUpperCase();
       const aba = abas.get(nome);
       if (!aba) return false;
-      window.contentView.removeChildView(aba.view);
-      aba.view.webContents.close?.();
       abas.delete(nome);
       if (visivel === nome) visivel = '';
+      // A janela ou a view podem já ter sido destruídas (fechamento do app): nada disso pode lançar.
+      if (janelaViva()) { try { window.contentView.removeChildView(aba.view); } catch { /* já removida */ } }
+      if (!aba.view.webContents?.isDestroyed?.()) { try { aba.view.webContents.close?.(); } catch { /* já fechada */ } }
       notificar();
       return true;
     },
-    fecharTodas() { for (const nome of [...abas.keys()]) api.fechar(nome); }
+    fecharTodas() { for (const nome of [...abas.keys()]) api.fechar(nome); },
+    // Encerramento: cancela o aviso pendente e fecha tudo sem tocar em objetos destruídos.
+    destruir() { clearTimeout(avisoPendente); avisoPendente = null; destruido = true; api.fecharTodas(); }
   };
   return api;
+
+  function janelaViva() { return Boolean(window) && !(window.isDestroyed?.()) && Boolean(window.contentView); }
 
   // Só toca na view quando visibilidade ou limites mudaram de fato.
   function posicionar(aba) {
@@ -79,8 +90,8 @@ function createAbas({ window, criarView, aoMudar = () => {} }) {
     const chave = `${mostrar}|${limites.x}|${limites.y}|${limites.width}|${limites.height}`;
     if (aba.posicao === chave) return;
     aba.posicao = chave;
-    aba.view.setVisible?.(mostrar);
-    aba.view.setBounds(limites);
+    if (aba.view.webContents?.isDestroyed?.()) return;
+    try { aba.view.setVisible?.(mostrar); aba.view.setBounds(limites); } catch { /* view destruída entre a checagem e o uso */ }
   }
 
   function endurecer(view, nome) {
@@ -99,9 +110,10 @@ function createAbas({ window, criarView, aoMudar = () => {} }) {
 
   // Eventos de carregamento chegam em rajada; a interface recebe um retrato por vez, e só se mudou.
   function notificar() {
-    if (avisoPendente) return;
+    if (avisoPendente || destruido) return;
     avisoPendente = setTimeout(() => {
       avisoPendente = null;
+      if (destruido) return;
       const lista = api.listar();
       const chave = JSON.stringify(lista);
       if (chave === ultimoAviso) return;

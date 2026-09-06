@@ -65,7 +65,29 @@ test('navegador embutido: a plataforma abre numa aba dentro da janela do Fluxo',
   assert.equal(visiveis.find((aba) => aba.visible).platform, 'INFOJOBS');
   const area = await eval_("(() => { const c = document.querySelector('#navegador-area').getBoundingClientRect(); return { width: c.width, height: c.height }; })()");
   assert.ok(area.width > 200 && area.height > 200, `a área reservada tem tamanho real: ${JSON.stringify(area)}`);
+
+  // Achado real: fechar o app com uma aba aberta derrubava o processo principal
+  // ("Object has been destroyed"). Fechar pelo próprio Chromium do app percorre
+  // window close → before-quit → supervisor.stop; nada pode cair no caminho.
+  const [, caminhoWs] = (await readFile(join(userData, 'DevToolsActivePort'), 'utf8')).split(/\r?\n/);
+  const saida = new Promise((resolve) => electron.once('exit', (codigo) => resolve(codigo)));
+  await comandoCdp(`ws://127.0.0.1:${porta}${caminhoWs}`, 'Browser.close').catch(() => {});
+  const codigo = await Promise.race([saida, new Promise((resolve) => setTimeout(() => resolve('demorou'), 20_000))]);
+  assert.equal(codigo, 0, `o app encerra limpo ao fechar (código ${codigo})`);
+  const log = await readFile(join(userData, 'logs', 'principal.log'), 'utf8').catch(() => '');
+  assert.equal(log, '', `nenhum erro inesperado no processo principal:\n${log}`);
 });
+
+function comandoCdp(wsUrl, method, params = {}) {
+  return new Promise((resolve, reject) => {
+    const socket = new WebSocket(wsUrl);
+    const prazo = setTimeout(() => { socket.close(); reject(new Error('CDP sem resposta.')); }, 10_000);
+    socket.addEventListener('open', () => socket.send(JSON.stringify({ id: 1, method, params })));
+    socket.addEventListener('message', (evento) => { const m = JSON.parse(String(evento.data)); if (m.id === 1) { clearTimeout(prazo); socket.close(); resolve(m.result); } });
+    socket.addEventListener('close', () => { clearTimeout(prazo); resolve(null); });
+    socket.addEventListener('error', () => { clearTimeout(prazo); reject(new Error('CDP indisponível.')); });
+  });
+}
 
 async function esperar(tentativa, prazoMs, descricao) {
   const inicio = Date.now();

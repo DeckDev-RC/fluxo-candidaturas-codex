@@ -89,6 +89,46 @@ test('uma aba por plataforma, só a visível ocupa a área e a interface é avis
   assert.deepEqual(abas.listar(), []);
 });
 
+// Achado real: ao fechar o app, `fecharTodas` tocava na janela já destruída e o
+// processo principal caía com "Object has been destroyed".
+test('fechar com a janela ou a view destruída não lança; depois de destruir, nada mais avisa', async () => {
+  const janela = janelaFalsa();
+  janela.isDestroyed = () => false;
+  const avisos = [];
+  const views = [];
+  const abas = createAbas({ window: janela, criarView: () => { const v = viewFalsa(); views.push(v); return v; }, aoMudar: (lista) => avisos.push(lista) });
+  await abas.abrir('GUPY', 'http://127.0.0.1:1/aba/GUPY');
+  await abas.abrir('LINKEDIN', 'http://127.0.0.1:1/aba/LINKEDIN');
+  // A janela morre antes do encerramento chamar fecharTodas.
+  janela.isDestroyed = () => true;
+  janela.contentView.removeChildView = () => { throw new TypeError('Object has been destroyed'); };
+  views[0].webContents.isDestroyed = () => true;
+  views[0].webContents.close = () => { throw new TypeError('Object has been destroyed'); };
+  assert.doesNotThrow(() => abas.destruir());
+  assert.deepEqual(abas.listar(), []);
+  assert.equal(views[1].webContents.fechada, true, 'a view viva ainda é fechada');
+  await new Promise((r) => setTimeout(r, 120));
+  const depois = avisos.length;
+  abas.definirArea({ x: 0, y: 0, width: 100, height: 100 });
+  await assert.rejects(abas.abrir('GUPY', 'http://127.0.0.1:1/aba/GUPY'), /não está disponível/);
+  await new Promise((r) => setTimeout(r, 120));
+  assert.equal(avisos.length, depois, 'nada é avisado depois de destruir');
+});
+
+test('a área vinda do renderer é saneada: NaN, negativos e valores absurdos escondem a aba', async () => {
+  const janela = janelaFalsa();
+  const view = viewFalsa();
+  const abas = createAbas({ window: janela, criarView: () => view });
+  await abas.abrir('GUPY', 'http://127.0.0.1:1/aba/GUPY');
+  abas.mostrar('GUPY');
+  for (const ruim of [{ x: NaN, y: 0, width: 100, height: 100 }, { x: -5, y: 0, width: 100, height: 100 }, { x: 0, y: 0, width: 1e9, height: 100 }, 'texto', 42, null]) {
+    abas.definirArea(ruim);
+    assert.equal(view.visible, false, `área inválida esconde: ${JSON.stringify(ruim)}`);
+  }
+  abas.definirArea({ x: '10.4', y: 20, width: 300, height: 200 });
+  assert.deepEqual(view.bounds, { x: 10, y: 20, width: 300, height: 200 });
+});
+
 test('mostrar plataforma inexistente devolve falso e abrir sem plataforma falha', async () => {
   const abas = createAbas({ window: janelaFalsa(), criarView: viewFalsa });
   assert.equal(abas.mostrar('CATHO'), false);
