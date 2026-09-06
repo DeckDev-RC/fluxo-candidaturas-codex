@@ -70,7 +70,9 @@ test('controles manuais: voltar só quando há histórico, recarregar e URL atua
 
 function janelaFalsa() {
   const filhos = [];
-  return { filhos, contentView: { addChildView: (v) => filhos.push(v), removeChildView: (v) => { const i = filhos.indexOf(v); if (i >= 0) filhos.splice(i, 1); } } };
+  const janela = { filhos, repinturas: 0, contentView: { addChildView: (v) => filhos.push(v), removeChildView: (v) => { const i = filhos.indexOf(v); if (i >= 0) filhos.splice(i, 1); } } };
+  janela.webContents = { isDestroyed: () => false, invalidate() { janela.repinturas += 1; } };
+  return janela;
 }
 
 test('uma aba por plataforma, só a visível ocupa a área e a interface é avisada', async () => {
@@ -97,7 +99,11 @@ test('uma aba por plataforma, só a visível ocupa a área e a interface é avis
   assert.deepEqual(views[0].bounds, { x: 700, y: 120, width: 520, height: 641 });
   assert.equal(views[1].visible, false);
   assert.deepEqual(views[1].bounds, { x: 0, y: 0, width: 0, height: 0 });
-  assert.equal(janela.filhos.at(-1), views[0], 'a aba mostrada vai para a frente');
+  // Achado do teste real: reordenar as views (remover/adicionar) deixava a interface
+  // sem repintar até o próximo clique. Só uma aba é visível; a ordem não muda.
+  assert.deepEqual(janela.filhos, [views[0], views[1]], 'mostrar não reordena as views');
+  await new Promise((r) => setTimeout(r, 80));
+  assert.ok(janela.repinturas >= 1, 'mudar a visibilidade pede repintura da janela');
 
   abas.mostrar('GUPY');
   assert.equal(views[0].visible, false);
