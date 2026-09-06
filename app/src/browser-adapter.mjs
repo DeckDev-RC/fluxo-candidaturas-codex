@@ -55,6 +55,7 @@ export function createBrowserAdapter({ driver, evidenceRoot = '' }) {
       return resultado;
     },
     async loginState(platform) { return driver.loginState ? driver.loginState(platform) : { open: false }; },
+    activePlatform() { return driver.activePlatform ? driver.activePlatform() : ''; },
     // Abre a página da vaga e lê descrição e requisitos; desafio (CAPTCHA/login) para aqui.
     async readJob(item) {
       const target = String(item?.identifierOrUrl ?? '');

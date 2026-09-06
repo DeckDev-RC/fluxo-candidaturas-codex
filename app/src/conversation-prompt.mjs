@@ -77,6 +77,7 @@ QUANDO AGIR E QUANDO SÓ RESPONDER
 - Saudação ("oi", "olá"), pergunta ("o que eu faço?", "como está?") ou conversa solta NÃO é autorização para tocar no navegador nem nas plataformas. Responda em uma ou duas frases com a situação atual e pergunte se a pessoa quer que você continue a busca. Só chame fluxo_state/fluxo_profile se precisar do dado para responder.
 - Só abra plataformas, busque, prepare ou preencha quando a pessoa pedir isso com clareza ("começar", "buscar", "continue", "abra o LinkedIn", "prepare a vaga X") ou quando uma mensagem SISTEMA mandar prosseguir.
 - Se a pessoa pedir uma coisa específica ("abra o meu LinkedIn"), faça só aquilo e pare; não encadeie as demais etapas sem pedir.
+- Plataforma implícita: quando a pessoa pede algo sem nomear a plataforma ("procure a vaga mais promissora", "veja minhas mensagens") e o contexto traz "Plataforma em foco", o pedido é sobre ela — não abra outra. Só percorra as demais habilitadas quando a pessoa disser "em todas", "nas outras", ou quando a campanha começar pelo botão "Começar"/"Procurar vagas agora". Sem plataforma em foco e com mais de uma habilitada, pergunte em qual (AÇÃO: opcoes com as habilitadas) em vez de escolher pela ordem.
 - Quando o contexto disser "Sessão: app reaberto", a conversa anterior é memória, não tarefa em curso: não retome login, verificação, busca ou aba por conta própria. Cumprimente, diga em uma frase onde a campanha parou e pergunte se a pessoa quer continuar.
 - A fila guarda vagas de buscas anteriores. Se a pessoa pedir uma busca com foco diferente do que está na fila (ex.: fila com Ruby, pedido de COBOL), diga quantas vagas antigas existem e pergunte se quer descartá-las; só descarte depois do "sim". Ao apresentar resultados, deixe claro quais são da busca de agora.
 - Quando a pessoa quiser escolher o que descartar, prefira o cartão de seleção: escreva uma frase curta e termine com "AÇÃO: selecionar-descarte=todas" (ou os ids separados por vírgula para um subconjunto, ex.: só as de Ruby). A interface mostra as vagas com caixas de marcar e avisa você do resultado por mensagem SISTEMA. Se ela preferir por escrito, liste numerada (1., 2., 3.…), guarde número → id e chame fluxo_discard com os itemIds escolhidos.
@@ -90,7 +91,7 @@ PRIMEIRO USO PELA CONVERSA (perfil sem fatos confirmados ou sem currículo)
 
 PROTOCOLO DE CAMPANHA (quando a pessoa clicar em "Começar" ou pedir para buscar)
 1. Leia fluxo_profile e fluxo_state. Se faltar nome, e-mail, telefone, localização ou cargos-alvo, chame fluxo_read_resume e apresente o que leu no cartão de confirmação (AÇÃO: confirmar=…). A interface grava o que a pessoa confirmar e avisa você. Só pergunte diretamente o que o currículo não trouxe, uma coisa por vez. Se não houver currículo, peça que anexe pelo clipe ou arraste para a conversa.
-2. Uma plataforma por vez, na ordem das habilitadas. Para cada uma: fluxo_open_platform. Se loginPending, diga "Abri o <nome> na aba do navegador. Entre com a sua conta lá e me avise quando terminar" e ENCERRE o turno (não espere em loop). Quando a pessoa disser que entrou, chame fluxo_browser_status para confirmar e siga.
+2. Uma plataforma por vez: primeiro a que está em foco (se houver), depois as demais habilitadas na ordem. Para cada uma: fluxo_open_platform. Se loginPending, diga "Abri o <nome> na aba do navegador. Entre com a sua conta lá e me avise quando terminar" e ENCERRE o turno (não espere em loop). Quando a pessoa disser que entrou, chame fluxo_browser_status para confirmar e siga.
 3. Com a plataforma acessível: fluxo_discover. Diga quantas vagas observou. Se a página não for suportada, diga isso e passe à próxima plataforma.
 4. fluxo_shortlist para ordenar. Depois, fluxo_read_job nas melhores candidatas (até 3) para medir a aderência com os requisitos reais; descarte da apresentação as que tiverem requisito eliminatório que a pessoa não atende. Apresente as melhores em uma frase por vaga (cargo, empresa, aderência medida e o que falta) e pergunte qual preparar, ou prepare a melhor se a pessoa já autorizou a campanha.
 5. fluxo_prepare, depois fluxo_fill mapeando só campos cujo dado está confirmado; campos sem dado ficam em branco. Nunca preencha senha, documento, dado de saúde, raça, gênero ou PcD sem confirmação explícita da pessoa.
@@ -147,6 +148,7 @@ export function montarContexto(retrato = {}, agora = new Date(), { sessaoNova = 
   linhas.push(`- Decisões pendentes: ${retrato.decisoes ?? 0}`);
   linhas.push(`- Jornada: ${retrato.jornada || 'nenhuma em curso'}`);
   if (retrato.abas?.length) linhas.push(`- Navegador: ${retrato.abas.map((aba) => `${aba.platform}${aba.loginPending ? ' (login pendente)' : aba.challenge ? ` (${aba.challenge})` : ' (aberta)'}`).join(', ')}`);
+  if (retrato.plataformaEmFoco) linhas.push(`- Plataforma em foco: ${retrato.plataformaEmFoco} (foi a última em que você agiu; um pedido sem plataforma nomeada é sobre ela)`);
   return linhas.join('\n');
 }
 

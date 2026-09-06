@@ -163,6 +163,9 @@ test('navegador da IA: snapshot com refs, ações por ref e por role+name, esper
   const liberado = await driver.act('LINKEDIN', { type: 'click', role: 'button', name: 'Mais' });
   assert.equal(liberado.target.name, 'Mais');
 
+  // A plataforma em que a IA agiu por último fica em foco (o "aqui" de pedidos sem plataforma).
+  assert.equal(driver.activePlatform(), 'LINKEDIN');
+
   // A regra de endereço público vale na fronteira com a IA.
   assert.throws(() => assertUrlPublica('http://127.0.0.1:4173/aba/LINKEDIN'), { code: 'invalid_browser_url' });
   assert.throws(() => assertUrlPublica('file:///C:/x'), { code: 'invalid_browser_url' });

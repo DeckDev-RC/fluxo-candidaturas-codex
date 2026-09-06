@@ -118,12 +118,14 @@ export function createPlaywrightDriver({ rootDir, headless = false, browserType,
   // próprias. Navegar dentro da aba leva a qualquer http(s) público — uma vaga pode
   // redirecionar para o site da empresa — e a aba continua sendo a da plataforma.
   const livre = createFreeBrowsing({
-    pageFor: async (platform) => { const nome = String(platform ?? '').toUpperCase(); if (!nome) throw error('platform_required', 'Informe a plataforma cuja aba deve ser usada.'); return pageFor(nome); },
+    // Agir numa aba a torna a plataforma em foco (o "aqui" de pedidos sem plataforma).
+    pageFor: async (platform) => { const nome = String(platform ?? '').toUpperCase(); if (!nome) throw error('platform_required', 'Informe a plataforma cuja aba deve ser usada.'); const pagina = await pageFor(nome); ativa = nome; return pagina; },
     goto: async (url, platform) => { const alvo = await pageFor(String(platform).toUpperCase()); ativa = String(platform).toUpperCase(); await alvo.goto(String(url), { waitUntil: 'domcontentloaded' }); await assentar(alvo); },
     assentar
   });
 
   return {
+    activePlatform: () => (ativa === ABA_GENERICA ? '' : ativa),
     observe: (platform, opcoes) => livre.observe(platform, opcoes),
     readText: (platform, opcoes) => livre.read(platform, opcoes),
     act: (platform, acao) => livre.act(platform, acao),
