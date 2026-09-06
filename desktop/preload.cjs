@@ -20,6 +20,9 @@ contextBridge.exposeInMainWorld('fluxoDesktop', Object.freeze({
     mostrar: (platform) => ipcRenderer.invoke('fluxo:abas-mostrar', platform),
     esconder: () => ipcRenderer.invoke('fluxo:abas-esconder'),
     listar: () => ipcRenderer.invoke('fluxo:abas-listar'),
+    voltar: (platform) => ipcRenderer.invoke('fluxo:abas-voltar', String(platform ?? '')),
+    recarregar: (platform) => ipcRenderer.invoke('fluxo:abas-recarregar', String(platform ?? '')),
+    abrirExterna: (platform) => ipcRenderer.invoke('fluxo:abas-abrir-externa', String(platform ?? '')),
     aoMudar: (callback) => {
       const ouvinte = (_evento, abas) => callback(abas);
       ipcRenderer.on('fluxo:abas-mudou', ouvinte);

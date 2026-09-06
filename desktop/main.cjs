@@ -154,6 +154,16 @@ async function start() {
   ipcMain.handle('fluxo:abas-mostrar', (event, platform) => { trusted(event); return abas?.mostrar(plataformaValida(platform)) ?? false; });
   ipcMain.handle('fluxo:abas-esconder', (event) => { trusted(event); abas?.esconder(); return true; });
   ipcMain.handle('fluxo:abas-listar', (event) => { trusted(event); return abas?.listar() ?? []; });
+  // Controles manuais da aba visível: voltar, recarregar, abrir a URL atual no navegador do sistema.
+  ipcMain.handle('fluxo:abas-voltar', (event, platform) => { trusted(event); return abas?.voltar(platform) ?? false; });
+  ipcMain.handle('fluxo:abas-recarregar', (event, platform) => { trusted(event); return abas?.recarregar(platform) ?? false; });
+  ipcMain.handle('fluxo:abas-abrir-externa', async (event, platform) => {
+    trusted(event);
+    const url = abas?.urlAtual(platform) ?? '';
+    if (!url) return false;
+    await shell.openExternal(url);
+    return true;
+  });
   ipcMain.handle('fluxo:select-workspace', async event => { trusted(event); return selectWorkspace(preferencesPath); });
   ipcMain.handle('fluxo:install-browser', async event => { trusted(event); return installBrowser(); });
   Menu.setApplicationMenu(Menu.buildFromTemplate([

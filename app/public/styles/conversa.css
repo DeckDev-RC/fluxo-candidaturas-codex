@@ -43,6 +43,13 @@
   text-align: center;
 }
 .abas-endereco { max-width: 60%; font-size: var(--texto-xs); text-align: right; }
+/* Mini cabeçalho da aba: voltar, recarregar, endereço legível, abrir fora, ampliar. */
+.abas-controles { display: flex; align-items: center; gap: var(--e1); }
+.abas-controles .botao-icone { min-width: 2rem; padding: var(--e1) var(--e2); font-size: var(--texto-sm); line-height: 1; }
+.abas-controles .abas-endereco { flex: 1; min-width: 0; max-width: none; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--texto-3); }
+/* Ampliada: a coluna de acompanhamento cresce e a área ocupa a altura da janela. */
+.coluna-trabalho:has(.navegador-embutido[data-ampliado="true"]) { --acompanhamento-largura: clamp(34rem, 58vw, 64rem); --mesa-largura: 140rem; }
+.navegador-embutido[data-ampliado="true"] .abas-area { min-height: calc(100vh - 14rem); }
 
 .conversa-coluna { min-width: 0; width: 100%; max-width: 46rem; margin-inline: auto; container: conversa / inline-size; }
 .linha-do-tempo { display: flex; flex-direction: column; padding-bottom: var(--e4); }

@@ -67,6 +67,28 @@ function createAbas({ window, criarView, aoMudar = () => {} }) {
       for (const aba of abas.values()) posicionar(aba);
     },
     listar() { return [...abas.values()].map(retrato); },
+    // Controles da pessoa sobre a aba visível: voltar, recarregar. Nada disso passa
+    // pela IA; é navegação manual dentro da plataforma.
+    voltar(platform) {
+      const contents = conteudoVivo(platform);
+      if (!contents) return false;
+      const navegacao = contents.navigationHistory;
+      if (navegacao?.canGoBack?.()) { navegacao.goBack(); return true; }
+      if (!navegacao && contents.canGoBack?.()) { contents.goBack(); return true; }
+      return false;
+    },
+    recarregar(platform) {
+      const contents = conteudoVivo(platform);
+      if (!contents) return false;
+      contents.reload();
+      return true;
+    },
+    // URL atual da aba, para abrir em janela externa. Só http(s).
+    urlAtual(platform) {
+      const contents = conteudoVivo(platform);
+      const url = contents?.getURL?.() ?? '';
+      return /^https?:\/\//i.test(url) ? url : '';
+    },
     fechar(platform) {
       const nome = String(platform ?? '').toUpperCase();
       const aba = abas.get(nome);
@@ -86,6 +108,12 @@ function createAbas({ window, criarView, aoMudar = () => {} }) {
   return api;
 
   function janelaViva() { return Boolean(window) && !(window.isDestroyed?.()) && Boolean(window.contentView); }
+
+  function conteudoVivo(platform) {
+    const aba = abas.get(String(platform ?? '').toUpperCase());
+    const contents = aba?.view.webContents;
+    return contents && !contents.isDestroyed?.() ? contents : null;
+  }
 
   // Só toca na view quando visibilidade ou limites mudaram de fato.
   function posicionar(aba) {
