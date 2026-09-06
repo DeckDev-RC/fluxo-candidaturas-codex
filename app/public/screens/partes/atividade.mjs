@@ -20,8 +20,9 @@ export function blocoDeAtividade(passos) {
   const itens = compactar(passos);
   const inicio = Date.parse(passos[0].em);
   const fim = emCurso ? Date.now() : Math.max(...passos.map((passo) => Date.parse(passo.em) + Number(passo.duracaoMs ?? 0)));
-  const atual = passos.find((passo) => passo.emAndamento) ?? passos.at(-1);
-  const rotulo = emCurso ? atual.texto.replace(/\.$/, '') : `${itens.length === 1 ? '1 etapa' : `${itens.length} etapas`}${falhas ? ` · ${falhas} com aviso` : ''}`;
+  const atual = passos.find((passo) => passo.emAndamento) ?? passos.filter((passo) => !passo.narracao).at(-1) ?? passos.at(-1);
+  const etapas = itens.filter((item) => !item.narracao).length;
+  const rotulo = emCurso ? atual.texto.replace(/\.$/, '') : `${etapas === 1 ? '1 etapa' : `${etapas} etapas`}${falhas ? ` · ${falhas} com aviso` : ''}`;
 
   const detalhes = el('details', { class: 'atividade', dataset: { andamento: String(emCurso), falhas: String(falhas > 0) }, open: abertos.has(chave) ? '' : undefined }, [
     el('summary', { class: 'atividade-resumo' }, [
@@ -30,7 +31,7 @@ export function blocoDeAtividade(passos) {
       el('span', { class: 'atividade-tempo', dataset: emCurso ? { inicio: passos[0].em } : {}, text: duracao(fim - inicio) }),
       el('span', { class: 'atividade-seta', 'aria-hidden': 'true' })
     ]),
-    el('ol', { class: 'atividade-lista' }, itens.map((item) => el('li', { dataset: { tom: item.tom, andamento: String(item.emAndamento) } }, [
+    el('ol', { class: 'atividade-lista' }, itens.map((item) => el('li', { dataset: { tom: item.tom, andamento: String(item.emAndamento), narracao: String(item.narracao) } }, [
       el('span', { class: 'quebra', text: item.texto }),
       item.vezes > 1 ? el('span', { class: 'atividade-vezes', text: `×${item.vezes}` }) : null,
       Number(item.duracaoMs) >= 3000 ? el('span', { class: 'atividade-tempo', text: duracao(item.duracaoMs) }) : null
@@ -46,8 +47,8 @@ function compactar(passos) {
   const itens = [];
   for (const passo of passos) {
     const ultimo = itens.at(-1);
-    if (ultimo && ultimo.texto === passo.texto && ultimo.tom === passo.tom && !passo.emAndamento) { ultimo.vezes += 1; ultimo.duracaoMs = Number(ultimo.duracaoMs ?? 0) + Number(passo.duracaoMs ?? 0); continue; }
-    itens.push({ texto: passo.texto, tom: passo.tom, emAndamento: Boolean(passo.emAndamento), duracaoMs: Number(passo.duracaoMs ?? 0), vezes: 1 });
+    if (ultimo && ultimo.texto === passo.texto && ultimo.tom === passo.tom && !passo.emAndamento && !passo.narracao) { ultimo.vezes += 1; ultimo.duracaoMs = Number(ultimo.duracaoMs ?? 0) + Number(passo.duracaoMs ?? 0); continue; }
+    itens.push({ texto: passo.texto, tom: passo.tom, emAndamento: Boolean(passo.emAndamento), narracao: Boolean(passo.narracao), duracaoMs: Number(passo.duracaoMs ?? 0), vezes: 1 });
   }
   return itens;
 }
