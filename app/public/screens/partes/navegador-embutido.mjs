@@ -124,7 +124,9 @@ function acompanharArea(elemento) {
   }
   observador.disconnect();
   observador.observe(elemento);
-  publicarArea();
+  // A seção ainda não está na página neste momento (a repintura a anexa depois):
+  // medir agora daria "fora da vista" e a aba piscaria a cada repintura.
+  requestAnimationFrame(publicarArea);
 }
 
 let falhasDeIpc = 0;
@@ -134,17 +136,27 @@ function publicarArea() {
   // Sem seção montada não há o que informar; IPC negado (troca de pasta) espera com folga.
   if (!areaAtual?.isConnected && ultimoEnvio === 'null') return;
   if (Date.now() < proximaTentativaEm) return;
+  // Uma repintura trocou a seção: adota o elemento novo em vez de esconder a aba.
+  if (areaAtual && !areaAtual.isConnected) {
+    const nova = document.querySelector('#navegador-area');
+    if (nova) { areaAtual = nova; observador?.observe(nova); }
+  }
   let retangulo = null;
   const dialogoAberto = Boolean(document.querySelector('#dialogo')?.open);
   if (areaAtual?.isConnected && currentRoute() === 'agora' && !dialogoAberto && document.visibilityState !== 'hidden') {
     const caixa = areaAtual.getBoundingClientRect();
-    const x = Math.max(caixa.left, 0);
-    const y = Math.max(caixa.top, 0);
-    const largura = Math.min(caixa.right, window.innerWidth) - x;
-    const altura = Math.min(caixa.bottom, window.innerHeight) - y;
+    // Recorte pela área de trabalho (que rola sob o cabeçalho), não só pela janela:
+    // a aba nunca cobre o cabeçalho nem a barra de escrita.
+    const limite = areaAtual.closest('.area')?.getBoundingClientRect() ?? { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight };
+    const x = Math.max(caixa.left, limite.left, 0);
+    const y = Math.max(caixa.top, limite.top, 0);
+    const largura = Math.min(caixa.right, limite.right, window.innerWidth) - x;
+    const altura = Math.min(caixa.bottom, limite.bottom, window.innerHeight) - y;
     if (largura > ALTURA_MINIMA && altura > ALTURA_MINIMA) retangulo = { x, y, width: largura, height: altura };
   }
-  const chave = JSON.stringify(retangulo);
+  // O tamanho da janela em CSS muda com o zoom da página: entra na chave para o
+  // processo principal reposicionar mesmo quando o retângulo CSS não mudou.
+  const chave = JSON.stringify([retangulo, window.innerWidth, window.innerHeight]);
   if (chave === ultimoEnvio) return;
   ultimoEnvio = chave;
   window.fluxoDesktop.abas.area(retangulo)
