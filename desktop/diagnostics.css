@@ -105,6 +105,15 @@ button:disabled { color: var(--texto-3); cursor: not-allowed; }
   font-weight: 500;
 }
 
+/* Serviço local parado: motivo em destaque, com o botão de reinício logo abaixo. */
+.parada {
+  padding: 0.75rem 1rem;
+  border-left: 3px solid #b91c1c;
+  border-radius: 6px;
+  background: rgba(185, 28, 28, 0.08);
+  color: var(--texto);
+}
+
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }

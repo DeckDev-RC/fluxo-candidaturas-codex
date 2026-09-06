@@ -1,4 +1,9 @@
-const { app, BrowserWindow, Menu, WebContentsView, dialog, ipcMain, nativeTheme, shell, utilityProcess } = require('electron');
+const { app, BrowserWindow, Menu, WebContentsView, dialog, ipcMain, nativeTheme, session, shell, utilityProcess } = require('electron');
+
+// As abas das plataformas têm sessão própria (cookies, armazenamento), separada da
+// interface local do Fluxo. O Playwright, conectado por CDP, ainda as enxerga:
+// páginas de contextos que ele não criou entram no contexto padrão dele.
+const PARTICAO_PLATAFORMAS = 'persist:plataformas';
 const { createAbas } = require('./abas.cjs');
 
 // A IA opera as plataformas em abas dentro desta janela: o backend liga o
@@ -32,6 +37,8 @@ process.on('uncaughtException', (erro) => registrarErro('uncaughtException', err
 process.on('unhandledRejection', (erro) => registrarErro('unhandledRejection', erro));
 let mainWindow; let diagnosticWindow; let supervisor; let workspaceRoot; let backendUrl; let quitting = false; let changingWorkspace = false;
 let abas; let cdpEndpoint = '';
+// Última parada do serviço local, para a tela de diagnóstico explicar e oferecer reinício.
+let ultimaParada = null;
 const preload = join(__dirname, 'preload.cjs');
 const bundleRoot = app.isPackaged ? join(process.resourcesPath, 'fluxo-runtime') : resolve(__dirname, '..');
 const diagnosticUrl = pathToFileURL(join(__dirname, 'diagnostics.html')).href;
@@ -65,10 +72,13 @@ async function start() {
     },
     onExit: (code) => {
       registrarErro('serviço local encerrou', `código ${code}`);
+      ultimaParada = { code, at: new Date().toISOString(), motivo: `O serviço local parou de forma inesperada (código ${code}).` };
       abas?.fecharTodas();
       if (!quitting && janelaViva(mainWindow)) { backendUrl = null; mainWindow.loadURL(diagnosticUrl).catch(() => {}); }
     }
   });
+  // Permissões (câmera, localização, notificações) negadas também na sessão das plataformas.
+  session.fromPartition(PARTICAO_PLATAFORMAS).setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
 
   // Mínimo baixo o suficiente para 1024×768 com zoom de texto: a interface tem
   // composição de coluna única abaixo de 48rem (U8-03).
@@ -83,7 +93,7 @@ async function start() {
     window: mainWindow,
     // disableDialogs: alert/confirm/prompt da plataforma não viram janela nativa do
     // sistema sobre o app (ex.: pedido de localização do InfoJobs); a página segue.
-    criarView: () => new WebContentsView({ webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, disableDialogs: true } }),
+    criarView: () => new WebContentsView({ webPreferences: { partition: PARTICAO_PLATAFORMAS, sandbox: true, contextIsolation: true, nodeIntegration: false, disableDialogs: true } }),
     aoMudar: (lista) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('fluxo:abas-mudou', lista); }
   });
   // Ao trocar a página da janela (diagnóstico, nova pasta), nenhuma aba pode ficar sobre ela.
@@ -93,7 +103,18 @@ async function start() {
     if (event.senderFrame !== event.sender.mainFrame || !(url === diagnosticUrl || backendUrl && new URL(url).origin === backendUrl)) throw new Error('Origem não autorizada.');
   };
   ipcMain.handle('fluxo:diagnostics', async event => { trusted(event); return (await import('./diagnostics.mjs')).diagnose(); });
-  ipcMain.handle('fluxo:workspace', event => { trusted(event); return { rootDir: workspaceRoot, running: Boolean(backendUrl), embutido: Boolean(cdpEndpoint) }; });
+  ipcMain.handle('fluxo:workspace', event => { trusted(event); return { rootDir: workspaceRoot, running: Boolean(backendUrl), embutido: Boolean(cdpEndpoint), ultimaParada }; });
+  // Reinício do serviço pela tela de diagnóstico, sem fechar o app.
+  ipcMain.handle('fluxo:restart-backend', async event => {
+    trusted(event);
+    if (quitting) throw new Error('O Fluxo está encerrando.');
+    if (changingWorkspace) throw new Error('Aguarde a troca de pasta em andamento.');
+    await supervisor.stop();
+    backendUrl = (await supervisor.start()).url;
+    ultimaParada = null;
+    await carregarNaJanela(backendUrl);
+    return { running: true };
+  });
   // O tema efetivo vem do processo principal: o renderer não pode confiar em
   // prefers-color-scheme, que o driver do navegador (CDP) altera ao se conectar.
   ipcMain.handle('fluxo:tema', (event, preferencia) => {

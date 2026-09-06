@@ -9,7 +9,7 @@ import { go } from '../../core/router.mjs';
 import { disponivel } from '../agora-estados.mjs';
 import { nivelAderencia } from '../../core/aderencia.mjs';
 import { nomePlataforma } from '../../core/conversa-ia.mjs';
-import { embeddedBrowserSection, isEmbeddedBrowser, seloDaAba } from './navegador-embutido.mjs';
+import { embeddedBrowserSection, isDesktopWithoutEmbedded, isEmbeddedBrowser, seloDaAba } from './navegador-embutido.mjs';
 import { exportarEvidencias, journeySteps } from './percurso.mjs';
 
 const ENCERRADAS = new Set(['rejeitada', 'encerrada', 'desistência']);
@@ -65,12 +65,14 @@ function andamento(_situacao, jornada) {
 function navegador(conversa) {
   if (isEmbeddedBrowser()) return embeddedBrowserSection();
   const abas = conversa?.abas ?? [];
-  if (!abas.length) return null;
-  return secao('Navegador', el('ul', { class: 'acompanhamento-lista' }, abas.map((aba) => linha(
-    nomePlataforma(aba.platform),
-    aba.title || aba.url || '',
-    seloDaAba(aba)
-  ))));
+  const aviso = isDesktopWithoutEmbedded()
+    ? el('p', { class: 'apoio', text: 'Neste computador o navegador das plataformas abre em janela separada: a porta de depuração do app não ficou disponível. As abas continuam listadas aqui.' })
+    : null;
+  if (!abas.length && !aviso) return null;
+  return secao('Navegador', [
+    aviso,
+    abas.length ? el('ul', { class: 'acompanhamento-lista' }, abas.map((aba) => linha(nomePlataforma(aba.platform), aba.title || aba.url || '', seloDaAba(aba)))) : null
+  ]);
 }
 
 function metas(dados) {

@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('fluxoDesktop', Object.freeze({
   selectWorkspace: () => ipcRenderer.invoke('fluxo:select-workspace'),
   installBrowser: () => ipcRenderer.invoke('fluxo:install-browser'),
   workspace: () => ipcRenderer.invoke('fluxo:workspace'),
+  restartBackend: () => ipcRenderer.invoke('fluxo:restart-backend'),
   // Tema escolhido na interface: a janela nativa acompanha (fundo, controles).
   tema: (preferencia) => ipcRenderer.invoke('fluxo:tema', preferencia),
   aoMudarTema: (callback) => {
