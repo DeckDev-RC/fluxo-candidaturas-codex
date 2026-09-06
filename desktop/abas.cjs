@@ -13,6 +13,7 @@ function createAbas({ window, criarView, aoMudar = () => {} }) {
   let avisoPendente = null;
   let ultimoAviso = '';
   let destruido = false;
+  let zoom = 1;
 
   const api = {
     // Abre (ou reaproveita) a aba da plataforma e carrega a URL informada; fica oculta até `mostrar`.
@@ -29,6 +30,7 @@ function createAbas({ window, criarView, aoMudar = () => {} }) {
         aba = { platform: nome, view, title: '', url: '', loading: true };
         abas.set(nome, aba);
         posicionar(aba);
+        aplicarZoom(aba);
       }
       // Carregar a marcadora não pode segurar o pedido do serviço: com prazo curto,
       // a aba segue existindo e o driver a encontra quando a página responder.
@@ -83,6 +85,15 @@ function createAbas({ window, criarView, aoMudar = () => {} }) {
       contents.reload();
       return true;
     },
+    // Fator de zoom das abas (0.5 a 1). Vale para todas: a miniatura é um modo da
+    // área, não de uma plataforma. Valor inválido é ignorado.
+    definirZoom(fator) {
+      const numero = Number(fator);
+      if (!Number.isFinite(numero) || numero < 0.5 || numero > 1) return zoom;
+      zoom = Math.round(numero * 100) / 100;
+      for (const aba of abas.values()) aplicarZoom(aba);
+      return zoom;
+    },
     // URL atual da aba, para abrir em janela externa. Só http(s).
     urlAtual(platform) {
       const contents = conteudoVivo(platform);
@@ -136,6 +147,17 @@ function createAbas({ window, criarView, aoMudar = () => {} }) {
     contents.on?.('page-title-updated', atualizar);
     contents.on?.('did-navigate', atualizar);
     contents.on?.('did-navigate-in-page', atualizar);
+    // O zoom do Chromium é por origem: cada navegação pode voltar a 100%. Reaplica.
+    contents.on?.('did-navigate', () => aplicarZoom(abas.get(nome)));
+    contents.on?.('dom-ready', () => aplicarZoom(abas.get(nome)));
+  }
+
+  // Miniatura: com fator < 1 o site enxerga um viewport maior que a coluna e
+  // desenha o layout de desktop inteiro, reduzido. A interface decide o fator.
+  function aplicarZoom(aba) {
+    const contents = aba?.view.webContents;
+    if (!contents || contents.isDestroyed?.()) return;
+    try { if (contents.getZoomFactor?.() !== zoom) contents.setZoomFactor?.(zoom); } catch { /* view destruída */ }
   }
 
   function retrato(aba) { return { platform: aba.platform, title: aba.title, url: aba.url, loading: aba.loading, visible: visivel === aba.platform }; }

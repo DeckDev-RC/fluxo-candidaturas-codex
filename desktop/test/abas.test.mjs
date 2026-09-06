@@ -22,11 +22,35 @@ function viewFalsa() {
       session: { setPermissionRequestHandler(fn) { view.webContents.permissao = fn; } },
       close() { view.webContents.fechada = true; },
       recarregadas: 0, reload() { view.webContents.recarregadas += 1; },
+      zoom: 1, zoomsAplicados: 0, getZoomFactor() { return view.webContents.zoom; }, setZoomFactor(f) { view.webContents.zoom = f; view.webContents.zoomsAplicados += 1; },
+      disparar(evento) { ouvintes[evento]?.(); },
       navigationHistory: { voltou: 0, canGoBack: () => view.webContents.url.includes('/jobs/'), goBack() { view.webContents.navigationHistory.voltou += 1; } }
     }
   };
   return view;
 }
+
+test('miniatura: o zoom vale para todas as abas, sobrevive à navegação e rejeita valores fora de 0,5–1', async () => {
+  const views = [];
+  const abas = createAbas({ window: janelaFalsa(), criarView: () => { const v = viewFalsa(); views.push(v); return v; } });
+  await abas.abrir('LINKEDIN', 'https://www.linkedin.com/jobs/');
+  assert.equal(views[0].webContents.zoom, 1, 'sem pedido, tamanho real');
+  assert.equal(abas.definirZoom(0.67), 0.67);
+  assert.equal(views[0].webContents.zoom, 0.67);
+  await abas.abrir('GUPY', 'https://portal.gupy.io/');
+  assert.equal(views[1].webContents.zoom, 0.67, 'aba nova nasce no zoom atual');
+  // O Chromium volta ao zoom da origem em cada navegação: o valor é reaplicado.
+  views[0].webContents.zoom = 1;
+  views[0].webContents.disparar('did-navigate');
+  assert.equal(views[0].webContents.zoom, 0.67);
+  const antes = views[0].webContents.zoomsAplicados;
+  views[0].webContents.disparar('dom-ready');
+  assert.equal(views[0].webContents.zoomsAplicados, antes, 'já no valor certo: não reaplica (evitaria repintura)');
+  assert.equal(abas.definirZoom(0.1), 0.67, 'valor absurdo é ignorado');
+  assert.equal(abas.definirZoom('x'), 0.67);
+  assert.equal(abas.definirZoom(1), 1);
+  assert.equal(views[1].webContents.zoom, 1);
+});
 
 test('controles manuais: voltar só quando há histórico, recarregar e URL atual só http(s)', async () => {
   const views = [];

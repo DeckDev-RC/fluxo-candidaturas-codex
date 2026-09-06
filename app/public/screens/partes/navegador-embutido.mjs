@@ -49,9 +49,11 @@ export function embeddedBrowserSection() {
     ativa ? null : el('p', { class: 'apoio', text: plataformas.length ? 'Escolha uma plataforma para vê-la aqui. A IA abre e navega nesta área; quando pedir login, você entra aqui mesmo.' : 'Habilite plataformas em "Ajustar plataformas e metas" para vê-las aqui.' })
   ]);
   acompanharArea(area);
-  return el('section', { class: 'acompanhamento-secao navegador-embutido', dataset: { ampliado: String(ampliado) } }, [
+  const miniatura = publicarZoom() < 1;
+  return el('section', { class: 'acompanhamento-secao navegador-embutido', dataset: { ampliado: String(ampliado), miniatura: String(miniatura) } }, [
     el('header', { class: 'acompanhamento-cabecalho' }, [
       el('h3', { text: 'Navegador' }),
+      miniatura ? el('span', { class: 'apoio', text: 'miniatura', title: 'O site é mostrado no layout de computador, reduzido. Amplie para interagir; quando a IA pedir login, o tamanho real volta sozinho.' }) : null,
       button(ampliado ? 'Reduzir' : 'Ampliar', { variant: 'texto', 'aria-pressed': String(ampliado), onClick: alternarAmpliacao })
     ]),
     faixa,
@@ -80,6 +82,27 @@ function enderecoLegivel(aba) {
     const caminho = url.pathname.replace(/\/$/, '');
     return `${url.hostname.replace(/^www\./, '')}${caminho}`;
   } catch { return aba.title || ''; }
+}
+
+// Miniatura: na coluna estreita o site é mostrado no layout de computador,
+// reduzido (zoom 0,67), para acompanhar o que a IA faz. Volta ao tamanho real
+// quando a pessoa amplia ou quando a IA está esperando por ela na aba (login,
+// verificação, cookies): aí ela precisa ler e digitar.
+const ZOOM_MINIATURA = 0.67;
+const ESPERAS_NA_ABA = new Set(['login', 'challenge', 'consent']);
+let zoomPublicado = 0;
+function zoomDesejado() {
+  if (ampliado) return 1;
+  if (ESPERAS_NA_ABA.has(store.conversa?.aguardando?.kind)) return 1;
+  return ZOOM_MINIATURA;
+}
+function publicarZoom() {
+  const fator = zoomDesejado();
+  if (fator !== zoomPublicado && window.fluxoDesktop?.abas?.zoom) {
+    zoomPublicado = fator;
+    window.fluxoDesktop.abas.zoom(fator).catch(() => { zoomPublicado = 0; });
+  }
+  return fator;
 }
 
 let ampliado = false;

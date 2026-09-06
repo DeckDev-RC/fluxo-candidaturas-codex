@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld('fluxoDesktop', Object.freeze({
     esconder: () => ipcRenderer.invoke('fluxo:abas-esconder'),
     listar: () => ipcRenderer.invoke('fluxo:abas-listar'),
     voltar: (platform) => ipcRenderer.invoke('fluxo:abas-voltar', String(platform ?? '')),
+    // Miniatura (< 1) ou tamanho real (1) para todas as abas.
+    zoom: (fator) => ipcRenderer.invoke('fluxo:abas-zoom', Number(fator)),
     recarregar: (platform) => ipcRenderer.invoke('fluxo:abas-recarregar', String(platform ?? '')),
     abrirExterna: (platform) => ipcRenderer.invoke('fluxo:abas-abrir-externa', String(platform ?? '')),
     aoMudar: (callback) => {
