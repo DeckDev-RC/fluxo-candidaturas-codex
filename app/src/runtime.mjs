@@ -185,6 +185,7 @@ export async function createLocalRuntime({ rootDir, browserDriver, headless, bro
     rootDir,
     runService,
     tabs: () => browserAdapter.tabs(),
+    loginState: (platform) => browserAdapter.loginState(platform),
     snapshot: () => retratoParaConversa({ rootDir, persistence, memoryService, approvalService, runService, runtimeHealth, browserAdapter })
   });
   // A preparação é do próprio app e roda na partida: installation.ready reflete o

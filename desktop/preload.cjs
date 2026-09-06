@@ -5,6 +5,8 @@ contextBridge.exposeInMainWorld('fluxoDesktop', Object.freeze({
   installBrowser: () => ipcRenderer.invoke('fluxo:install-browser'),
   workspace: () => ipcRenderer.invoke('fluxo:workspace'),
   restartBackend: () => ipcRenderer.invoke('fluxo:restart-backend'),
+  // Aviso do sistema quando a janela não está em foco (login, aprovação, erro).
+  notificar: (aviso) => ipcRenderer.invoke('fluxo:notificar', { titulo: String(aviso?.titulo ?? ''), corpo: String(aviso?.corpo ?? '') }),
   // Tema escolhido na interface: a janela nativa acompanha (fundo, controles).
   tema: (preferencia) => ipcRenderer.invoke('fluxo:tema', preferencia),
   aoMudarTema: (callback) => {

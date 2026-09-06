@@ -28,7 +28,7 @@ export const TEXTOS = {
   },
   'aguardando-voce': {
     titulo: 'Preciso de você para continuar',
-    corpo: 'Parei nesta etapa porque ela depende de você. Assim que fizer o que pedi, me avise e eu sigo de onde parei.'
+    corpo: 'Parei nesta etapa porque ela depende de você. Para login, verificação ou cookies eu percebo sozinho quando terminar; se preferir, use o botão para me avisar.'
   },
   pausada: {
     titulo: 'Jornada pausada por você',

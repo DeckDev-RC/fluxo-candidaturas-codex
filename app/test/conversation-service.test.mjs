@@ -104,6 +104,40 @@ test('chamadas de ferramenta viram narração e esperas pela pessoa', async () =
   assert.equal(eventos[3].platform, 'LINKEDIN');
 });
 
+test('login pendente é observado na aba; resolvido, a IA recebe um turno de sistema para seguir', async () => {
+  const { adapter, chamadas } = adaptadorFalso((texto) => (/SISTEMA/.test(texto)
+    ? [{ mensagem: 'Vi que você entrou. Buscando vagas.' }]
+    : [
+      { ferramenta: 'fluxo_open_platform', args: { platform: 'LINKEDIN' }, result: { url: 'https://www.linkedin.com/login', loginPending: true, challenge: null } },
+      { mensagem: 'Abri o LinkedIn. Entre com a sua conta.' }
+    ]));
+  let estado = { open: true, loginPending: true, challenge: null, url: 'https://www.linkedin.com/login' };
+  const consultas = [];
+  const service = createConversationService({ agentAdapter: adapter, runService: runServiceFalso(), snapshot: async () => ({}), loginState: async (p) => { consultas.push(p); return estado; }, watchIntervalMs: 10 });
+  adapter.ligar(service);
+  const eventos = [];
+  service.subscribe((evento) => eventos.push(evento));
+  const fim = ate(service, 'turn.completed');
+  await service.turn('abra o linkedin');
+  await fim;
+  await new Promise((r) => setTimeout(r, 40));
+  assert.ok(consultas.length >= 1, 'a aba é consultada enquanto o login está pendente');
+  assert.ok(!eventos.some((e) => e.type === 'waiting_resolved'), 'com login ainda pendente nada muda');
+  const resolvido = ate(service, 'waiting_resolved');
+  const proximo = ate(service, 'turn.completed');
+  estado = { open: true, loginPending: false, challenge: null, url: 'https://www.linkedin.com/feed/' };
+  const aviso = await resolvido;
+  assert.equal(aviso.platform, 'LINKEDIN');
+  assert.equal(aviso.kind, 'login');
+  await proximo;
+  const turnoDeSistema = chamadas.filter(([m]) => m === 'turn/start').at(-1)[1].text;
+  assert.match(turnoDeSistema, /SISTEMA/);
+  assert.match(turnoDeSistema, /a pessoa entrou em LINKEDIN/);
+  const antes = consultas.length;
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal(consultas.length, antes, 'a observação para depois de resolver');
+});
+
 test('turno de sistema é rotulado, mensagem em curso bloqueia outra e a interrupção encerra', async () => {
   const { adapter, chamadas } = adaptadorFalso(() => [], { concluir: false });
   const service = createConversationService({ agentAdapter: adapter, runService: runServiceFalso(), snapshot: async () => ({}), timeoutMs: 5000 });

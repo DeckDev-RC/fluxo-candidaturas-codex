@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, WebContentsView, dialog, ipcMain, nativeTheme, session, shell, utilityProcess } = require('electron');
+const { app, BrowserWindow, Menu, Notification, WebContentsView, dialog, ipcMain, nativeTheme, session, shell, utilityProcess } = require('electron');
 
 // As abas das plataformas têm sessão própria (cookies, armazenamento), separada da
 // interface local do Fluxo. O Playwright, conectado por CDP, ainda as enxerga:
@@ -46,6 +46,8 @@ const diagnosticUrl = pathToFileURL(join(__dirname, 'diagnostics.html')).href;
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on('second-instance', () => { if (janelaViva(mainWindow)) { mainWindow.show(); mainWindow.focus(); } });
+  // No Windows, notificações nativas exigem o mesmo id do atalho instalado.
+  if (process.platform === 'win32') app.setAppUserModelId('br.fluxo.desktop');
   app.whenReady().then(start).catch(error => { dialog.showErrorBox('Fluxo', error.message); app.quit(); });
 }
 
@@ -124,6 +126,22 @@ async function start() {
     return { themeSource: nativeTheme.themeSource, escuro: nativeTheme.shouldUseDarkColors };
   });
   nativeTheme.on('updated', () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('fluxo:tema-mudou', { escuro: nativeTheme.shouldUseDarkColors }); });
+  // Aviso do sistema quando a pessoa está em outro lugar: notificação nativa e
+  // barra de tarefas piscando; clicar traz a janela de volta. Texto vem da interface.
+  ipcMain.handle('fluxo:notificar', (event, aviso) => {
+    trusted(event);
+    if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isFocused()) return false;
+    const titulo = String(aviso?.titulo ?? 'Fluxo').slice(0, 80);
+    const corpo = String(aviso?.corpo ?? '').slice(0, 240);
+    mainWindow.flashFrame(true);
+    mainWindow.once('focus', () => mainWindow?.flashFrame(false));
+    if (Notification.isSupported()) {
+      const notificacao = new Notification({ title: titulo, body: corpo, silent: false });
+      notificacao.on('click', () => { if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.show(); mainWindow.focus(); } });
+      notificacao.show();
+    }
+    return true;
+  });
   // O renderer mede em pixels CSS; a view é posicionada em pixels da janela.
   // Com zoom da página (Ctrl + / Ctrl -) as duas escalas divergem: o fator vem daqui.
   ipcMain.handle('fluxo:abas-area', (event, retangulo) => {

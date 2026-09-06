@@ -6,9 +6,10 @@
 import { describeError, read, send } from './api.mjs';
 import { isDemo, loadState, setConversation, setJourney, store } from './store.mjs';
 import { amendStep, say, setThinking } from './conversa.mjs';
+import { notificarFora } from './notificacoes.mjs';
 
 const CHAVE_ULTIMO = () => `fluxo-conversa-ia:ultimo${isDemo() ? ':demo' : ''}`;
-const TIPOS = ['turn.started', 'tool.started', 'tool.completed', 'browser.tabs', 'waiting_user', 'assistant.message', 'turn.completed', 'turn.failed', 'conversation.reset'];
+const TIPOS = ['turn.started', 'tool.started', 'tool.completed', 'browser.tabs', 'waiting_user', 'waiting_resolved', 'assistant.message', 'turn.completed', 'turn.failed', 'conversation.reset'];
 const NOMES = { GUPY: 'Gupy', INFOJOBS: 'InfoJobs', PANDAPE: 'PandaPé', LINKEDIN: 'LinkedIn', CATHO: 'Catho', VAGASCOM: 'Vagas.com', SOLIDES: 'Sólides' };
 
 let fonte = null;
@@ -104,6 +105,14 @@ const TRATADORES = {
   waiting_user: (evento) => {
     esperaDoTurno = evento;
     setConversation({ aguardando: evento });
+    notificarFora({ titulo: 'O Fluxo precisa de você', corpo: textoDaEspera(evento) });
+  },
+  // O serviço percebeu que a pendência foi resolvida na aba: a espera some e a IA segue.
+  waiting_resolved: (evento) => {
+    if (esperaDoTurno?.platform && esperaDoTurno.platform !== evento.platform) return;
+    esperaDoTurno = null;
+    setConversation({ aguardando: null });
+    say(`Percebi que você ${({ login: 'entrou', challenge: 'resolveu a verificação', consent: 'decidiu o aviso de cookies' })[evento.kind] ?? 'resolveu a pendência'} no ${nomePlataforma(evento.platform)}. Continuando.`, { tom: 'passo' });
   },
   'assistant.message': (evento) => {
     if (evento.text) say(evento.text);
@@ -119,7 +128,7 @@ const TRATADORES = {
     setThinking(false);
     setConversation({ ocupada: false });
     const interrompido = evento.code === 'conversation_interrupted';
-    if (!interrompido) say(evento.message || describeError(evento), { tom: 'erro' });
+    if (!interrompido) { say(evento.message || describeError(evento), { tom: 'erro' }); notificarFora({ titulo: 'O Fluxo parou numa etapa', corpo: evento.message || describeError(evento) }); }
     if (store.jornada.status === 'trabalhando') setJourney({ status: interrompido ? 'pausada' : 'aguardando', mensagem: interrompido ? 'Você interrompeu a etapa em curso.' : 'A última etapa falhou. Você pode pedir para eu tentar de novo.' });
   },
   'conversation.reset': () => setConversation({ ocupada: false, aguardando: null, abas: [] })
@@ -127,9 +136,9 @@ const TRATADORES = {
 
 function textoDaEspera(espera) {
   if (!espera) return 'Terminei esta etapa e aguardo o seu próximo pedido.';
-  if (espera.kind === 'login') return `Entre no ${nomePlataforma(espera.platform)} na janela do navegador e avise quando terminar.`;
-  if (espera.kind === 'challenge') return `O ${nomePlataforma(espera.platform)} pediu uma verificação; resolva na janela do navegador e avise quando terminar.`;
-  if (espera.kind === 'consent') return `O ${nomePlataforma(espera.platform)} mostra um aviso de cookies; decida na aba do navegador e avise quando terminar.`;
+  if (espera.kind === 'login') return `Entre no ${nomePlataforma(espera.platform)} na aba do navegador. Eu percebo quando você entrar e continuo sozinho.`;
+  if (espera.kind === 'challenge') return `O ${nomePlataforma(espera.platform)} pediu uma verificação; resolva na aba do navegador. Eu percebo quando terminar e continuo.`;
+  if (espera.kind === 'consent') return `O ${nomePlataforma(espera.platform)} mostra um aviso de cookies; decida na aba do navegador. Eu percebo e continuo.`;
   if (espera.kind === 'approval') return 'Preparei uma candidatura; revise e aprove ou rejeite o envio.';
   return 'Preciso de você para continuar.';
 }
