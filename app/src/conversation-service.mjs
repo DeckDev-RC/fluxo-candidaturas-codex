@@ -44,6 +44,11 @@ export function createConversationService({ agentAdapter, snapshot = async () =>
   let turnoAtivo = null;
   let observacao = null; // intervalo que observa a aba enquanto a IA espera login
   let ferramentasRenovadas = false; // thread anterior descartada por ferramentas novas
+  // Quando a thread anterior não pode ser retomada (ferramentas mudaram, app-server
+  // a perdeu), a memória da conversa vem do histórico local gravado nos eventos do
+  // run anterior e entra no contexto do primeiro turno da thread nova.
+  let conversaAnterior = [];
+  let gravado = {};
   const ouvintes = new Set();
   const historico = [];
 
@@ -107,7 +112,7 @@ export function createConversationService({ agentAdapter, snapshot = async () =>
         await ensureRun();
         // O primeiro turno de cada processo avisa que o app foi reaberto: a thread
         // retomada lembra o que estava fazendo, mas nada disso continua em curso.
-        const contexto = montarContexto(await snapshot(), now(), { sessaoNova: primeiroTurnoDaSessao && (retomadaDeGravacao || ferramentasRenovadas) });
+        const contexto = montarContexto(await snapshot(), now(), { sessaoNova: primeiroTurnoDaSessao && (retomadaDeGravacao || ferramentasRenovadas), conversaAnterior: primeiroTurnoDaSessao ? conversaAnterior : [] });
         primeiroTurnoDaSessao = false;
         const entrada = `${contexto}\n\n${system ? 'SISTEMA (evento da interface, não é fala da pessoa)' : 'Pessoa'}: ${pedido}`;
         turno.reservado = false;
@@ -133,7 +138,7 @@ export function createConversationService({ agentAdapter, snapshot = async () =>
     // ao reinício do app); se ele não a conhecer mais, uma nova começa.
     async ensureThread() {
       if (!carregado) {
-        const gravado = await carregar(rootDir);
+        gravado = await carregar(rootDir);
         threadId = gravado.threadId ?? '';
         carregado = true;
         // Ferramentas mudaram desde que a thread nasceu: retomá-la deixaria a IA
@@ -146,11 +151,14 @@ export function createConversationService({ agentAdapter, snapshot = async () =>
         try { await agentAdapter.resumeThread(threadId, parametros); retomada = threadId; retomadaDeGravacao = true; return threadId; }
         catch (error) { if (!threadPerdida(error)) throw error; threadId = ''; }
       }
+      // Thread nova no lugar de uma gravada: a memória vem do histórico local.
+      if (gravado.threadId && primeiroTurnoDaSessao) conversaAnterior = resumirConversaAnterior(runService, gravado.runId);
       const iniciado = await agentAdapter.startThread(parametros);
       threadId = String(iniciado?.thread?.id ?? iniciado?.threadId ?? '');
       if (!threadId) throw domainError('conversation_thread_failed', 'O Codex não abriu uma conversa.');
       retomada = threadId;
-      await persistir(rootDir, { threadId, toolsSignature, startedAt: now().toISOString() });
+      gravado = { threadId, toolsSignature, startedAt: now().toISOString() };
+      await persistir(rootDir, gravado);
       return threadId;
     },
 
@@ -202,6 +210,10 @@ export function createConversationService({ agentAdapter, snapshot = async () =>
     runId = run.id;
     if (runService.setAgentThread) runService.setAgentThread(runId, threadId);
     agentAdapter.bindRun?.(runId, threadId);
+    // O run desta sessão fica gravado com a thread: é dele que a próxima sessão
+    // recupera a conversa se a thread não puder ser retomada.
+    gravado = { ...gravado, runId };
+    await persistir(rootDir, gravado);
     return runId;
   }
 
@@ -295,6 +307,34 @@ function semMarkdown(texto) {
     .replace(/^#{1,6}\s+/gm, '')
     .replace(/^\s*[-*]\s+/gm, '• ')
     .trim();
+}
+
+// Últimas falas da conversa anterior, a partir dos eventos gravados do run. Só
+// texto de pessoa e de Fluxo (sem ferramentas), cortado curto: é memória, não
+// transcrição, e nunca contém segredo porque o histórico já é o que foi mostrado.
+const FALAS_ANTERIORES = 12;
+const TAMANHO_FALA = 240;
+export function resumirConversaAnterior(runService, runId) {
+  if (!runId || !runService?.listEvents) return [];
+  let eventos = [];
+  try { eventos = runService.listEvents(runId) ?? []; } catch { return []; }
+  return eventos
+    .filter((evento) => ['conversation.user', 'conversation.assistant'].includes(evento.type))
+    .map((evento) => ({ tipo: evento.type, texto: String(cargaDoEvento(evento).text ?? '').trim() }))
+    .filter((fala) => fala.texto)
+    .slice(-FALAS_ANTERIORES)
+    .map((fala) => `${fala.tipo === 'conversation.user' ? 'Pessoa' : 'Fluxo'}: ${encurtar(fala.texto)}`);
+}
+
+// O run-service em SQLite devolve `payloadJson` (texto); os falsos de teste, `payload`.
+function cargaDoEvento(evento) {
+  if (evento.payload && typeof evento.payload === 'object') return evento.payload;
+  try { return JSON.parse(evento.payloadJson ?? '{}') ?? {}; } catch { return {}; }
+}
+
+function encurtar(texto) {
+  const limpo = String(texto).replace(/\s+/g, ' ').trim();
+  return limpo.length > TAMANHO_FALA ? `${limpo.slice(0, TAMANHO_FALA - 1)}…` : limpo;
 }
 
 async function carregar(rootDir) {

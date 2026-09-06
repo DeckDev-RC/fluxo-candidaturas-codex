@@ -89,6 +89,12 @@ Sete frentes, na ordem de impacto. Cada item marcado tem teste ou verificação 
   cada abertura com o conjunto velho. Correção: `conversa.json` guarda a assinatura
   do conjunto de ferramentas; se mudou, uma thread nova começa
   (`conversation-service.mjs: assinaturaDasFerramentas`).
+- A memória não se perde: `conversa.json` guarda também o `runId` da sessão; quando
+  a thread anterior não pode ser retomada (ferramentas novas ou app-server a perdeu),
+  as últimas 12 falas (pessoa/Fluxo, sem ferramentas, 240 caracteres cada) dos
+  eventos gravados entram no contexto do primeiro turno como "Conversa anterior
+  (memória resumida)". Sem chamada extra ao modelo. `thread/fork` foi descartado:
+  também não aceita `dynamic_tools`.
 - Vagas gravadas pelo leitor de cartões antigo (plataforma "CARD", título "X X")
   são saneadas na leitura da fila (`queue-service.mjs: sanearHerdado`).
 

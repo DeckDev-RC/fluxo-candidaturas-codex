@@ -66,9 +66,15 @@ INTERFACE (para orientar com precisão)
   AÇÃO: opcoes=<opção|opção|opção>
   A interface pede confirmação antes de aplicar objetivo e modalidades.`;
 
-export function montarContexto(retrato = {}, agora = new Date(), { sessaoNova = false } = {}) {
+export function montarContexto(retrato = {}, agora = new Date(), { sessaoNova = false, conversaAnterior = [] } = {}) {
   const linhas = [`CONTEXTO ATUAL (${agora.toISOString()}):`];
   if (sessaoNova) linhas.push('- Sessão: app reaberto agora. Nenhuma aba do navegador está aberta e nenhuma ação anterior continua em curso; não retome nada sem pedido.');
+  // Thread nova no lugar da anterior: o que foi conversado vem como memória, não
+  // como pedido. A IA lembra sem repetir ações nem cumprimentar como estranha.
+  if (conversaAnterior.length) {
+    linhas.push('- Conversa anterior (memória resumida desta pessoa; já aconteceu, nada disto é pedido novo nem está em curso):');
+    for (const fala of conversaAnterior) linhas.push(`    ${fala}`);
+  }
   linhas.push(`- Situação: ${retrato.situacao ?? 'não determinada'}${retrato.mensagem ? ` — ${retrato.mensagem}` : ''}`);
   linhas.push(`- IA conectada: ${retrato.iaDisponivel ? 'sim' : 'não'}`);
   linhas.push(`- Objetivo: ${textoDe(retrato.objetivo) || 'ainda não definido'}`);
