@@ -42,7 +42,7 @@ import { createFixtureAgents, createFixtureDiscoveryAdapters } from './fixture-a
 import { createProductionAgents } from './production-agents.mjs';
 import { createAutopilotService } from './autopilot-service.mjs';
 import { createCodexAuthService } from './codex-auth-service.mjs';
-import { createConversationService } from './conversation-service.mjs';
+import { assinaturaDasFerramentas, createConversationService } from './conversation-service.mjs';
 import { retratoParaConversa } from './conversation-snapshot.mjs';
 import { createCodexHarnessService } from './codex-harness-service.mjs';
 import { createCodexSettingsService } from './codex-settings-service.mjs';
@@ -186,6 +186,7 @@ export async function createLocalRuntime({ rootDir, browserDriver, headless, bro
     runService,
     tabs: () => browserAdapter.tabs(),
     loginState: (platform) => browserAdapter.loginState(platform),
+    toolsSignature: assinaturaDasFerramentas(domainTools.definitions),
     snapshot: () => retratoParaConversa({ rootDir, persistence, memoryService, approvalService, runService, runtimeHealth, browserAdapter })
   });
   // A preparação é do próprio app e roda na partida: installation.ready reflete o

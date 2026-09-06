@@ -80,6 +80,18 @@ Sete frentes, na ordem de impacto. Cada item marcado tem teste ou verificação 
 - [x] Commit por frente, push (`codex/fluxo-desktop`), instalador
       `dist/desktop/Fluxo-1.2.0-Windows-x64.exe` com SHA-256 ao lado.
 
+## Achado do teste real (12:30) e correção
+
+- A IA respondeu "não consigo limpar a fila pelas ferramentas disponíveis" com
+  `fluxo_discard` já existindo. Causa: o app-server guarda as ferramentas dinâmicas
+  no metadado da thread quando ela nasce e `thread/resume` não aceita lista nova
+  (`ThreadResumeParams` não tem `dynamic_tools`); a thread antiga era retomada a
+  cada abertura com o conjunto velho. Correção: `conversa.json` guarda a assinatura
+  do conjunto de ferramentas; se mudou, uma thread nova começa
+  (`conversation-service.mjs: assinaturaDasFerramentas`).
+- Vagas gravadas pelo leitor de cartões antigo (plataforma "CARD", título "X X")
+  são saneadas na leitura da fila (`queue-service.mjs: sanearHerdado`).
+
 ## Pendente de validação com conta real
 
 - Qualidade da extração de requisitos nas páginas reais de Gupy/InfoJobs/LinkedIn

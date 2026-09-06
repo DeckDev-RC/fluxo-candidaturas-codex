@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createConversationService, separarAcoes } from '../src/conversation-service.mjs';
+import { assinaturaDasFerramentas, createConversationService, separarAcoes } from '../src/conversation-service.mjs';
 import { montarContexto } from '../src/conversation-prompt.mjs';
 import { resumirFerramenta } from '../src/conversation-narration.mjs';
 import { createServer } from '../src/http-server.mjs';
@@ -274,6 +274,42 @@ test('o Codex morrer no meio do turno encerra o turno na hora, e o próximo pedi
   await service.turn('de novo');
   assert.ok(chamadas.some(([m]) => m === 'thread/resume'), 'a thread é retomada no processo novo');
   await service.interrupt();
+});
+
+test('ferramentas novas desde que a thread nasceu: não retoma (o app-server manteria o conjunto antigo), começa outra e grava a assinatura', async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), 'fluxo-conversa-ferramentas-'));
+  await mkdir(join(rootDir, 'estado'), { recursive: true });
+  // Achado real: a thread criada antes de fluxo_discard existir era retomada a cada
+  // abertura e a IA respondia "não consigo limpar a fila pelas ferramentas disponíveis".
+  await writeFile(join(rootDir, 'estado', 'conversa.json'), JSON.stringify({ threadId: 'thread-antiga', toolsSignature: 'assinatura-velha' }));
+  const antiga = assinaturaDasFerramentas([{ name: 'fluxo_state', description: 'x', inputSchema: {} }]);
+  const nova = assinaturaDasFerramentas([{ name: 'fluxo_state', description: 'x', inputSchema: {} }, { name: 'fluxo_discard', description: 'y', inputSchema: {} }]);
+  assert.notEqual(antiga, nova);
+  assert.equal(antiga, assinaturaDasFerramentas([{ name: 'fluxo_state', description: 'x', inputSchema: {} }]), 'a assinatura é estável para o mesmo conjunto');
+
+  const { adapter, chamadas } = adaptadorFalso(() => [{ mensagem: 'Posso descartar as vagas antigas.' }]);
+  adapter.resumeThread = async (threadId) => { chamadas.push(['thread/resume', { threadId }]); return { thread: { id: threadId } }; };
+  const service = createConversationService({ agentAdapter: adapter, rootDir, runService: runServiceFalso(), snapshot: async () => ({}), toolsSignature: nova });
+  adapter.ligar(service);
+  const fim = ate(service, 'turn.completed');
+  await service.turn('quero limpar a fila');
+  await fim;
+  assert.equal(chamadas.some(([m]) => m === 'thread/resume'), false, 'a thread com ferramentas velhas não é retomada');
+  assert.equal(chamadas.filter(([m]) => m === 'thread/start').length, 1);
+  assert.match(chamadas.find(([m]) => m === 'turn/start')[1].text, /Sessão: app reaberto/, 'a conversa nova ainda avisa que nada continua em curso');
+  const gravado = JSON.parse(await readFile(join(rootDir, 'estado', 'conversa.json'), 'utf8'));
+  assert.equal(gravado.threadId, 'thread-conversa');
+  assert.equal(gravado.toolsSignature, nova);
+
+  // Mesma assinatura na próxima abertura: retoma normalmente.
+  const segunda = adaptadorFalso(() => [{ mensagem: 'ok' }]);
+  segunda.adapter.resumeThread = async (threadId) => { segunda.chamadas.push(['thread/resume', { threadId }]); return { thread: { id: threadId } }; };
+  const outro = createConversationService({ agentAdapter: segunda.adapter, rootDir, runService: runServiceFalso(), snapshot: async () => ({}), toolsSignature: nova });
+  segunda.adapter.ligar(outro);
+  const fim2 = ate(outro, 'turn.completed');
+  await outro.turn('oi');
+  await fim2;
+  assert.deepEqual(segunda.chamadas.filter(([m]) => m === 'thread/resume').map(([, p]) => p.threadId), ['thread-conversa']);
 });
 
 test('notificações de outras threads são ignoradas e o turno expira com mensagem legível', async () => {

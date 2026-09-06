@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { acquireFluxoLock, wrapMutations } from './lock.mjs';
 import { createAutoPersistence } from './persistence-authority.mjs';
 import { canTransitionQueue, QUEUE_STATUS } from './domain/queue-status.mjs';
+import { platformOfUrl } from './platform-search.mjs';
 
 const CONFIRMED_STATUSES = new Set([
   'enviada', 'triagem', 'teste pendente', 'teste concluído', 'entrevista', 'proposta', 'rejeitada', 'encerrada'
@@ -173,7 +174,21 @@ export function createQueueService({ rootDir, persistence: injectedPersistence, 
 
 async function useSqlite(persistence) { return Boolean(persistence?.isSqliteAuthority && await persistence.isSqliteAuthority()); }
 async function readCampaign(rootDir, persistence) { return await useSqlite(persistence) ? persistence.getCampaign() : readJson(join(rootDir, 'campanha', 'config.json'), { platforms: [] }); }
-async function readQueue(rootDir, persistence) { return asArray(await useSqlite(persistence) ? await persistence.getQueue() : await readJson(join(rootDir, 'fila', 'vagas.json'), [])); }
+async function readQueue(rootDir, persistence) { return asArray(await useSqlite(persistence) ? await persistence.getQueue() : await readJson(join(rootDir, 'fila', 'vagas.json'), [])).map(sanearHerdado); }
+
+// Vagas gravadas por versões anteriores do leitor de cartões: plataforma "CARD"
+// (a origem virou plataforma) e título duplicado ("X X", trecho oculto do LinkedIn).
+// Corrigidas na leitura para a pessoa não ver nem descartar lixo por causa disso.
+function sanearHerdado(item) {
+  if (!item || typeof item !== 'object') return item;
+  let mudou = false;
+  const saneado = { ...item };
+  if (String(saneado.platform ?? '').toUpperCase() === 'CARD') { saneado.platform = platformOfUrl(saneado.identifierOrUrl) || 'DESCONHECIDA'; mudou = true; }
+  const titulo = String(saneado.role ?? '').trim();
+  const metade = titulo.slice(0, Math.floor(titulo.length / 2)).trim();
+  if (metade && titulo.length % 2 === 1 && titulo === `${metade} ${metade}`) { saneado.role = metade; mudou = true; }
+  return mudou ? saneado : item;
+}
 async function readApplications(rootDir, persistence) { return asArray(await useSqlite(persistence) ? await persistence.getApplications() : await readJson(join(rootDir, 'candidaturas', 'candidaturas.json'), [])); }
 async function saveQueue(path, value, persistence) { if (await useSqlite(persistence)) return persistence.replaceQueue(value); return writeJsonAtomic(path, value); }
 
