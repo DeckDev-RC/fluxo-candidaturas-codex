@@ -9,7 +9,7 @@ import { describeError, send } from '../../core/api.mjs';
 import { nivelAderencia } from '../../core/aderencia.mjs';
 import { plural } from '../../core/rotulos.mjs';
 import { ask, say } from '../../core/conversa.mjs';
-import { sendTurn } from '../../core/conversa-ia.mjs';
+import { agentDriving, sendTurn } from '../../core/conversa-ia.mjs';
 import { loadState, setConversation, store } from '../../core/store.mjs';
 import { notice } from '../../ui/messages.mjs';
 
@@ -38,6 +38,13 @@ export function abrirCartaoDaIa({ tipo, valor }) {
 }
 
 export function fecharCartaoDaIa() { setConversation({ cartao: null }); }
+
+// O resultado do cartão só vira turno quando a IA está conduzindo; sem IA, o
+// que a pessoa fez já está gravado e a conversa segue pelas regras locais.
+async function avisarIa(texto, opcoes = {}) {
+  if (!agentDriving()) return null;
+  try { return await sendTurn(texto, opcoes); } catch { return null; }
+}
 
 export function cartaoDaIa() {
   const cartao = store.conversa?.cartao;
@@ -73,7 +80,7 @@ function cartaoDescarte(cartao) {
     el('ul', { class: 'cartao-ia-lista' }, linhas),
     el('div', { class: 'linha-acoes' }, [
       button('Descartar selecionadas', { onClick: () => descartarSelecionadas(cartao, itens) }),
-      button('Deixar como está', { variant: 'secundario', onClick: () => { fecharCartaoDaIa(); ask('Deixe a fila como está.'); return sendTurn('Deixe a fila como está.'); } }),
+      button('Deixar como está', { variant: 'secundario', onClick: () => { fecharCartaoDaIa(); ask('Deixe a fila como está.'); return avisarIa('Deixe a fila como está.'); } }),
       contador
     ])
   ]);
@@ -88,7 +95,7 @@ async function descartarSelecionadas(cartao, itens) {
     const nomes = itens.filter((item) => ids.includes(item.id)).map((item) => `${item.role} (${item.company})`);
     notice(`${plural(resultado.discarded, 'vaga descartada', 'vagas descartadas')}; ${plural(resultado.remaining, 'continua', 'continuam')} na fila.`, 'informacao');
     await loadState();
-    await sendTurn(`A pessoa descartou ${plural(resultado.discarded, 'vaga')} pelo cartão: ${nomes.join('; ')}. Restam ${resultado.remaining} ativas. Continue de onde estava.`, { system: true }).catch(() => null);
+    await avisarIa(`A pessoa descartou ${plural(resultado.discarded, 'vaga')} pelo cartão: ${nomes.join('; ')}. Restam ${resultado.remaining} ativas. Continue de onde estava.`, { system: true });
   } catch (error) { say(describeError(error), { tom: 'erro' }); }
 }
 
@@ -110,7 +117,7 @@ function cartaoConfirmar(cartao) {
           fecharCartaoDaIa();
           notice('Dados confirmados no seu perfil.', 'sucesso');
           await loadState();
-          await sendTurn(`A pessoa confirmou pelo cartão: ${Object.entries(answers).map(([chave, v]) => `${ROTULOS[chave] ?? chave} = ${v}`).join('; ')}. Já estão gravados como confirmados; não grave de novo. Continue.`, { system: true }).catch(() => null);
+          await avisarIa(`A pessoa confirmou pelo cartão: ${Object.entries(answers).map(([chave, v]) => `${ROTULOS[chave] ?? chave} = ${v}`).join('; ')}. Já estão gravados como confirmados; não grave de novo. Continue.`, { system: true });
         } catch (error) { say(describeError(error), { tom: 'erro' }); }
       } }),
       button('Prefiro responder por escrito', { variant: 'texto', onClick: () => { fecharCartaoDaIa(); } })
@@ -120,5 +127,5 @@ function cartaoConfirmar(cartao) {
 
 // Botões que enviam o texto como fala da pessoa.
 function cartaoOpcoes(cartao) {
-  return el('div', { class: 'cartao-ia cartao-ia-opcoes' }, cartao.opcoes.map((opcao) => button(opcao, { variant: 'secundario', onClick: () => { fecharCartaoDaIa(); ask(opcao); return sendTurn(opcao); } })));
+  return el('div', { class: 'cartao-ia cartao-ia-opcoes' }, cartao.opcoes.map((opcao) => button(opcao, { variant: 'secundario', onClick: () => { fecharCartaoDaIa(); ask(opcao); return avisarIa(opcao); } })));
 }
