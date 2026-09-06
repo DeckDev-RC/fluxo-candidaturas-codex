@@ -6,6 +6,7 @@
 // (enviar, aceitar, conectar, excluir…) só com confirmação explícita da pessoa.
 
 import { LER_TEXTO, nomeAcessivel, observarPlano } from './browser-free-observer.mjs';
+import { lembrarSnapshot, resolverAlvo, traduzirFalhaDeAcao } from './browser-free-target.mjs';
 
 const SNAPSHOT_PADRAO = 12_000;
 const SNAPSHOT_MAXIMO = 40_000;
@@ -17,6 +18,15 @@ const TECLA = /^(?:(?:Control|Shift)\+){0,2}(?:[A-Za-z0-9]|Enter|Escape|Tab|Arro
 // Efeito fora do app ou irreversível: exige `confirmed: true`, que a IA só pode
 // passar depois de a pessoa dizer sim para essa ação específica.
 export const ACAO_SENSIVEL = /\b(enviar|envie|submit|send|candidatar|candidate-se|apply|aceitar|accept|conectar|connect|seguir|follow|pagar|pay|comprar|buy|assinar|subscribe|contratar|excluir|delete|apagar|remover|remove|desativar|deactivate|encerrar conta|sair|logout|publicar|post|comentar|comment|confirmar|confirm)\b/i;
+// "Enviar mensagem" no perfil só abre o compositor (nada sai); quem envia é o "Enviar"
+// de dentro dele, e esse continua no portão. Sem esta exceção a IA parava antes de
+// conseguir sequer escrever (achado real do LinkedIn).
+const ABRE_COMPOSITOR = /^(enviar|send|escrever|write|nova|new)\s+(uma\s+|a\s+)?(mensagem|message)(\s+(para|to|com|with)\s+.+)?$/i;
+export function ehAcaoSensivel(nome) {
+  const limpo = String(nome ?? '').replace(/\s+/g, ' ').trim();
+  if (ABRE_COMPOSITOR.test(limpo)) return false;
+  return ACAO_SENSIVEL.test(limpo);
+}
 
 export function createFreeBrowsing({ pageFor, goto, assentar = assentarPadrao }) {
   return {
@@ -40,29 +50,31 @@ export function createFreeBrowsing({ pageFor, goto, assentar = assentarPadrao })
         const tecla = String(acao.key ?? '');
         if (!TECLA.test(tecla)) throw erro('invalid_key', `Tecla não permitida: ${tecla}. Use letras, números, Enter, Escape, Tab, setas, PageUp/PageDown, Home, End, Backspace, Delete, Space, ou combinações com Control/Shift.`);
         await page.keyboard.press(tecla);
-      } else if (tipo === 'scroll') {
-        if (acao.ref || acao.role) await (await alvo(page, acao)).scrollIntoViewIfNeeded();
-        else await page.mouse.wheel(0, String(acao.direction) === 'up' ? -700 : 700);
-      } else if (tipo === 'hover') {
-        await (await alvo(page, acao)).hover({ timeout: 10_000 });
-      } else if (tipo === 'click') {
-        const elemento = await alvo(page, acao);
-        const nome = await elemento.evaluate(nomeAcessivel).catch(() => String(acao.name ?? ''));
-        if (ACAO_SENSIVEL.test(nome) && acao.confirmed !== true) throw erro('confirmation_required', `"${nome}" tem efeito fora do app. Confirme com a pessoa e repita com confirmed=true.`);
-        await elemento.click({ timeout: 10_000 });
-      } else if (tipo === 'type') {
-        const elemento = await alvo(page, acao);
-        const tipoCampo = await elemento.evaluate((el) => `${el.type ?? ''} ${el.name ?? ''} ${el.id ?? ''} ${el.getAttribute('autocomplete') ?? ''} ${el.getAttribute('aria-label') ?? ''}`);
-        if (/password|senha|one-time-code|otp|código de verifica/i.test(tipoCampo)) throw erro('password_field_forbidden', 'Senha e código de verificação são da pessoa: peça para ela digitar na aba.');
-        if (acao.slowly === true) { await elemento.click({ timeout: 10_000 }); await elemento.pressSequentially(String(acao.text ?? ''), { delay: 40 }); }
-        else await elemento.fill(String(acao.text ?? ''));
-        if (acao.submit === true) await elemento.press('Enter');
-      } else if (tipo === 'select') {
-        const elemento = await alvo(page, acao);
-        const valor = String(acao.value ?? '');
-        try { await elemento.selectOption({ label: valor }); } catch { await elemento.selectOption(valor); }
+      } else if (tipo === 'scroll' && !acao.ref && !acao.role) {
+        await page.mouse.wheel(0, String(acao.direction) === 'up' ? -700 : 700);
       } else if (tipo === 'wait') {
         await esperar(page, acao);
+      } else if (['scroll', 'hover', 'click', 'type', 'select'].includes(tipo)) {
+        const { locator: elemento, resolvido } = await resolverAlvo(page, acao);
+        try {
+          if (tipo === 'scroll') await elemento.scrollIntoViewIfNeeded();
+          if (tipo === 'hover') await elemento.hover({ timeout: 10_000 });
+          if (tipo === 'click') {
+            const nome = await elemento.evaluate(nomeAcessivel).catch(() => String(resolvido.name ?? ''));
+            if (ehAcaoSensivel(nome) && acao.confirmed !== true) throw erro('confirmation_required', `"${nome}" tem efeito fora do app. Confirme com a pessoa e repita com confirmed=true.`);
+            await elemento.click({ timeout: 10_000 });
+          }
+          if (tipo === 'type') await digitar(elemento, acao);
+          if (tipo === 'select') { const valor = String(acao.value ?? ''); try { await elemento.selectOption({ label: valor }); } catch { await elemento.selectOption(valor); } }
+        } catch (error) {
+          if (['confirmation_required', 'password_field_forbidden', 'type_not_applied'].includes(error?.code)) throw error;
+          throw traduzirFalhaDeAcao(error, resolvido);
+        }
+        await assentar(page);
+        // A resposta traz o trecho da página onde a ação aconteceu (diálogo, formulário,
+        // seção) com refs novas: é ali que a IA vai agir em seguida (ex.: o compositor
+        // de mensagem e o botão "Enviar").
+        return { ...(await snapshot(page, { maxChars: 6_000 })), target: resolvido, region: await regiaoDoAlvo(page, elemento) };
       } else {
         throw erro('invalid_browser_action', `Ação desconhecida: ${tipo}`);
       }
@@ -72,12 +84,47 @@ export function createFreeBrowsing({ pageFor, goto, assentar = assentarPadrao })
   };
 }
 
+// Digitar: senha e código nunca; editor contenteditable recebe teclas de verdade
+// (frameworks como o do LinkedIn só reagem a eventos de teclado); ao final confere
+// que o texto entrou. Enter só quando pedido (numa caixa de mensagem, Enter pode
+// enviar ou quebrar linha — quem envia é o botão).
+async function digitar(elemento, acao) {
+  const info = await elemento.evaluate((el) => ({ tipo: `${el.type ?? ''} ${el.name ?? ''} ${el.id ?? ''} ${el.getAttribute('autocomplete') ?? ''} ${el.getAttribute('aria-label') ?? ''}`, editavel: el.isContentEditable === true }));
+  if (/password|senha|one-time-code|otp|código de verifica/i.test(info.tipo)) throw erro('password_field_forbidden', 'Senha e código de verificação são da pessoa: peça para ela digitar na aba.');
+  const texto = String(acao.text ?? '');
+  if (acao.slowly === true || info.editavel) {
+    await elemento.click({ timeout: 10_000 });
+    await elemento.press('Control+a').catch(() => null);
+    await elemento.pressSequentially(texto, { delay: acao.slowly === true ? 40 : 0 });
+  } else {
+    await elemento.fill(texto);
+  }
+  const conteudo = await elemento.evaluate((el) => (el.isContentEditable ? el.innerText : el.value ?? '')).catch(() => texto);
+  if (texto && !String(conteudo).replace(/\s+/g, ' ').includes(texto.replace(/\s+/g, ' ').slice(0, 40))) throw erro('type_not_applied', 'O texto não entrou no campo. Clique no campo (click) e digite com slowly=true.');
+  if (acao.submit === true) await elemento.press('Enter');
+}
+
+// Snapshot só do trecho relevante depois da ação: o diálogo que ficou aberto (um
+// clique em "Enviar mensagem" abre o compositor em outro lugar da página) ou, sem
+// diálogo, o formulário/seção que contém o alvo.
+async function regiaoDoAlvo(page, elemento) {
+  try {
+    const dialogos = page.locator('[role="dialog"], [aria-modal="true"]').filter({ visible: true });
+    const abertos = await dialogos.count();
+    const regiao = abertos ? dialogos.nth(abertos - 1) : elemento.locator('xpath=ancestor-or-self::*[@role="region" or self::form or self::aside or self::section or self::article][1]');
+    if (await regiao.count() !== 1 || typeof regiao.ariaSnapshot !== 'function') return null;
+    const yaml = await regiao.ariaSnapshot({ mode: 'ai', timeout: 5_000 });
+    return yaml.length > 3_000 ? `${yaml.slice(0, 3_000)}\n… (cortado)` : yaml;
+  } catch { return null; }
+}
+
 // Snapshot de acessibilidade com refs (o que o MCP do Playwright entrega ao Codex).
 // `query` mantém só as linhas que contêm o texto e os ancestrais delas, para a IA
 // achar um botão numa página enorme; o limite de tamanho evita estourar o turno.
 async function snapshot(page, { query = '', maxChars = SNAPSHOT_PADRAO } = {}) {
   if (typeof page.ariaSnapshot !== 'function') return observarPlano(page, { query });
   let yaml = await page.ariaSnapshot({ mode: 'ai' });
+  lembrarSnapshot(page, yaml);
   const filtro = String(query ?? '').trim().toLocaleLowerCase();
   if (filtro) yaml = filtrarYaml(yaml, filtro);
   const limite = Math.max(1_000, Math.min(Number(maxChars) || SNAPSHOT_PADRAO, SNAPSHOT_MAXIMO));
@@ -102,25 +149,6 @@ function filtrarYaml(yaml, filtro) {
   return linhas.filter((_, indice) => manter.has(indice)).join('\n') || '(nada no snapshot contém esse texto)';
 }
 
-// Alvo por ref do último snapshot ou por papel e nome (quando a ref já não vale).
-async function alvo(page, { ref, role, name }) {
-  const id = String(ref ?? '').trim();
-  if (id) {
-    const match = page.locator(/^[a-z]\d+$/i.test(id) && !id.startsWith('n') ? `aria-ref=${id}` : `[data-fluxo-ref=${JSON.stringify(id)}]`);
-    if (await match.count().catch(() => 0) !== 1) throw erro('browser_reference_ambiguous', `A referência ${id} não está mais na página (ela mudou). Observe de novo ou use role e name.`);
-    return match;
-  }
-  if (role && name) {
-    const match = page.getByRole(String(role), { name: String(name), exact: false });
-    const total = await match.count().catch(() => 0);
-    if (total === 1) return match;
-    if (total === 0) throw erro('browser_reference_ambiguous', `Nenhum "${role}" com nome "${name}" na página. Observe de novo.`);
-    const nomes = await match.evaluateAll((els) => els.slice(0, 6).map((el) => (el.innerText || el.getAttribute('aria-label') || '').trim().slice(0, 60))).catch(() => []);
-    throw erro('browser_reference_ambiguous', `${total} elementos "${role}" casam com "${name}" (${nomes.join(' | ')}). Use a ref do snapshot.`);
-  }
-  throw erro('browser_reference_required', 'Informe ref (do último snapshot) ou role e name do elemento.');
-}
-
 // "Texto" para espera é o que a pessoa lê: conteúdo, rótulo acessível ou placeholder.
 function ondeAparece(page, texto) {
   const t = String(texto);
@@ -137,7 +165,7 @@ async function esperar(page, { text, textGone, seconds }) {
 // Captura para o modelo ver a tela: área visível (ou um elemento), nunca gravada.
 async function capturar(page, { ref, role, name }) {
   const opcoes = { type: 'png', scale: 'css', timeout: 10_000 };
-  const png = ref || role ? await (await alvo(page, { ref, role, name })).screenshot(opcoes) : await page.screenshot({ ...opcoes, fullPage: false });
+  const png = ref || role ? await (await resolverAlvo(page, { ref, role, name })).locator.screenshot(opcoes) : await page.screenshot({ ...opcoes, fullPage: false });
   const viewport = page.viewportSize?.() ?? null;
   return { url: page.url(), title: await page.title().catch(() => ''), width: viewport?.width ?? null, height: viewport?.height ?? null, imagem: `data:image/png;base64,${png.toString('base64')}` };
 }

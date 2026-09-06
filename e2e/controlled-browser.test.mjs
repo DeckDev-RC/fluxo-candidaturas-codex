@@ -173,6 +173,10 @@ async function uiSmoke(t, runtime, rootDir) {
   try {
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
     await page.locator('[data-rota="oportunidades"]').click();
+    // A vaga 1 já virou candidatura: sai da lista ativa e só aparece em "todas".
+    await page.getByText(/Empresa Sintética 2/).first().waitFor();
+    assert.equal(await page.getByText(/Empresa Sintética 1/).count(), 0, 'vaga processada não fica na lista ativa');
+    await page.locator('#filtro-situacao').selectOption('todas');
     await page.getByText(/Empresa Sintética 1/).first().waitFor();
     await page.locator('[data-rota="candidaturas"]').click();
     await page.getByRole('heading', { name: 'Onde está cada processo' }).waitFor();

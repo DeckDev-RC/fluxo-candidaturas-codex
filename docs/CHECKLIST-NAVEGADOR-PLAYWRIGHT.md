@@ -138,6 +138,37 @@ campanha.
 - Achado na implementação: `wait` por texto precisa considerar rótulo acessível e
   placeholder (o compositor do LinkedIn é um `textbox` com `aria-label`, sem texto).
 
+## Achados do teste real (06/09, 19:30: mensagem para uma conexão) e correções
+
+Sequência gravada: entrar, achar a conexão, abrir o perfil e ler funcionaram;
+"clicar" falhava em ciclo ("a página mudou") e a IA desviou para /messaging/compose
+e depois clicou "Enviar mensagem com Premium" (portão) — nunca chegou ao envio.
+
+1. **Refs com prefixo de frame.** Depois da primeira navegação no mesmo frame o
+   Playwright numera refs como `f4e5`, não `e5`. O resolvedor só reconhecia `e5`
+   e mandava as demais para o caminho errado → toda ação por ref falhava.
+   Corrigido (`REF_PLAYWRIGHT`); e2e cobre.
+2. **Ref perdida por re-render.** Sites em React recriam nós; a ref some entre o
+   snapshot e o clique. Agora o resolvedor lembra ref → papel/nome dos snapshots
+   recentes (acumulado, até 3.000) e reencontra o elemento por papel+nome exato
+   visível (`target.recovered = true`).
+3. **Nome parcial ambíguo.** `getByRole(name, exact:false)` casava "Enviar
+   mensagem" e "Enviar mensagem com Premium". Agora: exato e visível primeiro;
+   depois parcial e visível; ambíguo lista os nomes.
+4. **"Enviar mensagem" abre, não envia.** O portão de confirmação barrava o botão
+   que só abre o compositor. Exceção explícita (`ABRE_COMPOSITOR`); o "Enviar" de
+   dentro continua no portão.
+5. **Editor que ignora `fill`.** O compositor só habilita "Enviar" com eventos de
+   teclado; `type` em `contenteditable` agora clica, seleciona tudo e digita tecla
+   a tecla, e confere que o texto entrou (`type_not_applied`).
+6. **Erros acionáveis.** Timeout do Playwright vira `element_not_actionable` com a
+   causa (coberto por X, escondido, desabilitado, não editável) e o próximo passo.
+7. **Região da ação.** Cada ação devolve `region`: o diálogo que abriu (ou o
+   formulário ao redor) com refs novas — é ali que o próximo passo está.
+8. **Instruções.** Receita do LinkedIn reescrita: perfil → "Enviar mensagem" (exato)
+   → digitar no compositor sem Enter → mostrar texto e pedir sim → "Enviar"
+   confirmado → esperar a mensagem aparecer.
+
 ## Revisão do checklist (antes de implementar)
 
 - Risco: `ariaSnapshot` em páginas enormes (feed do LinkedIn) pode passar de 100
