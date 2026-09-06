@@ -191,11 +191,21 @@ function detectarDesafio() {
 }
 
 // Runs inside the page: só o necessário para saber se a pessoa precisa entrar.
+// Login pendente: campo de senha, URL de login ou, como nas páginas de visitante
+// das plataformas (LinkedIn "Sign in / Join now", Gupy "Entrar", InfoJobs "Login"),
+// um botão de entrar/cadastrar visível no topo da página.
 function observeLogin(detectar = () => ({ challenge: null, consentPending: false })) {
   const { challenge, consentPending } = detectar();
   const senha = Boolean(document.querySelector('input[type="password"]'));
-  const urlDeLogin = /login|signin|sign-in|entrar|auth|autentica|checkpoint/i.test(location.pathname + location.search);
-  return { url: location.href, title: document.title, challenge, consentPending, loginPending: senha || urlDeLogin };
+  const urlDeLogin = /login|signin|sign-in|entrar|auth|autentica|checkpoint|signup|cadastr/i.test(location.pathname + location.search);
+  const textoDeEntrada = /^(entrar|login|log in|sign in|iniciar sess[aã]o|fazer login|acessar conta|join now|cadastre-se( agora)?|criar conta|inscreva-se)$/i;
+  const hrefDeEntrada = /\/(login|signin|sign-in|signup|entrar|cadastr[a-z-]*|candidate\/?)(\?|$|\/)/i;
+  const botaoDeEntrada = [...document.querySelectorAll('a[href], button')].some((el) => {
+    const caixa = el.getBoundingClientRect();
+    if (!(caixa.width > 0 && caixa.height > 0 && caixa.top >= 0 && caixa.top < 240)) return false;
+    return textoDeEntrada.test((el.innerText || '').trim().replace(/\s+/g, ' ')) || hrefDeEntrada.test(el.getAttribute('href') || '');
+  });
+  return { url: location.href, title: document.title, challenge, consentPending, loginPending: senha || urlDeLogin || botaoDeEntrada };
 }
 
 // Runs inside the observed page. Only rendered facts and explicit structured job metadata are returned.
