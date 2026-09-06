@@ -72,13 +72,39 @@ function balao(mensagem, indice, lista) {
   const anterior = lista[indice - 1];
   const continuacao = Boolean(anterior && anterior.autor === mensagem.autor && Date.parse(mensagem.em) - Date.parse(anterior.em) < MESMO_GRUPO_MS);
   const dataset = { autor: mensagem.autor, ...(mensagem.tom ? { tom: mensagem.tom } : {}), ...(continuacao ? { continuacao: 'true' } : {}) };
+  if (mensagem.emAndamento) dataset.andamento = 'true';
   return el('li', { class: 'balao', dataset }, [
     mensagem.autor === 'fluxo' ? avatar() : null,
     el('div', { class: 'balao-corpo' }, [
       continuacao ? null : el('time', { class: 'balao-hora', datetime: mensagem.em, text: hora(mensagem.em) }),
-      el('p', { class: 'quebra', text: mensagem.texto })
+      el('p', { class: 'quebra' }, [
+        mensagem.emAndamento ? el('span', { class: 'passo-andamento', 'aria-hidden': 'true' }) : null,
+        document.createTextNode(mensagem.texto),
+        duracaoDoPasso(mensagem)
+      ])
     ])
   ]);
+}
+
+// Passo em andamento: contador vivo de segundos (um só temporizador para a lista).
+// Passo concluído que levou mais de alguns segundos: registra quanto foi.
+let temporizador = null;
+function duracaoDoPasso(mensagem) {
+  if (mensagem.emAndamento) {
+    const contador = el('span', { class: 'passo-tempo', dataset: { inicio: mensagem.em }, text: segundosDesde(mensagem.em) });
+    if (!temporizador) temporizador = setInterval(atualizarContadores, 1000);
+    return contador;
+  }
+  if (mensagem.tom === 'passo' && Number(mensagem.duracaoMs) >= 3000) return el('span', { class: 'passo-tempo', text: `· ${Math.round(mensagem.duracaoMs / 1000)}s` });
+  return null;
+}
+
+function segundosDesde(instante) { return `· ${Math.max(0, Math.round((Date.now() - Date.parse(instante)) / 1000))}s`; }
+
+function atualizarContadores() {
+  const vivos = document.querySelectorAll('.balao[data-andamento="true"] .passo-tempo[data-inicio]');
+  if (!vivos.length) { clearInterval(temporizador); temporizador = null; return; }
+  for (const no of vivos) no.textContent = segundosDesde(no.dataset.inicio);
 }
 
 function bolhaAtual(situacao, pendentes) {

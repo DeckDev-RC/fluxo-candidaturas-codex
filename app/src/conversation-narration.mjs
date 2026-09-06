@@ -9,9 +9,34 @@ const plataforma = (valor) => NOMES[String(valor ?? '').toUpperCase()] ?? String
 export function resumirFerramenta({ tool, arguments: args = {}, ok, result, error }) {
   const inicio = INICIO[tool]?.(args) ?? 'Executando uma etapa.';
   if (ok === undefined) return { inicio, fim: '', espera: null };
-  if (ok === false) return { inicio, fim: `Não deu certo: ${String(error?.message ?? 'falha na etapa').replace(/\.+$/, '')}.`, espera: null };
+  if (ok === false) return { inicio, fim: traduzirFalha(tool, args, error), espera: null };
   const fim = FIM[tool]?.(args, result ?? {}) ?? { texto: 'Etapa concluída.' };
   return { inicio, fim: fim.texto, espera: fim.espera ?? null };
+}
+
+// Falha de ferramenta vira o que a pessoa pode fazer, não o código interno. Uma
+// mensagem que parece de programador (chaves, caminhos, inglês) não vaza.
+const FALHAS = {
+  platform_disabled: (a) => `${plataforma(a.platform)} não está habilitada na campanha. Dá para ligar em "Ajustar plataformas e metas".`,
+  search_unavailable: (a) => `Não consegui montar a busca em ${plataforma(a.platform)}; me diga o cargo ou envie o link da busca.`,
+  queue_item_not_found: () => 'Essa vaga não está mais na fila; vou reler a lista.',
+  manual_intervention_required: (a) => `${plataforma(a.platform)} pediu algo que só você pode fazer (login, verificação ou consentimento).`,
+  untrusted_page: () => 'A página aberta não é da plataforma esperada; por segurança, não continuo por ali.',
+  unsupported_target_url: () => 'O endereço dessa vaga não é uma página da plataforma; vou seguir com outra.',
+  browser_unavailable: () => 'O navegador embutido não respondeu; vou tentar de novo em instantes.',
+  payload_too_large: () => 'O arquivo é maior do que consigo receber (limite de 12 MB).',
+  resume_not_found: () => 'Não encontrei o currículo importado; envie-o de novo pela conversa.',
+  approval_required: () => 'O envio depende da sua aprovação; ele aparece em Decisões.',
+  conversation_busy: () => 'Ainda estou terminando a etapa anterior.'
+};
+const PARECE_TECNICO = /[{}[\]<>]|\b(undefined|null|NaN|TypeError|ReferenceError|ENOENT|ECONN|EPIPE|timeout|stack|json|http\/?\d?|\w+Error)\b|[a-z]+_[a-z_]+|\\|\/[\w-]+\/[\w-]+/i;
+
+function traduzirFalha(tool, args, error) {
+  const codigo = String(error?.code ?? '');
+  if (FALHAS[codigo]) return `Não deu certo: ${FALHAS[codigo](args)}`;
+  const mensagem = String(error?.message ?? '').trim().replace(/\.+$/, '');
+  if (mensagem && !PARECE_TECNICO.test(mensagem)) return `Não deu certo: ${mensagem}.`;
+  return 'Não deu certo nesta etapa; vou tentar de outro jeito ou te aviso o que falta.';
 }
 
 const INICIO = {

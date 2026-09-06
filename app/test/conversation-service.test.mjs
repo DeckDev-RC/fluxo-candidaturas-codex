@@ -303,6 +303,12 @@ test('separarAcoes, contexto e narração não vazam segredo nem vocabulário t�
   assert.equal(revisao.espera.approvalId, 'ap-1');
   const falha = resumirFerramenta({ tool: 'fluxo_discover', arguments: { platform: 'GUPY' }, ok: false, error: { message: 'página não suportada' } });
   assert.match(falha.fim, /Não deu certo: página não suportada/);
+  // Código conhecido vira o que a pessoa pode fazer; mensagem técnica não vaza.
+  assert.match(resumirFerramenta({ tool: 'fluxo_discover', arguments: { platform: 'GUPY' }, ok: false, error: { code: 'platform_disabled', message: 'platform_disabled' } }).fim, /Gupy não está habilitada.*Ajustar plataformas/);
+  const tecnica = resumirFerramenta({ tool: 'fluxo_prepare', arguments: {}, ok: false, error: { code: 'weird', message: "Cannot read properties of undefined (reading 'url')" } }).fim;
+  assert.doesNotMatch(tecnica, /undefined|Cannot read/);
+  assert.match(tecnica, /Não deu certo nesta etapa/);
+  assert.doesNotMatch(resumirFerramenta({ tool: 'fluxo_prepare', arguments: {}, ok: false, error: { message: 'ENOENT: no such file C:\\x\\y.json' } }).fim, /ENOENT|json/);
 });
 
 // Achado do teste com conta real: a IA dizia "jornada pausada" quando a execução
