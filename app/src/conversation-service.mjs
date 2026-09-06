@@ -5,6 +5,7 @@
 // no código, fora da vontade do modelo. Tudo o que acontece vira evento para a
 // tela: texto do assistente, cada ferramenta chamada, esperas pela pessoa.
 
+import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { INSTRUCOES_DA_CONVERSA, montarContexto } from './conversation-prompt.mjs';
@@ -21,7 +22,16 @@ const ACOES = /^AÇÃO:\s*(abrir|objetivo|modalidades|selecionar-descarte|confir
 const OBSERVACAO_INTERVALO_MS = 3_000;
 const OBSERVACAO_PRAZO_MS = 10 * 60 * 1000;
 
-export function createConversationService({ agentAdapter, snapshot = async () => ({}), rootDir = '', runService = null, tabs = null, loginState = null, now = () => new Date(), timeoutMs = PRAZO_TURNO_MS, watchIntervalMs = OBSERVACAO_INTERVALO_MS } = {}) {
+// O app-server guarda as ferramentas dinâmicas no metadado da thread quando ela
+// nasce e `thread/resume` não aceita uma lista nova: uma thread retomada fica
+// com o conjunto antigo, sem as ferramentas criadas depois. A assinatura do
+// conjunto atual fica gravada com a thread; se mudou, uma thread nova começa.
+export function assinaturaDasFerramentas(definitions = []) {
+  const base = (Array.isArray(definitions) ? definitions : []).map((tool) => ({ name: tool.name, description: tool.description, inputSchema: tool.inputSchema ?? tool.parameters ?? null }));
+  return createHash('sha1').update(JSON.stringify(base)).digest('hex').slice(0, 16);
+}
+
+export function createConversationService({ agentAdapter, snapshot = async () => ({}), rootDir = '', runService = null, tabs = null, loginState = null, toolsSignature = '', now = () => new Date(), timeoutMs = PRAZO_TURNO_MS, watchIntervalMs = OBSERVACAO_INTERVALO_MS } = {}) {
   if (!agentAdapter?.request) throw new TypeError('A conversa requer o adaptador do agente.');
   let threadId = '';
   // Thread que este processo do app-server já conhece (retomada ou criada aqui).
@@ -33,6 +43,7 @@ export function createConversationService({ agentAdapter, snapshot = async () =>
   let retomadaDeGravacao = false;
   let turnoAtivo = null;
   let observacao = null; // intervalo que observa a aba enquanto a IA espera login
+  let ferramentasRenovadas = false; // thread anterior descartada por ferramentas novas
   const ouvintes = new Set();
   const historico = [];
 
@@ -96,7 +107,7 @@ export function createConversationService({ agentAdapter, snapshot = async () =>
         await ensureRun();
         // O primeiro turno de cada processo avisa que o app foi reaberto: a thread
         // retomada lembra o que estava fazendo, mas nada disso continua em curso.
-        const contexto = montarContexto(await snapshot(), now(), { sessaoNova: primeiroTurnoDaSessao && retomadaDeGravacao });
+        const contexto = montarContexto(await snapshot(), now(), { sessaoNova: primeiroTurnoDaSessao && (retomadaDeGravacao || ferramentasRenovadas) });
         primeiroTurnoDaSessao = false;
         const entrada = `${contexto}\n\n${system ? 'SISTEMA (evento da interface, não é fala da pessoa)' : 'Pessoa'}: ${pedido}`;
         turno.reservado = false;
@@ -121,7 +132,14 @@ export function createConversationService({ agentAdapter, snapshot = async () =>
     // A thread gravada é retomada no app-server (a memória da conversa sobrevive
     // ao reinício do app); se ele não a conhecer mais, uma nova começa.
     async ensureThread() {
-      if (!carregado) { threadId = (await carregar(rootDir)).threadId ?? ''; carregado = true; }
+      if (!carregado) {
+        const gravado = await carregar(rootDir);
+        threadId = gravado.threadId ?? '';
+        carregado = true;
+        // Ferramentas mudaram desde que a thread nasceu: retomá-la deixaria a IA
+        // sem as novas (ela diria "não consigo" para algo que existe). Começa outra.
+        if (threadId && toolsSignature && gravado.toolsSignature !== toolsSignature) { threadId = ''; ferramentasRenovadas = true; }
+      }
       if (threadId && retomada === threadId) return threadId;
       const parametros = { metadata: { mode: 'fluxo-condutor' }, developerInstructions: INSTRUCOES_DA_CONVERSA };
       if (threadId && agentAdapter.resumeThread) {
@@ -132,7 +150,7 @@ export function createConversationService({ agentAdapter, snapshot = async () =>
       threadId = String(iniciado?.thread?.id ?? iniciado?.threadId ?? '');
       if (!threadId) throw domainError('conversation_thread_failed', 'O Codex não abriu uma conversa.');
       retomada = threadId;
-      await persistir(rootDir, { threadId, startedAt: now().toISOString() });
+      await persistir(rootDir, { threadId, toolsSignature, startedAt: now().toISOString() });
       return threadId;
     },
 

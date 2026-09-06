@@ -119,3 +119,22 @@ test('revisão de envio identifica vaga, currículo e campos observados', () => 
   assert.deepEqual(review.observedFields, ['name', 'email']);
   assert.equal(reviewIdentity(review), 'INFOJOBS|1|https://example.test/jobs/1|abc123');
 });
+
+test('vagas gravadas por versões antigas do leitor de cartões são saneadas na leitura: plataforma "CARD" e título duplicado', async () => {
+  const { createQueueService } = await import('../src/queue-service.mjs');
+  const { mkdir, writeFile } = await import('node:fs/promises');
+  const root = await mkdtemp(join(tmpdir(), 'fluxo-fila-herdada-'));
+  await mkdir(join(root, 'fila'), { recursive: true });
+  await writeFile(join(root, 'fila', 'vagas.json'), JSON.stringify([
+    { id: 'a', platform: 'CARD', company: 'micro1', role: 'Web Developer Web Developer', identifierOrUrl: 'https://www.linkedin.com/jobs/view/1', status: 'na fila' },
+    { id: 'b', platform: 'CARD', company: 'x', role: 'Analista', identifierOrUrl: 'nao-e-url', status: 'na fila' },
+    { id: 'c', platform: 'GUPY', company: 'y', role: 'Dev Dev Ops', identifierOrUrl: 'https://empresa.gupy.io/job/2', status: 'na fila' }
+  ]));
+  const queue = createQueueService({ rootDir: root, persistence: null, mutationLock: false, checkpointAfterEachAction: false });
+  const { items } = await queue.listQueue();
+  assert.equal(items[0].platform, 'LINKEDIN');
+  assert.equal(items[0].role, 'Web Developer');
+  assert.equal(items[1].platform, 'DESCONHECIDA');
+  assert.equal(items[2].role, 'Dev Dev Ops', 'título que não é uma duplicação exata fica como está');
+  assert.equal(items[2].platform, 'GUPY');
+});
