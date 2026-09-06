@@ -36,7 +36,7 @@ export function createBrowserAdapter({ driver, evidenceRoot = '' }) {
       if (!driver.observe) throw domainError('browser_platform_unsupported', 'Este navegador não permite navegação livre.');
       const observado = await driver.observe(platform, opcoes);
       await pararEmDesafio(driver, platform);
-      assertTrustedPage({ text: observado.text });
+      assertTrustedPage({ text: observado.snapshot ?? observado.text });
       return observado;
     },
     async readText(platform, opcoes = {}) {
@@ -51,7 +51,7 @@ export function createBrowserAdapter({ driver, evidenceRoot = '' }) {
       await pararEmDesafio(driver, platform);
       const resultado = await driver.act(platform, acao);
       await pararEmDesafio(driver, platform);
-      assertTrustedPage({ text: resultado.text });
+      assertTrustedPage({ text: resultado.snapshot ?? resultado.text });
       return resultado;
     },
     async loginState(platform) { return driver.loginState ? driver.loginState(platform) : { open: false }; },

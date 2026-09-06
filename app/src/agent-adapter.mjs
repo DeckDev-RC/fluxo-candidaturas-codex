@@ -122,8 +122,12 @@ export function createAgentAdapter({ transport, transportFactory, onNotification
     try { onToolCall({ phase: 'started', ...chamada }); } catch {}
     try {
       const result = await domainTools.call(params.tool, params.arguments, runId);
-      try { onToolCall({ phase: 'completed', ...chamada, ok: true, result }); } catch {}
-      return { success: true, contentItems: [{ type: 'inputText', text: JSON.stringify(result) }] };
+      // `imagem` (data URL) vai ao modelo como imagem, fora do texto e fora dos
+      // observadores: a tela da pessoa não entra em histórico nem em narração.
+      const imagem = typeof result?.imagem === 'string' && result.imagem.startsWith('data:image/') ? result.imagem : null;
+      const texto = imagem ? Object.fromEntries(Object.entries(result).filter(([chave]) => chave !== 'imagem')) : result;
+      try { onToolCall({ phase: 'completed', ...chamada, ok: true, result: texto }); } catch {}
+      return { success: true, contentItems: [{ type: 'inputText', text: JSON.stringify(texto) }, ...(imagem ? [{ type: 'inputImage', imageUrl: imagem }] : [])] };
     } catch (error) {
       try { onToolCall({ phase: 'completed', ...chamada, ok: false, error: { code: error.code ?? 'tool_failed', message: error.message } }); } catch {}
       return { success: false, contentItems: [{ type: 'inputText', text: JSON.stringify({ code: error.code ?? 'tool_failed', message: error.message }) }] };

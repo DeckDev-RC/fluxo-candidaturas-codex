@@ -1,81 +1,145 @@
-// Navegação livre da IA numa aba de plataforma: observar a página como uma lista
-// de elementos com referência (o que se vê e onde se clica), e agir sobre eles —
-// clicar, digitar, selecionar, teclar, rolar, voltar, navegar. É o que permite
-// tarefas fora das ferramentas de domínio (ler convites, analisar perfis, achar
-// uma página). Os portões continuam aqui: nunca digita senha, para em desafio
-// (CAPTCHA/MFA), e ações com efeito para terceiros (enviar, aceitar, conectar,
-// excluir…) só com confirmação explícita da pessoa.
+// Navegação livre da IA numa aba de plataforma, com a mesma máquina do Playwright
+// MCP que o Codex usa: snapshot hierárquico de acessibilidade com referências
+// (`[ref=e12]`, via `page.ariaSnapshot({ mode: 'ai' })`) e ações por referência
+// (`aria-ref=e12`) ou por papel e nome. Os portões do produto ficam aqui: nunca
+// digita senha, para em desafio (CAPTCHA/MFA), e ações com efeito para terceiros
+// (enviar, aceitar, conectar, excluir…) só com confirmação explícita da pessoa.
 
-const LIMITE_PADRAO = 60;
-const TEXTO_PADRAO = 1500;
+import { LER_TEXTO, nomeAcessivel, observarPlano } from './browser-free-observer.mjs';
+
+const SNAPSHOT_PADRAO = 12_000;
+const SNAPSHOT_MAXIMO = 40_000;
 const TEXTO_MAXIMO = 12_000;
 const ESPERA_REDE_MS = 6_000;
-const TECLAS = new Set(['Enter', 'Escape', 'Tab', 'ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'PageDown', 'PageUp', 'Home', 'End', 'Backspace', 'Space']);
+const ESPERA_TEXTO_MS = 15_000;
+const ESPERA_MAXIMA_S = 10;
+const TECLA = /^(?:(?:Control|Shift)\+){0,2}(?:[A-Za-z0-9]|Enter|Escape|Tab|Arrow(?:Up|Down|Left|Right)|Page(?:Up|Down)|Home|End|Backspace|Delete|Space)$/;
 // Efeito fora do app ou irreversível: exige `confirmed: true`, que a IA só pode
 // passar depois de a pessoa dizer sim para essa ação específica.
 export const ACAO_SENSIVEL = /\b(enviar|envie|submit|send|candidatar|candidate-se|apply|aceitar|accept|conectar|connect|seguir|follow|pagar|pay|comprar|buy|assinar|subscribe|contratar|excluir|delete|apagar|remover|remove|desativar|deactivate|encerrar conta|sair|logout|publicar|post|comentar|comment|confirmar|confirm)\b/i;
 
 export function createFreeBrowsing({ pageFor, goto, assentar = assentarPadrao }) {
   return {
-    async observe(platform, { limit = LIMITE_PADRAO, query = '' } = {}) {
-      const page = await pageFor(platform);
-      return observarPagina(page, { limit, query });
-    },
+    async observe(platform, opcoes = {}) { return snapshot(await pageFor(platform), opcoes); },
     async read(platform, { maxChars = TEXTO_MAXIMO } = {}) {
       const page = await pageFor(platform);
       const texto = await page.evaluate(LER_TEXTO);
-      return { url: page.url(), title: await page.title().catch(() => ''), text: texto.slice(0, Math.min(Number(maxChars) || TEXTO_MAXIMO, TEXTO_MAXIMO)), truncated: texto.length > maxChars };
+      const limite = Math.min(Number(maxChars) || TEXTO_MAXIMO, TEXTO_MAXIMO);
+      return { url: page.url(), title: await page.title().catch(() => ''), text: texto.slice(0, limite), truncated: texto.length > limite };
     },
     async act(platform, acao = {}) {
       const page = await pageFor(platform);
       const tipo = String(acao.type ?? '');
+      if (tipo === 'screenshot') return capturar(page, acao);
       if (tipo === 'navigate') {
-        // A regra de endereço público fica na ferramenta (fronteira com a IA); aqui só http(s).
         if (!/^https?:\/\//i.test(String(acao.url))) throw erro('invalid_browser_url', 'A navegação exige uma URL http(s) completa.');
         if (goto) await goto(String(acao.url), platform); else await page.goto(String(acao.url), { waitUntil: 'domcontentloaded' });
       } else if (tipo === 'back') {
         await page.goBack({ waitUntil: 'domcontentloaded' }).catch(() => null);
       } else if (tipo === 'press') {
-        if (!TECLAS.has(String(acao.key))) throw erro('invalid_key', `Tecla não permitida: ${acao.key}. Use ${[...TECLAS].join(', ')}.`);
-        await page.keyboard.press(String(acao.key));
+        const tecla = String(acao.key ?? '');
+        if (!TECLA.test(tecla)) throw erro('invalid_key', `Tecla não permitida: ${tecla}. Use letras, números, Enter, Escape, Tab, setas, PageUp/PageDown, Home, End, Backspace, Delete, Space, ou combinações com Control/Shift.`);
+        await page.keyboard.press(tecla);
       } else if (tipo === 'scroll') {
-        if (acao.ref) await (await alvo(page, acao.ref)).scrollIntoViewIfNeeded();
+        if (acao.ref || acao.role) await (await alvo(page, acao)).scrollIntoViewIfNeeded();
         else await page.mouse.wheel(0, String(acao.direction) === 'up' ? -700 : 700);
+      } else if (tipo === 'hover') {
+        await (await alvo(page, acao)).hover({ timeout: 10_000 });
       } else if (tipo === 'click') {
-        const elemento = await alvo(page, acao.ref);
-        const nome = await elemento.evaluate(nomeAcessivel);
+        const elemento = await alvo(page, acao);
+        const nome = await elemento.evaluate(nomeAcessivel).catch(() => String(acao.name ?? ''));
         if (ACAO_SENSIVEL.test(nome) && acao.confirmed !== true) throw erro('confirmation_required', `"${nome}" tem efeito fora do app. Confirme com a pessoa e repita com confirmed=true.`);
         await elemento.click({ timeout: 10_000 });
       } else if (tipo === 'type') {
-        const elemento = await alvo(page, acao.ref);
-        const tipoCampo = await elemento.evaluate((el) => `${el.type ?? ''} ${el.name ?? ''} ${el.id ?? ''} ${el.getAttribute('autocomplete') ?? ''}`);
-        if (/password|senha|one-time-code|otp/i.test(tipoCampo)) throw erro('password_field_forbidden', 'Senha e código de verificação são da pessoa: peça para ela digitar na aba.');
-        await elemento.fill(String(acao.text ?? ''));
+        const elemento = await alvo(page, acao);
+        const tipoCampo = await elemento.evaluate((el) => `${el.type ?? ''} ${el.name ?? ''} ${el.id ?? ''} ${el.getAttribute('autocomplete') ?? ''} ${el.getAttribute('aria-label') ?? ''}`);
+        if (/password|senha|one-time-code|otp|código de verifica/i.test(tipoCampo)) throw erro('password_field_forbidden', 'Senha e código de verificação são da pessoa: peça para ela digitar na aba.');
+        if (acao.slowly === true) { await elemento.click({ timeout: 10_000 }); await elemento.pressSequentially(String(acao.text ?? ''), { delay: 40 }); }
+        else await elemento.fill(String(acao.text ?? ''));
         if (acao.submit === true) await elemento.press('Enter');
       } else if (tipo === 'select') {
-        const elemento = await alvo(page, acao.ref);
+        const elemento = await alvo(page, acao);
         const valor = String(acao.value ?? '');
         try { await elemento.selectOption({ label: valor }); } catch { await elemento.selectOption(valor); }
+      } else if (tipo === 'wait') {
+        await esperar(page, acao);
       } else {
         throw erro('invalid_browser_action', `Ação desconhecida: ${tipo}`);
       }
       await assentar(page);
-      return observarPagina(page, { limit: 30 });
+      return snapshot(page, { maxChars: Math.min(SNAPSHOT_PADRAO, 8_000) });
     }
   };
 }
 
-async function observarPagina(page, { limit, query }) {
-  const observado = await page.evaluate(OBSERVAR_LIVRE, { limit: Math.max(1, Math.min(Number(limit) || LIMITE_PADRAO, 200)), query: String(query ?? ''), texto: TEXTO_PADRAO });
-  return { ...observado, observedAt: new Date().toISOString() };
+// Snapshot de acessibilidade com refs (o que o MCP do Playwright entrega ao Codex).
+// `query` mantém só as linhas que contêm o texto e os ancestrais delas, para a IA
+// achar um botão numa página enorme; o limite de tamanho evita estourar o turno.
+async function snapshot(page, { query = '', maxChars = SNAPSHOT_PADRAO } = {}) {
+  if (typeof page.ariaSnapshot !== 'function') return observarPlano(page, { query });
+  let yaml = await page.ariaSnapshot({ mode: 'ai' });
+  const filtro = String(query ?? '').trim().toLocaleLowerCase();
+  if (filtro) yaml = filtrarYaml(yaml, filtro);
+  const limite = Math.max(1_000, Math.min(Number(maxChars) || SNAPSHOT_PADRAO, SNAPSHOT_MAXIMO));
+  const truncated = yaml.length > limite;
+  return {
+    url: page.url(), title: await page.title().catch(() => ''),
+    snapshot: truncated ? `${yaml.slice(0, limite)}\n… (cortado; use query para filtrar ou maxChars para ampliar)` : yaml,
+    chars: yaml.length, truncated, filtered: Boolean(filtro), observedAt: new Date().toISOString()
+  };
 }
 
-async function alvo(page, ref) {
+function filtrarYaml(yaml, filtro) {
+  const linhas = yaml.split('\n');
+  const manter = new Set();
+  const nivel = (linha) => linha.length - linha.trimStart().length;
+  linhas.forEach((linha, indice) => {
+    if (!linha.toLocaleLowerCase().includes(filtro)) return;
+    manter.add(indice);
+    let atual = nivel(linha);
+    for (let i = indice - 1; i >= 0 && atual > 0; i -= 1) { if (nivel(linhas[i]) < atual) { manter.add(i); atual = nivel(linhas[i]); } }
+  });
+  return linhas.filter((_, indice) => manter.has(indice)).join('\n') || '(nada no snapshot contém esse texto)';
+}
+
+// Alvo por ref do último snapshot ou por papel e nome (quando a ref já não vale).
+async function alvo(page, { ref, role, name }) {
   const id = String(ref ?? '').trim();
-  if (!id) throw erro('browser_reference_required', 'Informe a referência (ref) do elemento, vinda de fluxo_browser_observe.');
-  const match = page.locator(`[data-fluxo-ref=${JSON.stringify(id)}]`);
-  if (await match.count() !== 1) throw erro('browser_reference_ambiguous', 'A referência não está mais na página. Observe de novo e use uma referência atual.');
-  return match;
+  if (id) {
+    const match = page.locator(/^[a-z]\d+$/i.test(id) && !id.startsWith('n') ? `aria-ref=${id}` : `[data-fluxo-ref=${JSON.stringify(id)}]`);
+    if (await match.count().catch(() => 0) !== 1) throw erro('browser_reference_ambiguous', `A referência ${id} não está mais na página (ela mudou). Observe de novo ou use role e name.`);
+    return match;
+  }
+  if (role && name) {
+    const match = page.getByRole(String(role), { name: String(name), exact: false });
+    const total = await match.count().catch(() => 0);
+    if (total === 1) return match;
+    if (total === 0) throw erro('browser_reference_ambiguous', `Nenhum "${role}" com nome "${name}" na página. Observe de novo.`);
+    const nomes = await match.evaluateAll((els) => els.slice(0, 6).map((el) => (el.innerText || el.getAttribute('aria-label') || '').trim().slice(0, 60))).catch(() => []);
+    throw erro('browser_reference_ambiguous', `${total} elementos "${role}" casam com "${name}" (${nomes.join(' | ')}). Use a ref do snapshot.`);
+  }
+  throw erro('browser_reference_required', 'Informe ref (do último snapshot) ou role e name do elemento.');
+}
+
+// "Texto" para espera é o que a pessoa lê: conteúdo, rótulo acessível ou placeholder.
+function ondeAparece(page, texto) {
+  const t = String(texto);
+  return page.getByText(t, { exact: false }).or(page.getByLabel(t, { exact: false })).or(page.getByPlaceholder(t, { exact: false })).first();
+}
+
+async function esperar(page, { text, textGone, seconds }) {
+  if (text) { await ondeAparece(page, text).waitFor({ state: 'visible', timeout: ESPERA_TEXTO_MS }).catch(() => { throw erro('browser_wait_timeout', `"${text}" não apareceu em ${ESPERA_TEXTO_MS / 1000}s.`); }); return; }
+  if (textGone) { await ondeAparece(page, textGone).waitFor({ state: 'hidden', timeout: ESPERA_TEXTO_MS }).catch(() => { throw erro('browser_wait_timeout', `"${textGone}" continua na tela após ${ESPERA_TEXTO_MS / 1000}s.`); }); return; }
+  const s = Math.min(Math.max(Number(seconds) || 1, 0.2), ESPERA_MAXIMA_S);
+  await new Promise((resolve) => setTimeout(resolve, s * 1000));
+}
+
+// Captura para o modelo ver a tela: área visível (ou um elemento), nunca gravada.
+async function capturar(page, { ref, role, name }) {
+  const opcoes = { type: 'png', scale: 'css', timeout: 10_000 };
+  const png = ref || role ? await (await alvo(page, { ref, role, name })).screenshot(opcoes) : await page.screenshot({ ...opcoes, fullPage: false });
+  const viewport = page.viewportSize?.() ?? null;
+  return { url: page.url(), title: await page.title().catch(() => ''), width: viewport?.width ?? null, height: viewport?.height ?? null, imagem: `data:image/png;base64,${png.toString('base64')}` };
 }
 
 async function assentarPadrao(page) {
@@ -93,62 +157,3 @@ export function assertUrlPublica(url) {
 }
 
 function erro(code, message) { return Object.assign(new Error(message), { code }); }
-
-// Runs inside the page (também usado pelo `alvo` para o nome do elemento clicado).
-function nomeAcessivel(el) {
-  const limpo = (t) => String(t ?? '').replace(/\s+/g, ' ').trim();
-  const porId = el.getAttribute('aria-labelledby')?.split(/\s+/).map((id) => document.getElementById(id)?.innerText).filter(Boolean).join(' ');
-  // Rótulo que envolve o controle ("Ordenar <select>"): só o texto do rótulo, sem o do controle.
-  const rotulo = el.labels?.[0];
-  const textoDoRotulo = rotulo ? [...rotulo.childNodes].filter((no) => no !== el && !(no.contains && no.contains(el))).map((no) => no.textContent).join(' ') : '';
-  const proprio = el.tagName === 'SELECT' ? '' : el.innerText;
-  return limpo(el.getAttribute('aria-label') || porId || textoDoRotulo || proprio || el.value || el.placeholder || el.title || el.getAttribute('alt') || el.querySelector?.('img')?.getAttribute('alt') || el.name || '').slice(0, 120);
-}
-
-// Runs inside the page. Elementos interativos visíveis, com referência estável
-// (data-fluxo-ref) para as ações; os que estão na tela vêm primeiro.
-function observeFree({ limit, query, texto }, nome) {
-  const limpo = (t) => String(t ?? '').replace(/\s+/g, ' ').trim();
-  const visivel = (el) => { const r = el.getBoundingClientRect(); const s = getComputedStyle(el); return r.width > 2 && r.height > 2 && s.visibility !== 'hidden' && s.display !== 'none'; };
-  const naTela = (el) => { const r = el.getBoundingClientRect(); return r.bottom > 0 && r.top < innerHeight; };
-  const papel = (el) => el.getAttribute('role') || ({ A: 'link', BUTTON: 'button', SELECT: 'combobox', TEXTAREA: 'textbox', SUMMARY: 'button' })[el.tagName] || (el.tagName === 'INPUT' ? ({ checkbox: 'checkbox', radio: 'radio', submit: 'button', button: 'button', file: 'file' })[el.type] || 'textbox' : el.isContentEditable ? 'textbox' : 'generic');
-  window.__fluxoRefSeq = window.__fluxoRefSeq || 0;
-  const candidatos = [...document.querySelectorAll('a[href], button, input:not([type="hidden"]), textarea, select, summary, [contenteditable="true"], [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="checkbox"], [role="radio"], [role="combobox"], [role="textbox"], [role="option"], [role="switch"]')]
-    .filter((el) => visivel(el) && !el.closest('[data-fluxo-ignore]'));
-  const filtro = limpo(query).toLocaleLowerCase();
-  const itens = [];
-  for (const el of candidatos) {
-    if (!el.getAttribute('data-fluxo-ref')) el.setAttribute('data-fluxo-ref', `n${++window.__fluxoRefSeq}`);
-    const rotulo = nome(el);
-    const role = papel(el);
-    if (filtro && !`${rotulo} ${role} ${el.href ?? ''}`.toLocaleLowerCase().includes(filtro)) continue;
-    const item = { ref: el.getAttribute('data-fluxo-ref'), role, name: rotulo, onScreen: naTela(el) };
-    if (el.disabled || el.getAttribute('aria-disabled') === 'true') item.disabled = true;
-    if (el.type === 'checkbox' || el.type === 'radio' || el.getAttribute('role') === 'checkbox' || el.getAttribute('role') === 'switch') item.checked = el.checked ?? el.getAttribute('aria-checked') === 'true';
-    if (el.tagName === 'A' && el.href) item.href = el.href.slice(0, 160);
-    if ((el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') && !/password/i.test(el.type)) { if (el.value) item.value = limpo(el.value).slice(0, 80); if (el.type === 'password') item.value = undefined; }
-    if (el.type === 'password') item.role = 'password';
-    if (el.tagName === 'SELECT') item.options = [...el.options].slice(0, 20).map((o) => limpo(o.label || o.text)).filter(Boolean);
-    itens.push(item);
-  }
-  itens.sort((a, b) => Number(b.onScreen) - Number(a.onScreen));
-  const principal = document.querySelector('main, [role="main"], article') ?? document.body;
-  const cabecalhos = [...document.querySelectorAll('h1, h2')].filter(visivel).slice(0, 8).map((h) => limpo(h.innerText)).filter(Boolean);
-  const corpo = limpo(principal.innerText ?? '');
-  return {
-    url: location.href, title: document.title, headings: cabecalhos,
-    text: corpo.slice(0, texto), textLength: corpo.length,
-    elements: itens.slice(0, limit), totalElements: itens.length,
-    scroll: { y: Math.round(scrollY), max: Math.max(0, Math.round(document.documentElement.scrollHeight - innerHeight)) }
-  };
-}
-
-function readText() {
-  const principal = document.querySelector('main, [role="main"], article') ?? document.body;
-  return String(principal.innerText ?? '').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
-}
-
-// eslint-disable-next-line no-new-func
-const OBSERVAR_LIVRE = new Function('args', `const nomeAcessivel = ${nomeAcessivel.toString()}; return (${observeFree.toString()})(args, nomeAcessivel);`);
-// eslint-disable-next-line no-new-func
-const LER_TEXTO = new Function(`return (${readText.toString()})();`);

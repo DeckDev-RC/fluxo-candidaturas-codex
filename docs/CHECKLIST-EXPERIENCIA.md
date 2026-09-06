@@ -182,6 +182,13 @@ Sete frentes, na ordem de impacto. Cada item marcado tem teste ou verificação 
       conectado) viram selos; nota tingida por tom; a fala estruturada tem superfície
       própria. Modelos obrigatórios no prompt para análise/comparação e revisão.
 
+## Navegador no nível do Codex (15:06)
+
+Plano, decisões e implementação em `docs/CHECKLIST-NAVEGADOR-PLAYWRIGHT.md`:
+snapshot de acessibilidade com refs (a mesma máquina do Playwright MCP, via API
+pública do Playwright 1.63), ações por ref ou papel+nome, espera, captura de tela
+para o modelo, portões preservados.
+
 ## Pendente de validação com conta real
 
 - Qualidade da extração de requisitos nas páginas reais de Gupy/InfoJobs/LinkedIn
