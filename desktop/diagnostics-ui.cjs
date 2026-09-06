@@ -5,6 +5,12 @@ const feedback = document.querySelector('#feedback');
 async function refresh() {
   const workspace = await window.fluxoDesktop.workspace();
   document.querySelector('#workspace').textContent = `Pasta de dados: ${workspace.rootDir}`;
+  // Se o serviço local parou, a pessoa vê o motivo e pode reiniciar sem fechar o app.
+  const parada = document.querySelector('#parada');
+  const reiniciar = document.querySelector('#restart');
+  parada.hidden = !(workspace.ultimaParada && !workspace.running);
+  if (!parada.hidden) parada.textContent = `${workspace.ultimaParada.motivo} Os detalhes estão em estado/logs/servico.log na pasta de dados e em logs/ da pasta do app.`;
+  reiniciar.hidden = Boolean(workspace.running);
   const report = await window.fluxoDesktop.diagnostics();
   document.querySelector('#checks').replaceChildren(...report.checks.map((check) => {
     const row = document.createElement('li');
@@ -45,5 +51,6 @@ async function action(button, operation, sucesso) {
 document.querySelector('#refresh').onclick = (event) => action(event.target, refresh, 'Verificação concluída.');
 document.querySelector('#browser').onclick = (event) => action(event.target, () => window.fluxoDesktop.installBrowser(), 'Navegador de automação instalado.');
 document.querySelector('#choose').onclick = (event) => action(event.target, () => window.fluxoDesktop.selectWorkspace(), 'Pasta de dados atualizada.');
+document.querySelector('#restart').onclick = (event) => action(event.target, () => window.fluxoDesktop.restartBackend(), 'Serviço reiniciado.');
 
 refresh().catch((error) => { feedback.textContent = error.message; });

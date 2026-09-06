@@ -17,6 +17,9 @@ let abasDaJanela = [];
 let ouvindo = false;
 
 export function isEmbeddedBrowser() { return embutido === true; }
+// Desktop sem a porta de depuração: o navegador abre em janela separada e a
+// interface diz isso, em vez de a pessoa procurar a aba dentro do app.
+export function isDesktopWithoutEmbedded() { return embutido === false && Boolean(window.fluxoDesktop?.abas); }
 
 // Pergunta ao desktop uma vez se o Chromium do app aceita o driver (CDP).
 export async function detectEmbeddedBrowser() {
@@ -111,7 +114,9 @@ function acompanharArea(elemento) {
   if (!observador) {
     observador = new ResizeObserver(() => publicarArea());
     window.addEventListener('resize', publicarArea);
-    window.addEventListener('scroll', publicarArea, { capture: true, passive: true });
+    // Rolagem dispara dezenas de vezes por segundo: uma medição por quadro basta.
+    let quadro = 0;
+    window.addEventListener('scroll', () => { if (quadro) return; quadro = requestAnimationFrame(() => { quadro = 0; publicarArea(); }); }, { capture: true, passive: true });
     document.addEventListener('visibilitychange', publicarArea);
     new MutationObserver(publicarArea).observe(document.body, { attributes: true, attributeFilter: ['open'], subtree: true });
     // Rede de segurança para deslocamentos que nenhum observador captura (fontes, repintura).

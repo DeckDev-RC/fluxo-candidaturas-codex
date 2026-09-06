@@ -4,6 +4,7 @@
 // nunca recebe ponte com o app. `criarView` é injetável para os testes.
 
 const NENHUMA_AREA = { x: 0, y: 0, width: 0, height: 0 };
+const PRAZO_CARREGAMENTO_MS = 5_000;
 
 function createAbas({ window, criarView, aoMudar = () => {} }) {
   const abas = new Map();
@@ -29,7 +30,9 @@ function createAbas({ window, criarView, aoMudar = () => {} }) {
         abas.set(nome, aba);
         posicionar(aba);
       }
-      if (url) await aba.view.webContents.loadURL(String(url)).catch(() => {});
+      // Carregar a marcadora não pode segurar o pedido do serviço: com prazo curto,
+      // a aba segue existindo e o driver a encontra quando a página responder.
+      if (url) await Promise.race([aba.view.webContents.loadURL(String(url)).catch(() => {}), new Promise((resolve) => setTimeout(resolve, PRAZO_CARREGAMENTO_MS))]);
       notificar();
       return retrato(aba);
     },
