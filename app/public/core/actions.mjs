@@ -85,7 +85,9 @@ async function entregarAoAgente({ objetivo, importado, habilitadas }) {
 export async function avisarQueTerminei(espera) {
   const texto = espera?.kind === 'login' || espera?.kind === 'challenge'
     ? `Já entrei no ${nomePlataforma(espera.platform)}. Confira a aba e continue.`
-    : 'Pode continuar.';
+    : espera?.kind === 'consent'
+      ? `Já decidi o aviso de cookies no ${nomePlataforma(espera.platform)}. Confira a aba e continue.`
+      : 'Pode continuar.';
   ask(texto);
   return sendTurn(texto);
 }

@@ -25,6 +25,8 @@ export function acoesDaSituacao(situacao, pendentes) {
     const espera = store.conversa?.aguardando;
     if (espera?.kind === 'login' || espera?.kind === 'challenge') {
       acoes.push(button(`Já entrei no ${nomePlataforma(espera.platform)}`, { onClick: () => avisarQueTerminei(espera) }));
+    } else if (espera?.kind === 'consent') {
+      acoes.push(button(`Já decidi no ${nomePlataforma(espera.platform)}`, { onClick: () => avisarQueTerminei(espera) }));
     } else if (espera?.kind !== 'approval') {
       acoes.push(button('Pode continuar', { onClick: () => avisarQueTerminei(espera) }));
     }

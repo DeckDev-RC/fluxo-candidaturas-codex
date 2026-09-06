@@ -28,6 +28,40 @@ test('os cartões viram vagas com título, empresa e local, sem duplicar o mesmo
   } finally { await browser.close(); }
 });
 
+// Achado do teste real: a home do InfoJobs tinha uma vaga com "reconhecimento
+// facial" no texto e o driver dizia "desafio biométrico". Desafio é estrutura
+// (widget, campo de código, banner), nunca palavra na página.
+test('desafios são detectados pela estrutura da página, não pelo texto das vagas', { timeout: 60_000 }, async (t) => {
+  const { createServer } = await import('node:http');
+  const { mkdtemp } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { createPlaywrightDriver } = await import('../app/src/playwright-driver.mjs');
+  const paginas = {
+    '/texto': '<h1>Vagas</h1><p>Sistema de controle de acesso por reconhecimento facial e captcha interno. Código de verificação de qualidade.</p>',
+    '/captcha': '<h1>Entrar</h1><div class="g-recaptcha" style="width:300px;height:78px">captcha</div>',
+    '/codigo': '<h1>Confirme</h1><input autocomplete="one-time-code" inputmode="numeric" maxlength="6">',
+    '/cookies': '<h1>Vagas</h1><div id="cookie-banner" role="dialog" style="position:fixed;bottom:0;width:100%;height:120px;background:#eee"><p>Usamos cookies.</p><button>Aceitar todos</button><button>Saiba mais</button></div>'
+  };
+  const servidor = createServer((request, response) => { response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); response.end(`<!doctype html><title>Teste</title>${paginas[request.url] ?? ''}`); });
+  await new Promise((resolve) => servidor.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${servidor.address().port}`;
+  const driver = createPlaywrightDriver({ rootDir: await mkdtemp(join(tmpdir(), 'fluxo-desafio-')), headless: true });
+  t.after(async () => { await driver.close(); await new Promise((resolve) => servidor.close(resolve)); });
+
+  await driver.goto(`${base}/texto`);
+  assert.equal((await driver.snapshot()).challenge, null, 'palavras no texto não são desafio');
+  assert.equal((await driver.loginState()).consentPending, false);
+  await driver.goto(`${base}/captcha`);
+  assert.equal((await driver.snapshot()).challenge, 'captcha');
+  await driver.goto(`${base}/codigo`);
+  assert.equal((await driver.snapshot()).challenge, 'mfa');
+  await driver.goto(`${base}/cookies`);
+  const estado = await driver.loginState();
+  assert.equal(estado.challenge, null);
+  assert.equal(estado.consentPending, true, 'banner de consentimento é da pessoa, não desafio nem erro');
+});
+
 test('o catálogo de cartões é válido: expressões compilam e seletores são aceitos pelo navegador', { timeout: 30_000 }, async () => {
   const browser = await chromium.launch({ headless: true });
   try {

@@ -42,8 +42,9 @@ const FIM = {
   fluxo_attach_resume: () => ({ texto: 'Currículo registrado.' }),
   fluxo_open_platform: (a, r) => {
     const nome = plataforma(a.platform);
-    if (r.challenge) return { texto: `${nome} pediu uma verificação (${r.challenge === 'captcha' ? 'CAPTCHA' : r.challenge === 'mfa' ? 'código de verificação' : 'biometria'}).`, espera: { kind: 'challenge', platform: String(a.platform).toUpperCase(), challenge: r.challenge } };
+    if (r.challenge) return { texto: `${nome} pediu uma verificação (${r.challenge === 'captcha' ? 'CAPTCHA' : 'código de verificação'}).`, espera: { kind: 'challenge', platform: String(a.platform).toUpperCase(), challenge: r.challenge } };
     if (r.loginPending) return { texto: `${nome} está aberto e pede login.`, espera: { kind: 'login', platform: String(a.platform).toUpperCase(), url: r.url } };
+    if (r.consentPending) return { texto: `${nome} aberto, com um aviso de cookies/consentimento para você decidir.`, espera: { kind: 'consent', platform: String(a.platform).toUpperCase(), url: r.url } };
     return { texto: `${nome} aberto; você já está conectado.` };
   },
   fluxo_browser_status: (a, r) => ({ texto: `${(r.tabs ?? []).length} aba(s) aberta(s).` }),

@@ -121,6 +121,7 @@ function textoDaEspera(espera) {
   if (!espera) return 'Terminei esta etapa e aguardo o seu próximo pedido.';
   if (espera.kind === 'login') return `Entre no ${nomePlataforma(espera.platform)} na janela do navegador e avise quando terminar.`;
   if (espera.kind === 'challenge') return `O ${nomePlataforma(espera.platform)} pediu uma verificação; resolva na janela do navegador e avise quando terminar.`;
+  if (espera.kind === 'consent') return `O ${nomePlataforma(espera.platform)} mostra um aviso de cookies; decida na aba do navegador e avise quando terminar.`;
   if (espera.kind === 'approval') return 'Preparei uma candidatura; revise e aprove ou rejeite o envio.';
   return 'Preciso de você para continuar.';
 }

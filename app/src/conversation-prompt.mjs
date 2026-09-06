@@ -26,6 +26,8 @@ QUANDO AGIR E QUANDO SÓ RESPONDER
 - Saudação ("oi", "olá"), pergunta ("o que eu faço?", "como está?") ou conversa solta NÃO é autorização para tocar no navegador nem nas plataformas. Responda em uma ou duas frases com a situação atual e pergunte se a pessoa quer que você continue a busca. Só chame fluxo_state/fluxo_profile se precisar do dado para responder.
 - Só abra plataformas, busque, prepare ou preencha quando a pessoa pedir isso com clareza ("começar", "buscar", "continue", "abra o LinkedIn", "prepare a vaga X") ou quando uma mensagem SISTEMA mandar prosseguir.
 - Se a pessoa pedir uma coisa específica ("abra o meu LinkedIn"), faça só aquilo e pare; não encadeie as demais etapas sem pedir.
+- Quando o contexto disser "Sessão: app reaberto", a conversa anterior é memória, não tarefa em curso: não retome login, verificação, busca ou aba por conta própria. Cumprimente, diga em uma frase onde a campanha parou e pergunte se a pessoa quer continuar.
+- fluxo_open_platform pode devolver consentPending: a plataforma mostra aviso de cookies/consentimento. Nunca aceite por ela; diga que o aviso está na aba e que ela decide, e ENCERRE o turno.
 
 PROTOCOLO DE CAMPANHA (quando a pessoa clicar em "Começar" ou pedir para buscar)
 1. Leia fluxo_profile e fluxo_state. Se faltar nome, e-mail, telefone, localização ou cargos-alvo, chame fluxo_read_resume e apresente em UMA mensagem o que leu ("Li no currículo: nome X, e-mail Y, telefone Z, localização W. Está certo?"). Com o "sim" da pessoa, grave cada item com fluxo_record_gap. Só pergunte diretamente o que o currículo não trouxe, uma coisa por vez.
@@ -55,8 +57,9 @@ INTERFACE (para orientar com precisão)
   AÇÃO: modalidades=<lista separada por vírgula entre Remoto, Híbrido, Presencial>
   A interface pede confirmação antes de aplicar objetivo e modalidades.`;
 
-export function montarContexto(retrato = {}, agora = new Date()) {
+export function montarContexto(retrato = {}, agora = new Date(), { sessaoNova = false } = {}) {
   const linhas = [`CONTEXTO ATUAL (${agora.toISOString()}):`];
+  if (sessaoNova) linhas.push('- Sessão: app reaberto agora. Nenhuma aba do navegador está aberta e nenhuma ação anterior continua em curso; não retome nada sem pedido.');
   linhas.push(`- Situação: ${retrato.situacao ?? 'não determinada'}${retrato.mensagem ? ` — ${retrato.mensagem}` : ''}`);
   linhas.push(`- IA conectada: ${retrato.iaDisponivel ? 'sim' : 'não'}`);
   linhas.push(`- Objetivo: ${textoDe(retrato.objetivo) || 'ainda não definido'}`);

@@ -23,6 +23,9 @@ export function createConversationService({ agentAdapter, snapshot = async () =>
   let retomada = '';
   let runId = '';
   let carregado = false;
+  let primeiroTurnoDaSessao = true;
+  // A thread desta sessão veio de uma gravação (app reaberto), não foi criada agora.
+  let retomadaDeGravacao = false;
   let turnoAtivo = null;
   const ouvintes = new Set();
   const historico = [];
@@ -68,7 +71,10 @@ export function createConversationService({ agentAdapter, snapshot = async () =>
       if (turnoAtivo) throw domainError('conversation_busy', 'O Fluxo ainda está trabalhando na mensagem anterior. Aguarde ou interrompa.');
       await this.ensureThread();
       await ensureRun();
-      const contexto = montarContexto(await snapshot(), now());
+      // O primeiro turno de cada processo avisa que o app foi reaberto: a thread
+      // retomada lembra o que estava fazendo, mas nada disso continua em curso.
+      const contexto = montarContexto(await snapshot(), now(), { sessaoNova: primeiroTurnoDaSessao && retomadaDeGravacao });
+      primeiroTurnoDaSessao = false;
       const entrada = `${contexto}\n\n${system ? 'SISTEMA (evento da interface, não é fala da pessoa)' : 'Pessoa'}: ${pedido}`;
       const turno = abrirTurno();
       turnoAtivo = turno;
@@ -98,7 +104,7 @@ export function createConversationService({ agentAdapter, snapshot = async () =>
       if (threadId && retomada === threadId) return threadId;
       const parametros = { metadata: { mode: 'fluxo-condutor' }, developerInstructions: INSTRUCOES_DA_CONVERSA };
       if (threadId && agentAdapter.resumeThread) {
-        try { await agentAdapter.resumeThread(threadId, parametros); retomada = threadId; return threadId; }
+        try { await agentAdapter.resumeThread(threadId, parametros); retomada = threadId; retomadaDeGravacao = true; return threadId; }
         catch (error) { if (!threadPerdida(error)) throw error; threadId = ''; }
       }
       const iniciado = await agentAdapter.startThread(parametros);

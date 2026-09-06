@@ -99,7 +99,8 @@ export async function boardServer(t, { jobs = [1, 2, 3], challenge = false } = {
       return response.end(page('Resultado da candidatura', `<p data-confirmation data-job-id="${job}">Candidatura enviada</p><a href="/status">Acompanhar candidatura</a>`));
     }
     if (submissions.some((item) => item.id === job)) { response.writeHead(302, { location: '/status' }); return response.end(); }
-    if (challenge) return response.end(page(`Engenharia de software ${job}`, '<p>Confirme o CAPTCHA para continuar a candidatura.</p>'));
+    // Como nos sites reais: o desafio é um widget (elemento de CAPTCHA), não uma frase no texto.
+    if (challenge) return response.end(page(`Engenharia de software ${job}`, '<p>Confirme que você não é um robô para continuar.</p><div class="g-recaptcha" style="width:300px;height:78px;border:1px solid #ccc">CAPTCHA</div>'));
     return response.end(page(`Engenharia de software ${job}`, form()));
   });
   await listen(server);
