@@ -3,6 +3,7 @@ import { dirname, join, resolve, relative } from 'node:path';
 import { createHash } from 'node:crypto';
 import { platformOfUrl } from './platform-search.mjs';
 import { CARTOES_DE_VAGA, EMPRESA_DESCONHECIDA, lerCartoesDeVaga } from './platform-cards.mjs';
+import { createFreeBrowsing } from './browser-free.mjs';
 
 // O leitor de cartões e o detector de desafios entram na página como texto.
 // eslint-disable-next-line no-new-func
@@ -113,7 +114,19 @@ export function createPlaywrightDriver({ rootDir, headless = false, browserType,
     return match;
   }
 
+  // Navegação livre: observar e agir na aba de uma plataforma, com referências
+  // próprias. Navegar dentro da aba leva a qualquer http(s) público — uma vaga pode
+  // redirecionar para o site da empresa — e a aba continua sendo a da plataforma.
+  const livre = createFreeBrowsing({
+    pageFor: async (platform) => { const nome = String(platform ?? '').toUpperCase(); if (!nome) throw error('platform_required', 'Informe a plataforma cuja aba deve ser usada.'); return pageFor(nome); },
+    goto: async (url, platform) => { const alvo = await pageFor(String(platform).toUpperCase()); ativa = String(platform).toUpperCase(); await alvo.goto(String(url), { waitUntil: 'domcontentloaded' }); await assentar(alvo); },
+    assentar
+  });
+
   return {
+    observe: (platform, opcoes) => livre.observe(platform, opcoes),
+    readText: (platform, opcoes) => livre.read(platform, opcoes),
+    act: (platform, acao) => livre.act(platform, acao),
     async goto(url) {
       if (!/^https?:\/\//i.test(String(url))) throw error('invalid_browser_url', 'A navegação exige uma URL HTTP ou HTTPS.');
       const plataforma = platformOfUrl(url);

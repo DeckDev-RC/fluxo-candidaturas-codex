@@ -15,7 +15,7 @@ const ARQUIVO = 'estado/conversa.json';
 const PRAZO_TURNO_MS = 15 * 60 * 1000;
 const HISTORICO_EVENTOS = 200;
 // Linhas finais "AÇÃO: ..." que a interface sabe executar com confirmação da pessoa.
-const ACOES = /^AÇÃO:\s*(abrir|objetivo|modalidades|selecionar-descarte|confirmar|opcoes)\s*=\s*(.+)$/imu;
+const ACOES = /^AÇÃO:\s*(abrir|objetivo|modalidades|selecionar-descarte|confirmar|opcoes|tema|limpar-conversa)\s*=\s*(.+)$/imu;
 
 // Enquanto a IA espera a pessoa entrar numa plataforma (ou resolver cookies /
 // verificação), o serviço observa a aba; quando resolve, avisa a IA sozinho.

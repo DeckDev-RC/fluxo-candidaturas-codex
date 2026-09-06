@@ -128,6 +128,41 @@ test('toda ferramenta registrada é exercitada em uma jornada real, inclusive a 
     await chamar('fluxo_followup', { reference: enviado.application.id }, run.id);
     await assert.rejects(chamar('fluxo_followup', { reference: 'nao-existe' }, run.id), { code: 'application_not_found' });
 
+    // Navegação livre: observar, ler, agir; ação sensível só com confirmação da pessoa.
+    const visto = await chamar('fluxo_browser_observe', { platform: 'INFOJOBS', query: 'aceitar' }, run.id);
+    assert.deepEqual(visto.elements.map((el) => el.ref), ['n2']);
+    assert.match((await chamar('fluxo_browser_read', { platform: 'INFOJOBS' }, run.id)).text, /Pessoa Alfa B\./);
+    await chamar('fluxo_browser_navigate', { platform: 'INFOJOBS', url: 'https://quadro.test/convites?pagina=2' }, run.id);
+    await assert.rejects(chamar('fluxo_browser_navigate', { platform: 'INFOJOBS', url: 'http://127.0.0.1:4173/aba/x' }, run.id), { code: 'invalid_browser_url' });
+    await chamar('fluxo_browser_type', { platform: 'INFOJOBS', ref: 'n3', text: 'COBOL', submit: true }, run.id);
+    assert.equal(quadro.livre.digitado, 'COBOL');
+    await chamar('fluxo_browser_select', { platform: 'INFOJOBS', ref: 'n4', value: 'Antigos' }, run.id);
+    await chamar('fluxo_browser_press', { platform: 'INFOJOBS', key: 'PageDown' }, run.id);
+    await chamar('fluxo_browser_scroll', { platform: 'INFOJOBS', direction: 'down' }, run.id);
+    await chamar('fluxo_browser_back', { platform: 'INFOJOBS' }, run.id);
+    const aceitou = await chamar('fluxo_browser_click', { platform: 'INFOJOBS', ref: 'n2', confirmed: true }, run.id);
+    assert.match(aceitou.text, /Convite aceito/);
+    quadro.desafio = 'captcha';
+    await assert.rejects(chamar('fluxo_browser_click', { platform: 'INFOJOBS', ref: 'n1' }, run.id), { code: 'manual_intervention_required' });
+    quadro.desafio = null;
+
+    // Configuração do app pela conversa: campanha, agenda, Codex, exportação.
+    const campanha = await chamar('fluxo_campaign', {}, run.id);
+    assert.equal(campanha.enabledCount, 1);
+    const ajustada = await chamar('fluxo_campaign', { platforms: { gupy: { enabled: true, goal: 5 } } }, run.id);
+    assert.equal(ajustada.enabledCount, 2);
+    assert.equal(ajustada.totalGoal, 6, 'meta total vira a soma das habilitadas');
+    await assert.rejects(chamar('fluxo_campaign', { platforms: { NAOEXISTE: { enabled: true } } }, run.id), { code: 'invalid_platform' });
+    assert.equal((await chamar('fluxo_schedule', { action: 'status' }, run.id)).scheduled, false);
+    assert.equal((await chamar('fluxo_schedule', { action: 'set', intervalMinutes: 45 }, run.id)).intervalMinutes, 45);
+    assert.equal((await chamar('fluxo_schedule', { action: 'cancel' }, run.id)).scheduled, false);
+    const codex = await chamar('fluxo_codex_settings', {}, run.id);
+    assert.ok(codex.settings);
+    await assert.rejects(chamar('fluxo_codex_settings', { verbosity: 'gritando' }, run.id), { code: 'invalid_verbosity' });
+    const evidencias = await chamar('fluxo_export', { kind: 'evidence' }, run.id);
+    assert.match(evidencias.path, /evidencias\/auditoria-/);
+    await assert.rejects(chamar('fluxo_export', { kind: 'outra' }, run.id), { code: 'invalid_export_kind' });
+
     const registradas = runtime.domainTools.definitions.map((item) => item.name).sort();
     const exercitadas = [...chamadas].sort();
     assert.deepEqual(exercitadas, registradas, `ferramenta registrada sem caminho exercitado: ${registradas.filter((nome) => !chamadas.has(nome)).join(', ')}`);
@@ -163,6 +198,8 @@ function criarQuadro(raiz) {
     pagina,
     cliques: 0,
     abas: [],
+    acoes: [],
+    livre: { url: 'https://quadro.test/convites', texto: 'Convites: Pessoa Alfa B. quer se conectar. Product Engineer.', digitado: '', elementos: [{ ref: 'n1', role: 'link', name: 'Pessoa Alfa B.', href: 'https://quadro.test/in/kelvin', onScreen: true }, { ref: 'n2', role: 'button', name: 'Aceitar', onScreen: true }, { ref: 'n3', role: 'textbox', name: 'Pesquisar', onScreen: true }, { ref: 'n4', role: 'combobox', name: 'Ordenar', options: ['Recentes', 'Antigos'], onScreen: true }] },
     aoClicar(efeito) { quadro.efeitoDoClique = efeito; },
     driver: {
       async openPlatform(platform, url) {
@@ -171,6 +208,20 @@ function criarQuadro(raiz) {
         return aba;
       },
       async tabs() { return quadro.abas; },
+      async loginState(platform) { return { platform, open: true, loginPending: false, challenge: quadro.desafio ?? null }; },
+      // Navegação livre em memória: uma página de convites com botões de aceitar.
+      async observe(platform, { query = '' } = {}) {
+        const elementos = quadro.livre.elementos.filter((el) => !query || `${el.name} ${el.role}`.toLowerCase().includes(String(query).toLowerCase()));
+        return { url: quadro.livre.url, title: 'Convites', headings: ['Convites'], text: quadro.livre.texto, textLength: quadro.livre.texto.length, elements: elementos, totalElements: elementos.length, scroll: { y: 0, max: 0 } };
+      },
+      async readText() { return { url: quadro.livre.url, title: 'Convites', text: quadro.livre.texto, truncated: false }; },
+      async act(platform, acao) {
+        quadro.acoes.push(acao);
+        if (acao.type === 'navigate') quadro.livre.url = acao.url;
+        if (acao.type === 'click' && acao.ref === 'n2') quadro.livre.texto = 'Convite aceito.';
+        if (acao.type === 'type') quadro.livre.digitado = acao.text;
+        return this.observe(platform, {});
+      },
       async goto(url) {
         pagina.url = String(url);
         if (pagina.url.endsWith('/jobs/1')) {

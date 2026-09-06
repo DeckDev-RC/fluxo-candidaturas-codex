@@ -30,6 +30,30 @@ export function createBrowserAdapter({ driver, evidenceRoot = '' }) {
       return driver.openPlatform(platform, url);
     },
     async tabs() { return driver.tabs ? driver.tabs() : []; },
+    // Navegação livre na aba da plataforma. Desafio na tela para a ação e vira
+    // pedido à pessoa; texto lido passa pela fronteira de confiança.
+    async observe(platform, opcoes = {}) {
+      if (!driver.observe) throw domainError('browser_platform_unsupported', 'Este navegador não permite navegação livre.');
+      const observado = await driver.observe(platform, opcoes);
+      await pararEmDesafio(driver, platform);
+      assertTrustedPage({ text: observado.text });
+      return observado;
+    },
+    async readText(platform, opcoes = {}) {
+      if (!driver.readText) throw domainError('browser_platform_unsupported', 'Este navegador não permite navegação livre.');
+      const lido = await driver.readText(platform, opcoes);
+      await pararEmDesafio(driver, platform);
+      assertTrustedPage({ text: lido.text });
+      return lido;
+    },
+    async act(platform, acao = {}) {
+      if (!driver.act) throw domainError('browser_platform_unsupported', 'Este navegador não permite navegação livre.');
+      await pararEmDesafio(driver, platform);
+      const resultado = await driver.act(platform, acao);
+      await pararEmDesafio(driver, platform);
+      assertTrustedPage({ text: resultado.text });
+      return resultado;
+    },
     async loginState(platform) { return driver.loginState ? driver.loginState(platform) : { open: false }; },
     // Abre a página da vaga e lê descrição e requisitos; desafio (CAPTCHA/login) para aqui.
     async readJob(item) {
@@ -159,6 +183,13 @@ function redact(value) {
 
 function finalSegment(value) {
   return String(value).replace(/\/+$/, '').split('/').at(-1);
+}
+
+// CAPTCHA/MFA na aba: a IA não contorna; a pessoa resolve e a IA continua.
+async function pararEmDesafio(driver, platform) {
+  if (!driver.loginState) return;
+  const estado = await driver.loginState(platform).catch(() => null);
+  if (estado?.challenge) throw manualIntervention(estado.challenge);
 }
 
 function manualIntervention(challenge) {

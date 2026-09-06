@@ -5,6 +5,10 @@
 
 const NOMES = { GUPY: 'Gupy', INFOJOBS: 'InfoJobs', PANDAPE: 'PandaPé', LINKEDIN: 'LinkedIn', CATHO: 'Catho', VAGASCOM: 'Vagas.com', SOLIDES: 'Sólides' };
 const plataforma = (valor) => NOMES[String(valor ?? '').toUpperCase()] ?? String(valor ?? 'a plataforma');
+// "linkedin.com/mynetwork" em vez da URL com parâmetros.
+function enderecoCurto(url) {
+  try { const u = new URL(String(url)); return `${u.hostname.replace(/^www\./, '')}${u.pathname.replace(/\/$/, '')}`.slice(0, 80); } catch { return 'a página'; }
+}
 
 export function resumirFerramenta({ tool, arguments: args = {}, ok, result, error }) {
   const inicio = INICIO[tool]?.(args) ?? 'Executando uma etapa.';
@@ -27,7 +31,13 @@ const FALHAS = {
   payload_too_large: () => 'O arquivo é maior do que consigo receber (limite de 12 MB).',
   resume_not_found: () => 'Não encontrei o currículo importado; envie-o de novo pela conversa.',
   approval_required: () => 'O envio depende da sua aprovação; ele aparece em Decisões.',
-  conversation_busy: () => 'Ainda estou terminando a etapa anterior.'
+  conversation_busy: () => 'Ainda estou terminando a etapa anterior.',
+  confirmation_required: () => 'essa ação tem efeito fora do app; preciso do seu sim antes de fazer.',
+  password_field_forbidden: () => 'senha e código de verificação são seus; digite na aba e eu continuo.',
+  browser_reference_ambiguous: () => 'a página mudou; vou olhar de novo antes de agir.',
+  invalid_browser_url: () => 'esse endereço não é uma página pública; não navego até ele.',
+  invalid_platform: () => 'essa plataforma não existe no Fluxo.',
+  unsupported_model: () => 'esse modelo não está disponível na sua conta do ChatGPT.'
 };
 const PARECE_TECNICO = /[{}[\]<>]|\b(undefined|null|NaN|TypeError|ReferenceError|ENOENT|ECONN|EPIPE|timeout|stack|json|http\/?\d?|\w+Error)\b|[a-z]+_[a-z_]+|\\|\/[\w-]+\/[\w-]+/i;
 
@@ -51,6 +61,19 @@ const INICIO = {
   fluxo_discover: (a) => `Buscando vagas em ${plataforma(a.platform)}.`,
   fluxo_discard: (a) => `Descartando ${a.query ? `as vagas de "${a.query}"` : 'as vagas indicadas'} da fila.`,
   fluxo_read_job: () => 'Lendo a página da vaga para medir a aderência.',
+  fluxo_browser_observe: (a) => `Olhando a página de ${plataforma(a.platform)}${a.query ? ` (procurando "${a.query}")` : ''}.`,
+  fluxo_browser_read: (a) => `Lendo o conteúdo da página de ${plataforma(a.platform)}.`,
+  fluxo_browser_click: () => 'Clicando na página.',
+  fluxo_browser_type: (a) => `Digitando "${String(a.text ?? '').slice(0, 40)}" na página.`,
+  fluxo_browser_select: (a) => `Escolhendo "${a.value ?? ''}" na página.`,
+  fluxo_browser_press: (a) => `Pressionando ${a.key ?? 'uma tecla'} na página.`,
+  fluxo_browser_scroll: () => 'Rolando a página.',
+  fluxo_browser_navigate: (a) => `Indo para ${enderecoCurto(a.url)} em ${plataforma(a.platform)}.`,
+  fluxo_browser_back: () => 'Voltando uma página.',
+  fluxo_campaign: (a) => (a.platforms || a.totalGoal !== undefined || a.maxApplicationsPerRun !== undefined ? 'Ajustando plataformas e metas da campanha.' : 'Lendo a campanha.'),
+  fluxo_schedule: (a) => ({ set: 'Agendando a consulta automática de novidades.', cancel: 'Cancelando a consulta automática.' })[a.action] ?? 'Conferindo a consulta automática.',
+  fluxo_codex_settings: (a) => (a.model || a.effort || a.verbosity ? 'Ajustando como o ChatGPT trabalha aqui.' : 'Lendo as configurações do ChatGPT.'),
+  fluxo_export: (a) => (a.kind === 'shareable' ? 'Gerando a cópia compartilhável do Fluxo.' : 'Gerando o pacote de evidências.'),
   fluxo_shortlist: () => 'Comparando as vagas encontradas com os seus dados confirmados.',
   fluxo_prepare: () => 'Abrindo a vaga escolhida e o formulário de candidatura.',
   fluxo_fill: () => 'Preenchendo o formulário só com dados confirmados.',
@@ -82,6 +105,19 @@ const FIM = {
     return { texto: `${criadas} vaga(s) nova(s) observada(s) em ${plataforma(a.platform)}.` };
   },
   fluxo_discard: (a, r) => ({ texto: `${Number(r.discarded ?? 0)} vaga(s) descartada(s); ${Number(r.remaining ?? 0)} continuam na fila.` }),
+  fluxo_browser_observe: (a, r) => ({ texto: `${r.title || enderecoCurto(r.url)}: ${Number(r.totalElements ?? 0)} elemento(s) interativo(s).` }),
+  fluxo_browser_read: (a, r) => ({ texto: `Li ${Number(r.text?.length ?? 0)} caracteres de ${r.title || enderecoCurto(r.url)}.` }),
+  fluxo_browser_click: (a, r) => ({ texto: `Cliquei; agora em ${r.title || enderecoCurto(r.url)}.` }),
+  fluxo_browser_type: (a, r) => ({ texto: a.submit ? `Busquei; agora em ${r.title || enderecoCurto(r.url)}.` : 'Texto digitado.' }),
+  fluxo_browser_select: () => ({ texto: 'Opção escolhida.' }),
+  fluxo_browser_press: () => ({ texto: 'Tecla enviada.' }),
+  fluxo_browser_scroll: (a, r) => ({ texto: `Página rolada (${Number(r.scroll?.y ?? 0)} px).` }),
+  fluxo_browser_navigate: (a, r) => ({ texto: `Aberto: ${r.title || enderecoCurto(r.url)}.` }),
+  fluxo_browser_back: (a, r) => ({ texto: `De volta a ${r.title || enderecoCurto(r.url)}.` }),
+  fluxo_campaign: (a, r) => ({ texto: r.updated ? `Campanha ajustada: ${r.enabledCount} plataforma(s) habilitada(s), meta total ${r.totalGoal}.` : `Campanha lida: ${r.enabledCount} plataforma(s) habilitada(s), meta total ${r.totalGoal}.` }),
+  fluxo_schedule: (a, r) => ({ texto: r.scheduled ? `Consulta automática a cada ${r.intervalMinutes} min.` : 'Sem consulta automática agendada.' }),
+  fluxo_codex_settings: (a, r) => ({ texto: r.updated ? `ChatGPT ajustado: modelo ${r.settings?.model || 'padrão'}, esforço ${r.settings?.effort}.` : `ChatGPT: modelo ${r.settings?.model || 'padrão'}, esforço ${r.settings?.effort}.` }),
+  fluxo_export: (a, r) => ({ texto: `Arquivo gerado em ${r.path ?? r.output ?? 'pasta local'}.` }),
   fluxo_read_job: (a, r) => ({ texto: r.requirements?.length ? `${r.role ?? 'Vaga'} em ${r.company ?? 'empresa'}: ${r.requirements.length} requisito(s) lidos, aderência ${r.fit?.classification ?? ''} ${r.fit?.score ?? ''}%.` : `${r.role ?? 'Vaga'}: a página não lista requisitos de forma reconhecível.` }),
   fluxo_shortlist: (a, r) => ({ texto: `${(r.items ?? r.shortlist ?? []).length} vaga(s) elegível(is) após a comparação.` }),
   fluxo_prepare: (a, r) => ({ texto: `Formulário aberto para ${r.item?.role ?? 'a vaga'} em ${r.item?.company ?? 'empresa não informada'}.` }),
