@@ -9,6 +9,7 @@ const CONFIRMED_STATUSES = new Set([
   'enviada', 'triagem', 'teste pendente', 'teste concluído', 'entrevista', 'proposta', 'rejeitada', 'encerrada'
 ]);
 const PRIORITY_RANK = { A: 1, B: 2, C: 3 };
+const PRIORITY_BY_FIT = { forte: 'A', possível: 'B', fraca: 'C' };
 
 export function createQueueService({ rootDir, persistence: injectedPersistence, now = () => new Date(), checkpointAfterEachAction = true, maxConsecutiveFailures = null, mutationLock = true, lock = () => acquireFluxoLock(rootDir) }) {
   const ownedPersistence = injectedPersistence ? null : createAutoPersistence({ rootDir });
@@ -76,6 +77,27 @@ export function createQueueService({ rootDir, persistence: injectedPersistence, 
       return candidate;
     },
 
+    // A comparação de aderência fica gravada na vaga: nota e prioridade passam a
+    // ordenar a fila e a aparecer na tela em vez de "aderência não calculada".
+    async recordFit(assessments = []) {
+      const queuePath = join(rootDir, 'fila', 'vagas.json');
+      const queue = await readQueue(rootDir, persistence);
+      let updated = 0;
+      for (const assessment of asArray(assessments)) {
+        const reference = String(assessment?.opportunityId ?? assessment?.id ?? '');
+        const item = queue.find((entry) => entry.id === reference || entry.key === reference);
+        if (!item || !Number.isFinite(Number(assessment.score))) continue;
+        item.fitScore = Math.max(0, Math.min(100, Number(assessment.score)));
+        item.priority = PRIORITY_BY_FIT[assessment.classification] ?? item.priority ?? 'B';
+        item.fitExplanation = String(assessment.explanation ?? '');
+        item.fitEvaluatedAt = String(assessment.evaluatedAt ?? now().toISOString());
+        item.updatedAt = now().toISOString();
+        updated += 1;
+      }
+      if (updated) await saveQueue(queuePath, queue, persistence);
+      return { updated };
+    },
+
     async recordQueueFailure(reference, errorMessage) {
       const campaign = await readCampaign(rootDir, persistence);
       const queuePath = join(rootDir, 'fila', 'vagas.json');
@@ -103,7 +125,7 @@ export function createQueueService({ rootDir, persistence: injectedPersistence, 
       return { reference: item.id, attempts, maximum, status: item.status, error: item.lastError };
     }
   };
-  return wrapMutations(service, ['addQueueItem', 'claimNext', 'recordQueueFailure'], { rootDir, mutationLock, lock });
+  return wrapMutations(service, ['addQueueItem', 'claimNext', 'recordFit', 'recordQueueFailure'], { rootDir, mutationLock, lock });
 }
 
 async function useSqlite(persistence) { return Boolean(persistence?.isSqliteAuthority && await persistence.isSqliteAuthority()); }

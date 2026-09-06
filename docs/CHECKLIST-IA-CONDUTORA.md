@@ -114,6 +114,26 @@ Marque cada item quando a evidência (teste, captura ou execução) existir.
       pré-envio**. Registrar o que a IA disse, o que abriu e onde parou. Depende
       da pessoa entrar nas plataformas; não pode ser feito pelo agente sozinho.
 
+## Fase 4b — Plataformas reais (sondagem de 05/09/2026, somente leitura)
+
+Nenhuma página pública de busca publica JSON-LD de vaga; a leitura genérica
+anterior devolvia zero em todas. O driver passou a ler os **cartões** de cada
+plataforma (`src/platform-cards.mjs`) e a esperar a lista renderizar.
+
+| Plataforma | Página pública de busca | Leitura | Observação |
+|---|---|---|---|
+| Gupy | `portal.gupy.io/job-search/term=<q>` | 12 vagas, com empresa e local | URL corrigida (`term=`); a anterior ignorava o termo |
+| InfoJobs | `vagas.aspx?palabra=<q>` | 20 vagas, com empresa e local | — |
+| Vagas.com | `vagas-de-<q>` | 40 vagas, com empresa e local | — |
+| LinkedIn | `jobs/search/?keywords=<q>&location=Brasil` | 0 sem login (authwall) | Esperado: a IA pede login na aba; cartões da versão logada estão no catálogo, a confirmar no teste acompanhado |
+| Catho | `vagas/<q>/` | 403 para navegador automatizado | Bloqueio antibot; fora desta versão |
+| Sólides | `?q=<q>` | 0 links de vaga | A busca não expõe cartões na URL usada; fora desta versão |
+
+- [x] Leitor de cartões por plataforma, com empresa "não informada" quando o cartão não a traz.
+- [x] Falso positivo de "biometria" removido (texto legal do LinkedIn acionava o desafio).
+- [x] Aderência gravada na vaga (`queueService.recordFit`): nota, prioridade A/B/C e explicação, nos dois caminhos (IA e orquestrador).
+- [ ] Aposentar o orquestrador programado como condutor (deixar só leitura offline): decisão adiada até a aceitação real com contas; hoje ele é o caminho de reserva sem IA.
+
 ## Fase 5 — Entrega
 
 - [x] Documentação: este checklist marcado; `app/README.md` com o novo fluxo.

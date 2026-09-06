@@ -1,10 +1,10 @@
 import { PLATFORM_NAMES } from './platform-adapters.mjs';
 
 const SEARCH_PATHS = {
-  GUPY: (q) => `https://portal.gupy.io/job-search/${encodeURIComponent(q)}`,
+  GUPY: (q) => `https://portal.gupy.io/job-search/term=${encodeURIComponent(q)}`,
   INFOJOBS: (q) => `https://www.infojobs.com.br/vagas.aspx?palabra=${encodeURIComponent(q)}`,
   PANDAPE: () => '',
-  LINKEDIN: (q) => `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(q)}`,
+  LINKEDIN: (q) => `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(q)}&location=Brasil`,
   CATHO: (q) => `https://www.catho.com.br/vagas/${encodeURIComponent(q)}/`,
   VAGASCOM: (q) => `https://www.vagas.com.br/vagas-de-${encodeURIComponent(q)}`,
   SOLIDES: (q) => `https://vagas.solides.com.br/?q=${encodeURIComponent(q)}`

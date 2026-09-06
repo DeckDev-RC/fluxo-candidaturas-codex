@@ -86,6 +86,7 @@ export function createProductionAgents({
         const filtered = opportunities.map((opportunity) => ({ opportunity, filter: applyCampaignFilters(opportunity, campaign.filters ?? context.input?.filters ?? {}, facts) }));
         const eligible = filtered.filter((item) => item.filter.eligible).map((item) => item.opportunity);
         const result = fitService.shortlist({ opportunities: eligible, facts, limit: Number(context.input?.limit ?? 10) });
+        await fitService.record?.(result);
         result.rejected = filtered.filter((item) => !item.filter.eligible).map((item) => ({ ...item.opportunity, reason: item.filter.explanation }));
         return ok('fit', ferramenta('fit'), `Comparei ${result.items.length} oportunidade(s) elegíveis.`, result, true);
       }
