@@ -77,6 +77,11 @@
 .balao[data-tom="passo"] .balao-corpo { flex-direction: row; gap: var(--e2); font-size: var(--texto-sm); color: var(--texto-2); }
 .balao[data-tom="passo"] .balao-corpo::before { content: '›'; color: var(--texto-3); }
 .balao[data-tom="passo"] .balao-hora { display: none; }
+/* Passo em andamento: ponto pulsando e segundos decorridos; concluído: quanto levou. */
+.passo-andamento { display: inline-block; width: 0.5rem; height: 0.5rem; margin-right: var(--e2); border-radius: 50%; background: var(--acento); vertical-align: middle; animation: passo-pulso 1.2s ease-in-out infinite; }
+.passo-tempo { margin-left: var(--e1); color: var(--texto-3); font-variant-numeric: tabular-nums; }
+@keyframes passo-pulso { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .passo-andamento { animation: none; } }
 
 .balao[data-autor="voce"] { grid-template-columns: minmax(0, 1fr); justify-items: end; }
 .balao[data-autor="voce"] .balao-corpo {

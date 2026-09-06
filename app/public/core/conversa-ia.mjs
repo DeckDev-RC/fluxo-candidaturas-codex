@@ -5,7 +5,7 @@
 
 import { describeError, read, send } from './api.mjs';
 import { isDemo, loadState, setConversation, setJourney, store } from './store.mjs';
-import { amendStep, say, setThinking } from './conversa.mjs';
+import { amendStep, say, setThinking, settleSteps } from './conversa.mjs';
 import { notificarFora } from './notificacoes.mjs';
 
 const CHAVE_ULTIMO = () => `fluxo-conversa-ia:ultimo${isDemo() ? ':demo' : ''}`;
@@ -96,9 +96,10 @@ const TRATADORES = {
     if (store.jornada.status && store.jornada.status !== 'encerrada' && !evento.system) setJourney({ status: 'trabalhando', mensagem: 'Estou conduzindo a próxima etapa.' });
     if (evento.system) setJourney({ status: 'trabalhando', mensagem: 'Continuando de onde parei.' });
   },
-  'tool.started': (evento) => { if (evento.summary) say(evento.summary, { tom: 'passo' }); },
+  'tool.started': (evento) => { if (evento.summary) say(evento.summary, { tom: 'passo', emAndamento: true }); },
   'tool.completed': (evento) => {
     if (evento.summary) amendStep(evento.summary, { tom: evento.ok ? 'passo' : 'atencao' });
+    else settleSteps();
     agendarRecarga();
   },
   'browser.tabs': (evento) => setConversation({ abas: evento.tabs ?? [] }),
@@ -119,12 +120,14 @@ const TRATADORES = {
     if (evento.actions?.length) tratarAcoes(evento.actions);
   },
   'turn.completed': () => {
+    settleSteps();
     setThinking(false);
     setConversation({ ocupada: false });
     if (store.jornada.status === 'trabalhando') setJourney({ status: 'aguardando', mensagem: textoDaEspera(esperaDoTurno) });
     agendarRecarga();
   },
   'turn.failed': (evento) => {
+    settleSteps();
     setThinking(false);
     setConversation({ ocupada: false });
     const interrompido = evento.code === 'conversation_interrupted';

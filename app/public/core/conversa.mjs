@@ -30,23 +30,32 @@ export function onTranscript(listener) {
 }
 
 // Fala do Fluxo. Repetição imediata do mesmo texto não vira nova linha.
-export function say(texto, { tom = 'informacao' } = {}) {
-  return registrar({ autor: 'fluxo', texto: String(texto ?? '').trim(), tom });
+export function say(texto, { tom = 'informacao', emAndamento = false } = {}) {
+  return registrar({ autor: 'fluxo', texto: String(texto ?? '').trim(), tom, ...(emAndamento ? { emAndamento: true } : {}) });
 }
 
 // Passo do agente: "Abrindo o InfoJobs…" vira "InfoJobs aberto" na mesma linha,
-// em vez de duas linhas por ferramenta.
+// em vez de duas linhas por ferramenta. O passo em andamento mostra o tempo
+// decorrido; ao concluir, fica registrado quanto levou.
 export function amendStep(texto, { tom = 'passo' } = {}) {
   const lista = transcript();
   const ultimo = lista.at(-1);
   if (ultimo?.autor === 'fluxo' && ultimo.tom === 'passo' && String(texto ?? '').trim()) {
     ultimo.texto = String(texto).trim();
     ultimo.tom = tom;
+    if (ultimo.emAndamento) { ultimo.emAndamento = false; ultimo.duracaoMs = Math.max(0, Date.now() - Date.parse(ultimo.em)); }
     persistir();
     avisar();
     return ultimo;
   }
   return say(texto, { tom });
+}
+
+// Um turno que termina (ou falha) não deixa passo "em andamento" para trás.
+export function settleSteps() {
+  let mudou = false;
+  for (const item of transcript()) if (item.emAndamento) { item.emAndamento = false; mudou = true; }
+  if (mudou) { persistir(); avisar(); }
 }
 
 // Pedido da pessoa, sempre registrado como veio.
@@ -123,7 +132,8 @@ function tomDaSituacao(estado) {
 function carregar() {
   try {
     const salvo = JSON.parse(window.localStorage.getItem(CHAVE()) ?? '[]');
-    return Array.isArray(salvo) ? salvo.filter((item) => item?.texto && item?.autor) : [];
+    // Um passo "em andamento" de uma sessão anterior já não está: o app recarregou.
+    return Array.isArray(salvo) ? salvo.filter((item) => item?.texto && item?.autor).map((item) => (item.emAndamento ? { ...item, emAndamento: false } : item)) : [];
   } catch { return []; }
 }
 
