@@ -176,6 +176,11 @@ Sete frentes, na ordem de impacto. Cada item marcado tem teste ou verificação 
 - [x] **Instruções**: não narrar antes de agir (a atividade já mostra), conclusão em
       uma frase primeiro, seções por tema em revisões, uma nota por resposta, terminar
       com próximo passo ou opções.
+- [x] **Componentes generativos** (14:33): `### Nome` vira cartão (cartões seguidos
+      lado a lado, para comparar); `Rótulo: valor` vira ficha alinhada; rótulos de
+      lista (Stack, Tecnologias…) viram fichas; níveis (alta/média/baixa, pendente/
+      conectado) viram selos; nota tingida por tom; a fala estruturada tem superfície
+      própria. Modelos obrigatórios no prompt para análise/comparação e revisão.
 
 ## Pendente de validação com conta real
 
