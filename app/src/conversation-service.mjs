@@ -16,7 +16,12 @@ const HISTORICO_EVENTOS = 200;
 // Linhas finais "AÇÃO: ..." que a interface sabe executar com confirmação da pessoa.
 const ACOES = /^AÇÃO:\s*(abrir|objetivo|modalidades|selecionar-descarte|confirmar|opcoes)\s*=\s*(.+)$/imu;
 
-export function createConversationService({ agentAdapter, snapshot = async () => ({}), rootDir = '', runService = null, tabs = null, now = () => new Date(), timeoutMs = PRAZO_TURNO_MS } = {}) {
+// Enquanto a IA espera a pessoa entrar numa plataforma (ou resolver cookies /
+// verificação), o serviço observa a aba; quando resolve, avisa a IA sozinho.
+const OBSERVACAO_INTERVALO_MS = 3_000;
+const OBSERVACAO_PRAZO_MS = 10 * 60 * 1000;
+
+export function createConversationService({ agentAdapter, snapshot = async () => ({}), rootDir = '', runService = null, tabs = null, loginState = null, now = () => new Date(), timeoutMs = PRAZO_TURNO_MS, watchIntervalMs = OBSERVACAO_INTERVALO_MS } = {}) {
   if (!agentAdapter?.request) throw new TypeError('A conversa requer o adaptador do agente.');
   let threadId = '';
   // Thread que este processo do app-server já conhece (retomada ou criada aqui).
@@ -27,6 +32,7 @@ export function createConversationService({ agentAdapter, snapshot = async () =>
   // A thread desta sessão veio de uma gravação (app reaberto), não foi criada agora.
   let retomadaDeGravacao = false;
   let turnoAtivo = null;
+  let observacao = null; // intervalo que observa a aba enquanto a IA espera login
   const ouvintes = new Set();
   const historico = [];
 
@@ -66,7 +72,7 @@ export function createConversationService({ agentAdapter, snapshot = async () =>
       if (chamada.phase === 'started') emitir('tool.started', { tool: chamada.tool, summary: resumo.inicio });
       else {
         emitir('tool.completed', { tool: chamada.tool, ok: chamada.ok, summary: resumo.fim, error: chamada.ok ? null : chamada.error });
-        if (resumo.espera) emitir('waiting_user', resumo.espera);
+        if (resumo.espera) { emitir('waiting_user', resumo.espera); observarEspera(resumo.espera); }
         if (chamada.ok && ['fluxo_open_platform', 'fluxo_browser_status'].includes(chamada.tool)) publicarAbas(chamada.result);
       }
       registrar('conversation.tool', { tool: chamada.tool, phase: chamada.phase, ok: chamada.ok ?? null, summary: chamada.phase === 'started' ? resumo.inicio : resumo.fim });
@@ -83,6 +89,8 @@ export function createConversationService({ agentAdapter, snapshot = async () =>
       const turno = abrirTurno();
       turno.reservado = true;
       turnoAtivo = turno;
+      // Uma fala da pessoa encerra a observação: se ela disse "já entrei", a IA confere sozinha.
+      if (!system) pararObservacao();
       try {
         await this.ensureThread();
         await ensureRun();
@@ -129,6 +137,7 @@ export function createConversationService({ agentAdapter, snapshot = async () =>
     },
 
     async reset({ silencioso = false } = {}) {
+      pararObservacao();
       if (turnoAtivo) await this.interrupt();
       threadId = '';
       retomada = '';
@@ -177,6 +186,28 @@ export function createConversationService({ agentAdapter, snapshot = async () =>
     agentAdapter.bindRun?.(runId, threadId);
     return runId;
   }
+
+  // Espera por login/verificação/cookies numa plataforma: observa a aba a cada
+  // poucos segundos; resolvida, emite `waiting_resolved` e, se a IA estiver livre,
+  // manda um turno de sistema para ela continuar. A pessoa não precisa clicar "Já entrei".
+  function observarEspera(espera) {
+    if (!loginState || !['login', 'challenge', 'consent'].includes(espera?.kind) || !espera.platform) return;
+    pararObservacao();
+    const inicio = Date.now();
+    const plataforma = String(espera.platform).toUpperCase();
+    observacao = setInterval(async () => {
+      if (Date.now() - inicio > OBSERVACAO_PRAZO_MS) { pararObservacao(); return; }
+      let estado;
+      try { estado = await loginState(plataforma); } catch { return; }
+      if (!estado?.open || estado.loginPending || estado.challenge || estado.consentPending) return;
+      pararObservacao();
+      emitir('waiting_resolved', { kind: espera.kind, platform: plataforma, url: estado.url ?? '' });
+      if (turnoAtivo) return;
+      const nome = { login: 'entrou', challenge: 'resolveu a verificação', consent: 'decidiu o aviso de cookies' }[espera.kind] ?? 'resolveu a pendência';
+      service.turn(`Detectei que a pessoa ${nome} em ${plataforma}: a aba não pede mais login nem verificação. Continue de onde parou sem pedir confirmação.`, { system: true }).catch(() => {});
+    }, watchIntervalMs);
+  }
+  function pararObservacao() { if (observacao) { clearInterval(observacao); observacao = null; } }
 
   // As abas do navegador vão para a tela sem HTML nem formulário: só plataforma, URL, título e estado.
   function publicarAbas(resultado) {

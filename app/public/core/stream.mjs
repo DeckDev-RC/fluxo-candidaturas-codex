@@ -4,6 +4,7 @@
 // linha nova na conversa: cada evento é reconhecido pelo identificador.
 
 import { addJourneyUpdate, loadState, setJourney } from './store.mjs';
+import { notificarFora } from './notificacoes.mjs';
 
 const TIPOS = [
   'autopilot.plan.created', 'autopilot.task.started', 'autopilot.task.completed',
@@ -126,7 +127,7 @@ function aplicar(tipo, payload, { repetido }) {
   if (tipo === 'run.paused') setJourney({ status: 'pausada', mensagem: 'Jornada pausada por você. Nenhuma nova ação externa será iniciada.' });
   if (tipo === 'run.resumed') setJourney({ status: 'trabalhando', mensagem: 'Jornada retomada do ponto salvo.' });
   if (tipo === 'run.needs_reconcile') setJourney({ status: 'incerto', mensagem: 'Um envio ficou com resultado incerto e precisa de conferência.' });
-  if (tipo === 'application.prepared') linha('informacao', 'Candidatura preparada para sua revisão.');
+  if (tipo === 'application.prepared') { linha('informacao', 'Candidatura preparada para sua revisão.'); notificarFora({ titulo: 'Candidatura pronta para revisão', corpo: 'Revise e aprove ou rejeite o envio no Fluxo.' }); }
   if (tipo === 'application.fields.filled') linha('informacao', 'Campos preenchidos com informações confirmadas.');
   if (tipo === 'application.submission_confirmed') linha('sucesso', 'A plataforma confirmou o recebimento da candidatura.');
 }
