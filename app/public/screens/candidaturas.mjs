@@ -3,6 +3,7 @@
 
 import { badge, button, definitions, el, emptyState, field, panel, screen, staticListItem } from '../core/dom.mjs';
 import { dataHora, frescor } from '../core/format.mjs';
+import { situacaoCandidatura } from '../core/rotulos.mjs';
 import { loadState, store } from '../core/store.mjs';
 import { agendarAcompanhamento, cancelarAcompanhamento, conferirEnvio, consultarNovidades } from '../core/actions.mjs';
 import { send } from '../core/api.mjs';
@@ -10,20 +11,6 @@ import { listDetail } from '../ui/list-detail.mjs';
 import { openDialog } from '../ui/dialog.mjs';
 import { notice } from '../ui/messages.mjs';
 import { rerender } from '../core/router.mjs';
-
-const SITUACOES = {
-  rascunho: ['rascunho', ''],
-  'pronta para revisão': ['pronta para revisão', 'acao'],
-  enviada: ['enviada', 'sucesso'],
-  triagem: ['em triagem', 'informacao'],
-  'teste pendente': ['teste pendente', 'atencao'],
-  'teste concluído': ['teste concluído', 'sucesso'],
-  entrevista: ['entrevista marcada', 'sucesso'],
-  proposta: ['proposta recebida', 'sucesso'],
-  rejeitada: ['encerrada pela empresa', 'erro'],
-  desistência: ['você desistiu', ''],
-  encerrada: ['encerrada', '']
-};
 
 // Eventos observados na plataforma têm origem própria; os demais foram registrados pela pessoa.
 const TIPOS_DA_PLATAFORMA = new Set(['verificação']);
@@ -213,6 +200,4 @@ function quandoEnviada(item) {
   return data ? `enviada em ${dataHora(data)}` : 'data de envio não registrada';
 }
 
-function situacao(status) {
-  return SITUACOES[status] ?? [status || 'sem situação', ''];
-}
+const situacao = situacaoCandidatura;

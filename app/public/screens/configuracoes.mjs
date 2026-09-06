@@ -4,6 +4,7 @@
 import { badge, button, el, metric, panel, screen, staticListItem } from '../core/dom.mjs';
 import { clearTranscript } from '../core/conversa.mjs';
 import { dataHora, duracao, numero } from '../core/format.mjs';
+import { plural } from '../core/rotulos.mjs';
 import { read, send } from '../core/api.mjs';
 import { loadAiStatus, store } from '../core/store.mjs';
 import { executarPreparacao } from '../core/actions.mjs';
@@ -207,8 +208,8 @@ async function atualizarConsumo() {
   }
   const tokens = Number(uso.tokens ?? 0);
   alvo.textContent = [
-    `Nesta execução: ${numero(uso.submitted ?? 0)} candidatura(s) enviada(s)`,
-    `${numero(uso.consecutiveFailures ?? 0)} falha(s) seguida(s)`,
+    `Nesta execução: ${plural(uso.submitted ?? 0, 'candidatura enviada', 'candidaturas enviadas')}`,
+    `${plural(uso.consecutiveFailures ?? 0, 'falha seguida', 'falhas seguidas')}`,
     tokens > 0 ? `${numero(tokens)} tokens medidos` : 'consumo de tokens ainda não informado pela IA',
     uso.cancelled ? 'campanha cancelada' : uso.pausedForUser ? 'aguardando você' : 'em andamento'
   ].join(' · ');
@@ -233,7 +234,7 @@ async function atualizarConsistencia({ force = false } = {}) {
   if (!relatorio) { alvo.replaceChildren(); return; }
   if (relatorio.available === false) { alvo.replaceChildren(el('p', { class: 'apoio', text: 'A conferência de consistência não está disponível nesta instalação.' })); return; }
   if (relatorio.consistent) {
-    alvo.replaceChildren(el('p', { class: 'apoio', text: `Contagem da campanha conferida: ${numero(relatorio.confirmedOnce ?? 0)} candidatura(s) confirmada(s) com evidência e evento correspondentes.` }));
+    alvo.replaceChildren(el('p', { class: 'apoio', text: `Contagem da campanha conferida: ${plural(relatorio.confirmedOnce ?? 0, 'candidatura confirmada', 'candidaturas confirmadas')} com evidência e evento correspondentes.` }));
     return;
   }
   alvo.replaceChildren(el('div', { class: 'aviso', dataset: { tom: 'atencao' } }, [

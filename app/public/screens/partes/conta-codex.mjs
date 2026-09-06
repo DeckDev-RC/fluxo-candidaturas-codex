@@ -4,6 +4,7 @@
 
 import { badge, button, definitions, el, field, metric, panel } from '../../core/dom.mjs';
 import { dataHora, numero } from '../../core/format.mjs';
+import { plural } from '../../core/rotulos.mjs';
 import { loadAiStatus, store } from '../../core/store.mjs';
 import { describeWindow, loadCodex, logoutCodex, resetsAt, saveCodexSettings } from '../../core/codex.mjs';
 import { notice } from '../../ui/messages.mjs';
@@ -112,7 +113,7 @@ function consumo(usage) {
   const semana = dias.reduce((soma, dia) => soma + Number(dia.tokens ?? dia.totalTokens ?? 0), 0);
   if (!total && !semana) return null;
   return el('div', { class: 'blocos' }, [
-    dias.length ? metric('Tokens nos últimos 7 dias', numero(semana), `${dias.length} dia(s) com registro`) : null,
+    dias.length ? metric('Tokens nos últimos 7 dias', numero(semana), plural(dias.length, 'dia com registro', 'dias com registro')) : null,
     total ? metric('Tokens desde o início', numero(total), 'informado pelo Codex') : null
   ]);
 }

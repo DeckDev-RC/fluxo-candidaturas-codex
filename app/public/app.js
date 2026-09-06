@@ -10,6 +10,7 @@ import { connectAiStatus, refreshAiOnFocus } from './core/ia-status.mjs';
 import { agentDriving, connectConversation, disconnectConversation } from './core/conversa-ia.mjs';
 import { detectEmbeddedBrowser } from './screens/partes/navegador-embutido.mjs';
 import { startTheme } from './core/tema.mjs';
+import { plural } from './core/rotulos.mjs';
 import { notice, renderNotices } from './ui/messages.mjs';
 import { agoraScreen } from './screens/agora.mjs';
 import { oportunidadesScreen } from './screens/oportunidades.mjs';
@@ -92,8 +93,31 @@ function agendarRepintura() {
     if (document.querySelector('#tela button[aria-busy="true"]') && esperasPorBotao < 40) { esperasPorBotao += 1; agendarRepintura(); return; }
     esperasPorBotao = 0;
     if (document.querySelector('#dialogo')?.open) return;
+    // O foco sobrevive à repintura: o elemento com o mesmo id volta a ser o ativo.
+    const idFocado = ativo?.id && document.querySelector('#tela')?.contains(ativo) ? ativo.id : '';
     try { rerender(); } catch (error) { console.error('repintura falhou', error); }
+    if (idFocado) document.getElementById(idFocado)?.focus({ preventScroll: true });
   }, 150);
+}
+
+// Atalhos globais: "/" leva à conversa (fora de campos de texto); Esc fecha o
+// diálogo aberto ou devolve o foco à conversa.
+function ligarAtalhos() {
+  window.addEventListener('keydown', (evento) => {
+    const alvo = evento.target;
+    const digitando = alvo && (['INPUT', 'TEXTAREA', 'SELECT'].includes(alvo.tagName) || alvo.isContentEditable);
+    if (evento.key === '/' && !digitando && !evento.ctrlKey && !evento.metaKey && !evento.altKey) {
+      evento.preventDefault();
+      document.querySelector('#conversa-texto')?.focus();
+      return;
+    }
+    if (evento.key === 'Escape') {
+      const dialogo = document.querySelector('#dialogo');
+      if (dialogo?.open) return; // o <dialog> nativo fecha sozinho
+      if (alvo?.id === 'conversa-texto') alvo.blur();
+      else document.querySelector('#conversa-texto')?.focus();
+    }
+  });
 }
 
 async function start() {
@@ -108,6 +132,7 @@ async function start() {
   // Desktop com navegador embutido: a coluna de acompanhamento vira o lugar das abas.
   if (!isDemo() && await detectEmbeddedBrowser()) document.querySelector('#conteudo').dataset.navegador = 'embutido';
   startRouter({ routes: rotas, onChange: aoTrocarRota });
+  ligarAtalhos();
   if (!isDemo()) {
     restoreJourney();
     connectAiStatus();
@@ -157,7 +182,7 @@ function descreverTrabalho() {
   };
   if (textos[jornada.status]) return textos[jornada.status];
   const habilitadas = (store.estado?.campaign?.platforms ?? []).filter((item) => item.enabled !== false).length;
-  return habilitadas ? `Pronto para procurar em ${habilitadas} plataforma(s) habilitada(s)` : 'Nenhuma plataforma habilitada ainda';
+  return habilitadas ? `Pronto para procurar em ${plural(habilitadas, 'plataforma habilitada', 'plataformas habilitadas')}` : 'Nenhuma plataforma habilitada ainda';
 }
 
 start();

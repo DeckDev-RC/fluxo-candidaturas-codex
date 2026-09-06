@@ -34,6 +34,17 @@ export function ajudaScreen() {
       ]
     }),
     panel({
+      title: 'Atalhos do teclado',
+      children: [
+        el('ul', { class: 'leitura marcadores' }, [
+          '"/" leva o cursor à conversa, de qualquer lugar da tela.',
+          'Esc fecha o diálogo aberto; sem diálogo, volta à conversa.',
+          'Ctrl + B recolhe ou mostra a navegação lateral.',
+          'Tab percorre botões e listas; Enter abre o item selecionado.'
+        ].map((item) => el('li', { class: 'quebra', text: item })))
+      ]
+    }),
+    panel({
       title: 'Bloqueios comuns e o que fazer',
       children: [
         el('dl', { class: 'fatos' }, [

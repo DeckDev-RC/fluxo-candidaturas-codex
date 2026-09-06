@@ -7,6 +7,7 @@
 import { badge, button, el } from '../../core/dom.mjs';
 import { describeError, send } from '../../core/api.mjs';
 import { nivelAderencia } from '../../core/aderencia.mjs';
+import { plural } from '../../core/rotulos.mjs';
 import { ask, say } from '../../core/conversa.mjs';
 import { sendTurn } from '../../core/conversa-ia.mjs';
 import { loadState, setConversation, store } from '../../core/store.mjs';
@@ -61,8 +62,8 @@ function cartaoDescarte(cartao) {
       badge(nivelAderencia(item).rotulo, nivelAderencia(item).tom)
     ]);
   });
-  const contador = el('span', { class: 'apoio', id: 'descarte-contador', text: `${cartao.marcadas.size} selecionada(s)` });
-  function atualizarContador() { contador.textContent = `${cartao.marcadas.size} selecionada(s)`; }
+  const contador = el('span', { class: 'apoio', id: 'descarte-contador', text: plural(cartao.marcadas.size, 'selecionada') });
+  function atualizarContador() { contador.textContent = plural(cartao.marcadas.size, 'selecionada'); }
   return el('div', { class: 'cartao-ia' }, [
     el('p', { class: 'cartao-ia-titulo', text: 'Marque as vagas que quer descartar' }),
     el('div', { class: 'linha-acoes' }, [
@@ -85,9 +86,9 @@ async function descartarSelecionadas(cartao, itens) {
     const resultado = await send('/api/v1/queue/discard', { ids, reason: 'escolhidas pela pessoa no cartão de descarte' });
     fecharCartaoDaIa();
     const nomes = itens.filter((item) => ids.includes(item.id)).map((item) => `${item.role} (${item.company})`);
-    notice(`${resultado.discarded} vaga(s) descartada(s); ${resultado.remaining} continuam na fila.`, 'informacao');
+    notice(`${plural(resultado.discarded, 'vaga descartada', 'vagas descartadas')}; ${plural(resultado.remaining, 'continua', 'continuam')} na fila.`, 'informacao');
     await loadState();
-    await sendTurn(`A pessoa descartou ${resultado.discarded} vaga(s) pelo cartão: ${nomes.join('; ')}. Restam ${resultado.remaining} ativas. Continue de onde estava.`, { system: true }).catch(() => null);
+    await sendTurn(`A pessoa descartou ${plural(resultado.discarded, 'vaga')} pelo cartão: ${nomes.join('; ')}. Restam ${resultado.remaining} ativas. Continue de onde estava.`, { system: true }).catch(() => null);
   } catch (error) { say(describeError(error), { tom: 'erro' }); }
 }
 
