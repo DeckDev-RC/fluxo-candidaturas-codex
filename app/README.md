@@ -65,6 +65,8 @@ Com o ChatGPT conectado, a conversa é um turno real no `codex app-server`: a th
 
 O que a tela recebe em tempo real (`GET /api/v1/conversation/events?stream=1`): `turn.started`, `tool.started`/`tool.completed` (resumo legível, sem HTML nem segredo), `browser.tabs`, `waiting_user` (login, verificação, aprovação), `assistant.message`, `turn.completed`/`turn.failed`. `POST /api/v1/conversation/turn` devolve `202 { turnId }`; `POST /api/v1/conversation/interrupt` e `/reset` param e reiniciam a conversa.
 
+A preparação do computador ("Este computador está pronto?") é do próprio app (`src/readiness-service.mjs`) e grava `estado/preflight.json`: bloqueiam só o Chromium do Playwright ausente e nenhuma plataforma com meta; perfil, currículo, IA e login das plataformas são avisos que a IA resolve na conversa. O `scripts/preflight.ps1` continua servindo ao pacote PowerShell, não ao app.
+
 Os portões continuam no código, fora da vontade do modelo: aprovação é humana (`assertHumanDecision`), dado sensível exige confirmação explícita, CAPTCHA/MFA/biometria são da pessoa. Sem IA conectada, "Começar" segue pelo orquestrador programado. Checklist e decisões: [`docs/CHECKLIST-IA-CONDUTORA.md`](../docs/CHECKLIST-IA-CONDUTORA.md).
 
 ## API local

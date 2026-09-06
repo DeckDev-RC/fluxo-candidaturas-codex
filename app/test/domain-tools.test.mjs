@@ -30,7 +30,7 @@ test('fluxo_open_platform abre a página de entrada e fluxo_browser_status lista
 test('fluxo_discover monta a busca a partir do objetivo confirmado quando searchUrl é omitida', async () => {
   const pedidos = [];
   const tools = createDomainTools({
-    readState: async () => ({ installation: { ready: true } }),
+    readState: async () => ({ campaign: { platforms: [{ name: 'INFOJOBS', enabled: true }, { name: 'PANDAPE', enabled: true }, { name: 'GUPY', enabled: true }] } }),
     memoryService: { safeSummary: async () => ({ facts: { targetRoles: { confirmed: true, value: 'Desenvolvedora Node' }, location: { confirmed: true, value: 'Curitiba' } } }) },
     discoveryService: { discover: async (input) => { pedidos.push(input); return { created: [] }; } }
   });

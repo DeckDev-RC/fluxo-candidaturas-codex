@@ -67,9 +67,13 @@ export function createDomainTools({ rootDir, readState, discoveryService, fitSer
     ['fluxo_browser_status', 'Listar as abas abertas do navegador por plataforma, com URL, título, login pendente e desafio.', {}, async () => ({ tabs: await browserAdapter.tabs() })],
     // A busca é feita na plataforma da aba; sem `searchUrl`, a URL vem do
     // objetivo confirmado e do catálogo (ou da URL configurada no .env).
-    ['fluxo_discover', 'Observar vagas na plataforma; searchUrl é opcional (montada a partir do objetivo confirmado). Exige plataforma habilitada e ambiente pronto.', { platform: string, searchUrl: opcional('string') }, async input => {
-      const state = await readState(); if (!state.installation.ready) throw fail('preflight_blocked');
+    ['fluxo_discover', 'Observar vagas na plataforma; searchUrl é opcional (montada a partir do objetivo confirmado). Exige plataforma habilitada na campanha.', { platform: string, searchUrl: opcional('string') }, async input => {
+      const state = await readState();
       const plataforma = String(input.platform).toUpperCase();
+      // O que bloqueia a busca é a campanha, não um preflight herdado: a IA já
+      // cuidou de perfil e login antes de chegar aqui.
+      const habilitada = (state.campaign?.platforms ?? []).some((item) => String(item.name).toUpperCase() === plataforma && item.enabled !== false);
+      if (!habilitada) throw fail('platform_disabled');
       let searchUrl = String(input.searchUrl ?? '').trim();
       if (!searchUrl) {
         const facts = (await memoryService.safeSummary()).facts ?? {};
