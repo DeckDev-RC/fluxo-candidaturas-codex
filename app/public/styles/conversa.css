@@ -119,17 +119,40 @@
 @keyframes passo-pulso { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .atividade-sinal { animation: none; } .atividade-seta { transition: none; } }
 
-/* Fala estruturada: seções curtas, listas e notas em vez de um parágrafo denso. */
-.fala-estruturada { display: flex; flex-direction: column; gap: var(--e2); }
+/* Fala estruturada: a resposta vira componentes (seções, cartões, fichas, listas,
+   notas) numa superfície própria, em vez de um parágrafo denso. */
+.fala-estruturada { display: flex; flex-direction: column; gap: var(--e3); padding: var(--e4); border: 1px solid var(--linha); border-radius: var(--raio-xl); background: var(--superficie); }
 .fala-estruturada > p { margin: 0; }
-.fala-titulo { margin: var(--e2) 0 0; font-size: var(--texto-xs); font-weight: var(--peso-medio); color: var(--texto-3); letter-spacing: var(--traco-etiqueta); text-transform: uppercase; }
+.fala-estruturada > p:first-child { font-size: var(--texto-md, 1.0625rem); color: var(--texto); }
+.fala-titulo { margin: var(--e2) 0 calc(-1 * var(--e1)); font-size: var(--texto-xs); font-weight: var(--peso-medio); color: var(--texto-3); letter-spacing: var(--traco-etiqueta); text-transform: uppercase; }
 .fala-estruturada > .fala-titulo:first-child { margin-top: 0; }
-.fala-lista { margin: 0; padding-left: 1.25rem; display: flex; flex-direction: column; gap: 2px; }
+.fala-lista { margin: 0; padding-left: 1.25rem; display: flex; flex-direction: column; gap: var(--e1); }
 .fala-lista-numerada { list-style: decimal; }
-.fala-lista li strong, .fala-estruturada p strong { font-weight: var(--peso-medio); color: var(--texto); }
-.fala-nota { margin: 0; padding: var(--e2) var(--e3); border-left: 2px solid var(--informacao); border-radius: 0 var(--raio) var(--raio) 0; background: var(--superficie); font-size: var(--texto-sm); }
-.fala-nota[data-tom="atencao"] { border-left-color: var(--atencao); }
-.fala-nota[data-tom="sucesso"] { border-left-color: var(--sucesso); }
+.fala-lista li::marker { color: var(--texto-3); }
+.fala-lista li strong, .fala-estruturada p strong, .fala-ficha dd strong { font-weight: var(--peso-medio); color: var(--texto); }
+
+/* Nota: faixa tingida pelo tom, com a palavra-chave em destaque. */
+.fala-nota { margin: 0; padding: var(--e2) var(--e3); border-left: 3px solid var(--informacao); border-radius: var(--raio); background: var(--informacao-fraca); font-size: var(--texto-sm); color: var(--texto); }
+.fala-nota[data-tom="atencao"] { border-left-color: var(--atencao); background: var(--atencao-fraca); }
+.fala-nota[data-tom="sucesso"] { border-left-color: var(--sucesso); background: var(--sucesso-fraca); }
+
+/* Ficha: pares rótulo/valor em duas colunas alinhadas. */
+.fala-ficha { display: grid; grid-template-columns: minmax(6rem, max-content) minmax(0, 1fr); gap: var(--e1) var(--e3); margin: 0; font-size: var(--texto-sm); }
+.fala-ficha dt { color: var(--texto-3); }
+.fala-ficha dd { margin: 0; color: var(--texto); min-width: 0; overflow-wrap: anywhere; }
+.fala-fichas { display: inline-flex; flex-wrap: wrap; gap: var(--e1); }
+.fala-ficha-item { padding: 1px var(--e2); border: 1px solid var(--linha); border-radius: 999px; background: var(--fundo); font-size: var(--texto-xs); color: var(--texto-2); white-space: nowrap; }
+.fala-selo { vertical-align: middle; }
+
+/* Cartões: um por entidade (pessoa, vaga, plataforma); lado a lado quando há mais de um. */
+.fala-cartoes { display: grid; grid-template-columns: 1fr; gap: var(--e3); }
+.fala-cartoes[data-quantidade="2"], .fala-cartoes[data-quantidade="3"] { grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); }
+.fala-cartao { display: flex; flex-direction: column; gap: var(--e2); padding: var(--e3) var(--e4); border: 1px solid var(--linha); border-radius: var(--raio-lg); background: var(--fundo); min-width: 0; }
+.fala-cartao-titulo { margin: 0; font-size: var(--texto-sm); font-weight: var(--peso-medio); color: var(--texto); }
+.fala-cartao .fala-ficha { font-size: var(--texto-xs); }
+.fala-cartao .fala-lista { font-size: var(--texto-sm); }
+.fala-cartao p { font-size: var(--texto-sm); color: var(--texto-2); }
+@container conversa (max-width: 36rem) { .fala-cartoes[data-quantidade="2"], .fala-cartoes[data-quantidade="3"] { grid-template-columns: 1fr; } }
 
 .balao[data-autor="voce"] { grid-template-columns: minmax(0, 1fr); justify-items: end; }
 .balao[data-autor="voce"] .balao-corpo {
