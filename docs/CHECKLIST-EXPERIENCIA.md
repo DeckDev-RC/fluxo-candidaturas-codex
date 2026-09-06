@@ -62,6 +62,12 @@ Sete frentes, na ordem de impacto. Cada item marcado tem teste ou verificação 
       (`linkedin.com/jobs/search`), "Abrir fora" (navegador do sistema, só http(s)).
 - [x] "Ampliar/Reduzir": a coluna de acompanhamento cresce e a área ocupa a altura
       da janela.
+- [x] Miniatura: na coluna estreita as abas ficam em zoom 0,67 (`setZoomFactor`),
+      então o site desenha o layout de computador inteiro, reduzido, em vez do
+      layout apertado de celular. Volta a 100% ao ampliar e, sozinho, quando a IA
+      está esperando login/verificação/cookies na aba. O zoom é reaplicado a cada
+      navegação (o Chromium o guarda por origem). Driver da IA não é afetado
+      (coordenadas da página).
 
 ## 7. Detalhes
 

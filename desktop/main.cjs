@@ -156,6 +156,7 @@ async function start() {
   ipcMain.handle('fluxo:abas-listar', (event) => { trusted(event); return abas?.listar() ?? []; });
   // Controles manuais da aba visível: voltar, recarregar, abrir a URL atual no navegador do sistema.
   ipcMain.handle('fluxo:abas-voltar', (event, platform) => { trusted(event); return abas?.voltar(platform) ?? false; });
+  ipcMain.handle('fluxo:abas-zoom', (event, fator) => { trusted(event); return abas?.definirZoom(fator) ?? 1; });
   ipcMain.handle('fluxo:abas-recarregar', (event, platform) => { trusted(event); return abas?.recarregar(platform) ?? false; });
   ipcMain.handle('fluxo:abas-abrir-externa', async (event, platform) => {
     trusted(event);
