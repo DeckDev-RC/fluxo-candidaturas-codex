@@ -148,7 +148,15 @@
   background: var(--superficie);
 }
 
-.conversa input {
+/* Botão de anexo: mesmo tamanho do botão de enviar; o input de arquivo fica só para o leitor de tela. */
+.conversa .conversa-anexo { display: inline-flex; align-items: center; justify-content: center; min-width: 2.75rem; min-height: 2.75rem; padding: 0; cursor: pointer; }
+.conversa .conversa-anexo svg { width: 1.125rem; height: 1.125rem; }
+/* O input de arquivo é o que recebe foco pelo teclado; o anel aparece no botão visível. */
+.conversa:has(#conversa-arquivo:focus-visible) .conversa-anexo { box-shadow: 0 0 0 3px var(--acento-fraco); border-color: var(--acento); }
+/* Arrastando um arquivo sobre a área: a coluna inteira sinaliza que aceita. */
+.coluna-trabalho[data-arrastando="true"] .conversa { outline: 2px dashed var(--acento); outline-offset: -4px; background: var(--acento-fraco); }
+
+.conversa input[type="text"] {
   flex: 1;
   min-height: 2.75rem;
   padding: var(--e2) var(--e4);

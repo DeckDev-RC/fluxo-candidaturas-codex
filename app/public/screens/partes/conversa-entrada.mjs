@@ -9,12 +9,14 @@ import { el } from '../../core/dom.mjs';
 import { describeError } from '../../core/api.mjs';
 import { corrigirFato } from '../../core/actions.mjs';
 import { agentDriving, onAgentActions, sendTurn } from '../../core/conversa-ia.mjs';
-import { ask, say } from '../../core/conversa.mjs';
+import { ask, clearTranscript, say } from '../../core/conversa.mjs';
+import { setTheme } from '../../core/tema.mjs';
 import { store } from '../../core/store.mjs';
 import { currentRoute, go, ROTAS } from '../../core/router.mjs';
 import { openDialog } from '../../ui/dialog.mjs';
 import { abrirMudancaDeObjetivo } from './objetivo.mjs';
 import { abrirCartaoDaIa, fecharCartaoDaIa } from './cartoes-ia.mjs';
+import { ligarAnexoNaConversa } from './conversa-anexo.mjs';
 
 const MODALIDADES = ['Remoto', 'Híbrido', 'Presencial'];
 
@@ -28,9 +30,10 @@ const ATALHOS = [
 
 export function bindConversationInput(form) {
   onAgentActions((acoes) => { for (const acao of acoes) executarAcao(acao); });
+  ligarAnexoNaConversa(form);
   form.addEventListener('submit', async (evento) => {
     evento.preventDefault();
-    const campo = form.querySelector('input');
+    const campo = form.querySelector('#conversa-texto');
     const texto = campo.value.trim();
     if (!texto) return;
     campo.value = '';
@@ -64,6 +67,21 @@ function executarAcao({ tipo, valor }) {
   if (tipo === 'modalidades') {
     const novas = valor.split(',').map((item) => item.trim()).map((item) => MODALIDADES.find((m) => m.toLocaleLowerCase() === item.toLocaleLowerCase())).filter(Boolean);
     if (novas.length) confirmarModalidades([...new Set(novas)]);
+    return;
+  }
+  // Ajustes que só existem nesta interface (não passam pelo serviço): tema e
+  // conversa local. Limpar a conversa é irreversível: pede confirmação.
+  if (tipo === 'tema') {
+    const escolha = { claro: 'claro', escuro: 'escuro', sistema: 'sistema', light: 'claro', dark: 'escuro', system: 'sistema' }[valor.trim().toLocaleLowerCase()];
+    if (escolha) { setTheme(escolha); say(`Tema ${escolha === 'sistema' ? 'do sistema' : escolha} aplicado.`, { tom: 'sucesso' }); }
+    return;
+  }
+  if (tipo === 'limpar-conversa') {
+    openDialog({
+      title: 'Apagar a conversa deste computador?',
+      body: [el('p', { class: 'leitura', text: 'O histórico visível some daqui; o que já foi gravado (perfil, fila, candidaturas) continua.' })],
+      actions: [{ label: 'Apagar conversa', variant: 'perigo', onClick: () => { clearTranscript(); say('Conversa apagada. Continuo daqui.', { tom: 'informacao' }); } }, { label: 'Manter', variant: 'secundario' }]
+    });
   }
 }
 

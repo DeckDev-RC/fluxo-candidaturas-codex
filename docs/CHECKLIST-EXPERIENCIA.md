@@ -120,6 +120,35 @@ Sete frentes, na ordem de impacto. Cada item marcado tem teste ou verificação 
   a usar o contenedor que rola de fato. Em janela estreita (< 68 rem) a área volta a
   rolar inteira.
 
+## IA operadora do app (pedido de 13:12)
+
+- [x] **Rolagem da conversa**: a coluna é recriada a cada repintura; agora quem estava
+      no fim continua no fim e quem subiu para reler fica onde estava
+      (`conversa.mjs: conversationColumn`).
+- [x] **Navegador livre** (`browser-free.mjs`, `browser-free-tools.mjs`): a IA vê a
+      página como elementos com ref (links, botões, campos, listas; na tela primeiro)
+      e age: `fluxo_browser_observe|read|click|type|select|press|scroll|navigate|back`.
+      Portões: senha/código recusados (`password_field_forbidden`); ação com efeito
+      fora do app (enviar, aceitar, conectar, seguir, excluir, publicar, pagar…) exige
+      `confirmed=true` depois do sim da pessoa (`confirmation_required`); CAPTCHA/MFA
+      para (`manual_intervention_required`); só URL http(s) pública; texto passa pela
+      fronteira de confiança. Testes em Chromium real (`e2e/browser-free.test.mjs`).
+- [x] **Configuração pelo chat** (`app-config-tools.mjs`): `fluxo_campaign`
+      (plataformas, metas, meta total, limite por execução), `fluxo_schedule`
+      (consulta automática), `fluxo_codex_settings` (modelo, esforço, verbosidade;
+      lista modelos), `fluxo_export` (evidências, cópia compartilhável). Ações de
+      interface: `AÇÃO: tema=…`, `AÇÃO: limpar-conversa=sim` (com confirmação).
+      Fora do alcance, por desenho: aprovação, consentimentos, dados sensíveis, apagar
+      histórico, conta/login do ChatGPT, pasta de dados, reiniciar serviço.
+- [x] **Currículo pelo chat**: clipe ao lado da caixa de escrever e arrastar-e-soltar
+      na coluna; importa pelo mesmo caminho do primeiro uso e avisa a IA por SISTEMA
+      para ler e confirmar com o cartão (`conversa-anexo.mjs`).
+- [x] **Instruções**: papel de operador do app; onboarding inteiro pela conversa em
+      blocos (apresentação, currículo, objetivo, plataformas e metas, resumo); regras
+      do navegador livre (observar antes de agir, limite de ações por pedido,
+      confirmação para efeito externo); orientar e dar dicas, não só executar.
+- [x] Validador de ferramentas aceita parâmetros `object` opcionais ausentes.
+
 ## Pendente de validação com conta real
 
 - Qualidade da extração de requisitos nas páginas reais de Gupy/InfoJobs/LinkedIn

@@ -5,6 +5,8 @@ import { assertTrustedPath } from './trust-boundary.mjs';
 import { createRecoveryGuidance } from './recovery-service.mjs';
 import { buildPlatformSearch, platformHome } from './platform-search.mjs';
 import { extractDocumentText } from './document-extract.mjs';
+import { browserFreeTools, FERRAMENTAS_LIVRES_DE_ACAO, FERRAMENTAS_LIVRES_DE_LEITURA } from './browser-free-tools.mjs';
+import { appConfigTools } from './app-config-tools.mjs';
 import { join } from 'node:path';
 
 const LIMITE_TEXTO_CURRICULO = 12_000;
@@ -12,10 +14,12 @@ const LIMITE_TEXTO_CURRICULO = 12_000;
 // Ferramentas que agem fora do computador passam pelo mesmo orçamento da campanha:
 // chamar a ferramenta direto não é caminho para furar limite (F0-06, F2-05).
 const ACAO_EXTERNA = new Set(['fluxo_discover', 'fluxo_prepare', 'fluxo_fill', 'fluxo_submit', 'fluxo_reconcile']);
-const LEITURA_EXTERNA = new Set(['fluxo_followup', 'fluxo_open_platform', 'fluxo_read_job']);
+// Navegação livre conta como leitura externa: passa por cancelamento, falhas e
+// tokens da campanha, mas não pelo limite de candidaturas (não é um envio).
+const LEITURA_EXTERNA = new Set(['fluxo_followup', 'fluxo_open_platform', 'fluxo_read_job', ...FERRAMENTAS_LIVRES_DE_LEITURA, ...FERRAMENTAS_LIVRES_DE_ACAO]);
 const ESCOPOS_DE_ESTADO = new Set(['campaign', 'queue', 'applications', 'installation', 'preflight', 'checkpoint', 'memory', 'discovery', 'followup', 'exceptions']);
 
-export function createDomainTools({ rootDir, readState, discoveryService, fitService, memoryService, applicationFlow, browserAdapter, followUpMonitor, runService, resumeImportService, intakeService, queueService, budget, platformUrls = () => ({}) } = {}) {
+export function createDomainTools({ rootDir, readState, discoveryService, fitService, memoryService, applicationFlow, browserAdapter, followUpMonitor, runService, resumeImportService, intakeService, queueService, campaignService = null, schedulerService = null, codexSettingsService = null, exportService = null, auditService = null, budget, platformUrls = () => ({}) } = {}) {
   const string = { type: 'string' };
   // Parâmetro de escopo é opcional: a ferramenta continua válida com `{}`.
   const opcional = (type) => ({ type, optional: true });
@@ -146,7 +150,11 @@ export function createDomainTools({ rootDir, readState, discoveryService, fitSer
       const candidaturas = (await readState()).applications.items.filter((item) => [item.id, item.key, item.applicationId, item.identifierOrUrl].includes(referencia));
       if (!candidaturas.length) throw fail('application_not_found');
       return followUpMonitor.check({ applications: candidaturas });
-    }]
+    }],
+    // Navegação livre e configuração do app ficam em módulos próprios; entram no
+    // mesmo contrato (validação, orçamento, trava) por este mapa.
+    ...browserFreeTools({ browserAdapter, string, opcional }),
+    ...appConfigTools({ campaignService, schedulerService, codexSettingsService, exportService, auditService, runService, string, opcional })
   ];
   const map = new Map(entries.map(entry => [entry[0], entry]));
   return {
@@ -156,6 +164,7 @@ export function createDomainTools({ rootDir, readState, discoveryService, fitSer
       if (!input || typeof input !== 'object' || Array.isArray(input)) throw fail('invalid_tool_arguments');
       for (const key of Object.keys(input)) if (!entry[2][key]) throw fail('invalid_tool_arguments');
       for (const [key, schema] of Object.entries(entry[2])) {
+        if (schema.optional && input[key] === undefined) continue;
         if (schema.type === 'object') {
           if (!input[key] || typeof input[key] !== 'object' || Array.isArray(input[key])) throw fail('invalid_tool_arguments');
           continue;

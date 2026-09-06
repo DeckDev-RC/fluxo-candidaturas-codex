@@ -82,6 +82,11 @@
       </main>
 
       <form class="conversa" id="conversa" aria-label="Falar com o Fluxo">
+        <label class="botao botao-secundario conversa-anexo" for="conversa-arquivo" title="Anexar currículo (PDF, DOCX ou TXT). Também dá para arrastar o arquivo até aqui.">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>
+          <span class="apenas-leitor">Anexar currículo</span>
+        </label>
+        <input id="conversa-arquivo" name="arquivo" type="file" accept=".pdf,.docx,.txt,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" class="apenas-leitor" />
         <label class="apenas-leitor" for="conversa-texto">Escreva para o Fluxo</label>
         <input id="conversa-texto" name="mensagem" type="text" placeholder="Escreva para o Fluxo (atalho: /). Ex.: quero apenas vagas remotas" autocomplete="off" />
         <button class="botao" type="submit" aria-label="Enviar" title="Enviar (Enter)">

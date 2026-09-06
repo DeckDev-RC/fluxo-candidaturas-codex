@@ -23,6 +23,13 @@ let focoInicialDado = false;
 let observador = null;
 
 export function conversationColumn(situacao, pendentes) {
+  // A coluna é recriada a cada repintura; a posição de leitura não pode voltar ao
+  // topo. Quem estava no fim continua no fim (acompanha a conversa crescer); quem
+  // subiu para reler fica onde estava.
+  const anterior = document.querySelector('.conversa-coluna');
+  const leitura = anterior
+    ? { topo: anterior.scrollTop, noFim: anterior.scrollHeight - anterior.scrollTop - anterior.clientHeight < 48 }
+    : null;
   const atual = bolhaAtual(situacao, pendentes);
   const barra = barraFixa(situacao, pendentes);
   const coluna = el('section', { class: 'conversa-coluna', 'aria-label': 'Conversa com o Fluxo' }, [
@@ -34,7 +41,12 @@ export function conversationColumn(situacao, pendentes) {
       isThinking() ? el('li', { class: 'balao', dataset: { autor: 'fluxo' }, 'aria-live': 'polite' }, [avatar(), el('div', { class: 'balao-corpo' }, [el('span', { class: 'ocupado', text: 'Pensando…' })])]) : null
     ])
   ]);
-  if (takeScrollRequest()) requestAnimationFrame(rolarParaOFim);
+  const pedidoDeFim = takeScrollRequest();
+  requestAnimationFrame(() => {
+    // Primeira pintura sem pedido: a fala atual (topo) é o que a pessoa deve ver.
+    if (pedidoDeFim || leitura?.noFim) { rolarParaOFim(); return; }
+    if (leitura && coluna.isConnected) coluna.scrollTop = leitura.topo;
+  });
   if (situacao.estado === 'primeiro-uso' && !focoInicialDado) {
     focoInicialDado = true;
     requestAnimationFrame(focarObjetivo);

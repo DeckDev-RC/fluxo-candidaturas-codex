@@ -350,6 +350,15 @@ test('separarAcoes, contexto e narração não vazam segredo nem vocabulário t�
   assert.deepEqual(separarAcoes('Marque as que quer descartar.\nAÇÃO: selecionar-descarte=todas').acoes, [{ tipo: 'selecionar-descarte', valor: 'todas' }]);
   assert.deepEqual(separarAcoes('Li isto:\nAÇÃO: confirmar=name:Pessoa Exemplo|email:pessoa@example.test').acoes, [{ tipo: 'confirmar', valor: 'name:Pessoa Exemplo|email:pessoa@example.test' }]);
   assert.deepEqual(separarAcoes('Oi! Por onde seguimos?\nAÇÃO: opcoes=Buscar COBOL|Ver a fila').acoes, [{ tipo: 'opcoes', valor: 'Buscar COBOL|Ver a fila' }]);
+  assert.deepEqual(separarAcoes('Pronto.\nAÇÃO: tema=escuro').acoes, [{ tipo: 'tema', valor: 'escuro' }]);
+  assert.deepEqual(separarAcoes('Confirme na tela.\nAÇÃO: limpar-conversa=sim').acoes, [{ tipo: 'limpar-conversa', valor: 'sim' }]);
+  // Navegação livre e configuração narradas em pt-BR, sem nome de ferramenta.
+  const livre = resumirFerramenta({ tool: 'fluxo_browser_click', arguments: { platform: 'LINKEDIN', ref: 'n2' }, ok: true, result: { url: 'https://www.linkedin.com/mynetwork/', title: 'Minha rede' } });
+  assert.equal(livre.inicio, 'Clicando na página.');
+  assert.equal(livre.fim, 'Cliquei; agora em Minha rede.');
+  assert.match(resumirFerramenta({ tool: 'fluxo_browser_navigate', arguments: { platform: 'LINKEDIN', url: 'https://www.linkedin.com/messaging/?x=1' } }).inicio, /Indo para linkedin\.com\/messaging em LinkedIn/);
+  assert.match(resumirFerramenta({ tool: 'fluxo_browser_click', arguments: {}, ok: false, error: { code: 'confirmation_required', message: 'x' } }).fim, /preciso do seu sim/);
+  assert.match(resumirFerramenta({ tool: 'fluxo_campaign', arguments: { platforms: {} }, ok: true, result: { updated: true, enabledCount: 2, totalGoal: 20 } }).fim, /Campanha ajustada: 2 plataforma/);
   const contexto = montarContexto({ situacao: 'escolher vaga', fila: 3, plataformas: [{ name: 'GUPY', goal: 5 }], fatosConfirmados: ['name'], lacunas: ['location'], abas: [{ platform: 'GUPY', loginPending: true }] });
   assert.match(contexto, /Vagas aguardando na fila: 3/);
   assert.match(contexto, /GUPY \(login pendente\)/);

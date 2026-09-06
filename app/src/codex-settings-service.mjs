@@ -11,6 +11,8 @@ const SUMMARIES = new Set(['auto', 'concise', 'detailed', 'off']);
 export function createCodexSettingsService({ rootDir = '', readModels = async () => [], now = () => new Date(), mutationLock = true, lock = () => acquireFluxoLock(rootDir) } = {}) {
   const service = {
     async get() { return readSettings(rootDir); },
+    // Modelos que o Codex oferece agora (id e efforts), para a IA e a interface escolherem.
+    async listModels() { return normalizeCatalog(await readModels()); },
     async update(input = {}) {
       const current = await readSettings(rootDir);
       const catalog = normalizeCatalog(await readModels());
