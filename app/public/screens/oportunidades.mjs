@@ -4,12 +4,15 @@
 import { badge, button, definitions, el, emptyState, field, panel, screen } from '../core/dom.mjs';
 import { nivelAderencia } from '../core/aderencia.mjs';
 import { frescor, salario } from '../core/format.mjs';
-import { store } from '../core/store.mjs';
+import { loadState, store } from '../core/store.mjs';
+import { send } from '../core/api.mjs';
+import { notice } from '../ui/messages.mjs';
 import { listDetail } from '../ui/list-detail.mjs';
 import { go, rerender } from '../core/router.mjs';
 import { botaoPreparar } from './partes/preparar-candidatura.mjs';
 
-const filtro = { texto: '', modalidade: '', ordem: 'aderencia' };
+const filtro = { texto: '', modalidade: '', ordem: 'aderencia', situacao: 'ativas' };
+const ATIVAS = new Set(['na fila', 'em andamento']);
 
 export function oportunidadesScreen() {
   const itens = aplicarFiltro(store.estado?.queue?.items ?? []);
@@ -60,11 +63,19 @@ function filtros() {
     el('option', { value: 'recentes', text: 'mais recentes', selected: filtro.ordem === 'recentes' }),
     el('option', { value: 'empresa', text: 'empresa (A–Z)', selected: filtro.ordem === 'empresa' })
   ]);
+  // Vagas descartadas ficam guardadas (a busca não as traz de volta), mas fora da vista por padrão.
+  const descartadas = (store.estado?.queue?.items ?? []).filter((item) => item.status === 'descartada').length;
+  const situacao = el('select', { id: 'filtro-situacao', onChange: (evento) => { filtro.situacao = evento.target.value; rerender(); } }, [
+    el('option', { value: 'ativas', text: 'ativas na fila', selected: filtro.situacao === 'ativas' }),
+    el('option', { value: 'descartadas', text: `descartadas (${descartadas})`, selected: filtro.situacao === 'descartadas' }),
+    el('option', { value: 'todas', text: 'todas', selected: filtro.situacao === 'todas' })
+  ]);
   return el('div', { class: 'painel' }, [
     el('div', { class: 'filtros' }, [
       field({ label: 'Buscar na lista', control: texto }),
       field({ label: 'Modalidade', control: modalidade }),
-      field({ label: 'Ordenar por', control: ordem })
+      field({ label: 'Ordenar por', control: ordem }),
+      field({ label: 'Mostrar', control: situacao })
     ]),
     el('p', { class: 'apoio', text: 'Estes controles só mudam a visualização. O que o Fluxo procura vem do seu objetivo e das plataformas habilitadas em Configurações.' })
   ]);
@@ -102,13 +113,25 @@ function detalhe(item) {
       ]) : null,
       el('p', { class: 'apoio', text: 'A aderência é uma justificativa a partir dos seus dados confirmados e da descrição observada. Não é probabilidade de contratação.' }),
       el('div', { class: 'linha-acoes' }, [
-        botaoPreparar(item, { id: 'preparar-candidatura' }),
+        ATIVAS.has(item.status) ? botaoPreparar(item, { id: 'preparar-candidatura' }) : null,
         item.identifierOrUrl?.startsWith('http')
           ? el('a', { class: 'botao botao-secundario', href: item.identifierOrUrl, target: '_blank', rel: 'noreferrer noopener', text: 'Abrir a vaga na plataforma' })
+          : null,
+        ATIVAS.has(item.status)
+          ? button('Descartar esta vaga', { variant: 'texto', 'aria-label': `Descartar ${item.role ?? 'vaga'} em ${item.company ?? 'empresa não informada'}`, onClick: async () => { await descartarVaga(item); } })
           : null
-      ])
+      ]),
+      item.status === 'descartada' ? el('p', { class: 'apoio', text: `Descartada${item.discardReason ? `: ${item.discardReason}` : ''}. A busca não a traz de volta como novidade.` }) : null
     ]
   });
+}
+
+// Descartar é decisão da pessoa e sai da fila ativa na hora; a vaga fica em "descartadas".
+async function descartarVaga(item) {
+  await send('/api/v1/queue/discard', { ids: [item.id], reason: 'descartada pela pessoa na lista de oportunidades' });
+  notice(`"${item.role ?? 'Vaga'}" em ${item.company ?? 'empresa não informada'} foi descartada. Ela não volta na próxima busca.`, 'informacao');
+  await loadState();
+  rerender();
 }
 
 function motivo(item) {
@@ -128,7 +151,8 @@ function aplicarFiltro(itens) {
   const filtrados = itens.filter((item) => {
     const combina = !termo || `${item.role ?? ''} ${item.company ?? ''}`.toLocaleLowerCase().includes(termo);
     const modalidade = !filtro.modalidade || String(item.workMode ?? '').toLocaleLowerCase().includes(filtro.modalidade.toLocaleLowerCase());
-    return combina && modalidade;
+    const situacao = filtro.situacao === 'todas' || (filtro.situacao === 'descartadas' ? item.status === 'descartada' : ATIVAS.has(item.status));
+    return combina && modalidade && situacao;
   });
   const ordenadores = {
     aderencia: (a, b) => Number(b.fitScore ?? 0) - Number(a.fitScore ?? 0),

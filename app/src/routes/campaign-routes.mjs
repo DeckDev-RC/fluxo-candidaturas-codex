@@ -3,7 +3,7 @@ import { domainError, queryOf, readJsonBody, respond, sendJson } from './http-he
 
 // Campanha, fila de oportunidades, plataformas, exportação e persistência.
 const CAMINHOS = new Set([
-  '/api/v1/queue', '/api/v1/queue/search', '/api/v1/queue/items', '/api/v1/campaign', '/api/v1/platforms',
+  '/api/v1/queue', '/api/v1/queue/search', '/api/v1/queue/items', '/api/v1/queue/discard', '/api/v1/campaign', '/api/v1/platforms',
   '/api/v1/exports/shareable', '/api/v1/sync/reconcile'
 ]);
 const PADROES = [
@@ -24,6 +24,7 @@ export function createCampaignRoutes({ rootDir, queueService, campaignService, e
       }
       if (method === 'GET' && path === '/api/v1/queue/search') return respond(response, 200, () => queueService.search(queryOf(request)));
       if (method === 'POST' && path === '/api/v1/queue/items') return respond(response, 201, async () => queueService.addQueueItem(await readJsonBody(request)));
+      if (method === 'POST' && path === '/api/v1/queue/discard') return respond(response, 200, async () => queueService.discardItems(await readJsonBody(request)));
       const reserva = path.match(PADROES[0]);
       if (method === 'POST' && reserva) return respond(response, 200, () => queueService.claimNext({ id: decodeURIComponent(reserva[1]) }));
       const falha = path.match(PADROES[1]);

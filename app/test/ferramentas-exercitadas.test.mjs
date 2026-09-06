@@ -63,6 +63,21 @@ test('toda ferramenta registrada é exercitada em uma jornada real, inclusive a 
     assert.equal(avaliada.fitScore, lista.items[0].fit.score);
     assert.equal(avaliada.priority, lista.items[0].fit.classification === 'forte' ? 'A' : 'B');
     assert.match(avaliada.fitExplanation, /^Aderência/);
+
+    // Achado real: vagas de uma busca antiga (Ruby) continuavam na fila ao buscar COBOL
+    // e a IA não tinha como descartá-las. Descarte a pedido: sai da fila ativa e não
+    // volta como novidade; a vaga em uso segue intacta.
+    await runtime.queueService.addQueueItem({ platform: 'INFOJOBS', company: 'Antiga Ltda', role: 'Desenvolvedor Ruby Sênior', identifierOrUrl: 'https://quadro.test/jobs/ruby-1' });
+    await runtime.queueService.addQueueItem({ platform: 'INFOJOBS', company: 'Outra Antiga', role: 'Ruby on Rails Developer', identifierOrUrl: 'https://quadro.test/jobs/ruby-2' });
+    await assert.rejects(chamar('fluxo_discard', { reason: 'sem seletor' }, run.id), { code: 'discard_selector_required' });
+    const descarte = await chamar('fluxo_discard', { query: 'ruby', reason: 'a pessoa pediu só COBOL' }, run.id);
+    assert.equal(descarte.discarded, 2);
+    assert.equal(descarte.remaining, 1);
+    const fila = (await runtime.queueService.listQueue()).items;
+    assert.deepEqual(fila.filter((item) => item.status === 'descartada').map((item) => item.discardReason), ['a pessoa pediu só COBOL', 'a pessoa pediu só COBOL']);
+    await assert.rejects(runtime.queueService.addQueueItem({ platform: 'INFOJOBS', company: 'Antiga Ltda', role: 'Desenvolvedor Ruby Sênior', identifierOrUrl: 'https://quadro.test/jobs/ruby-1' }), { code: 'queue_duplicate' });
+    assert.equal((await chamar('fluxo_shortlist', { limit: 5 }, run.id)).items.length, 1, 'a comparação ignora as descartadas');
+
     const preparada = await chamar('fluxo_prepare', { itemId: lista.items[0].id }, run.id);
     assert.ok(preparada.run.id);
     await chamar('fluxo_fill', { runId: preparada.run.id, fieldMap: { name: 'name' } }, run.id);

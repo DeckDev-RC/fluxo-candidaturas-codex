@@ -15,7 +15,7 @@ const ACAO_EXTERNA = new Set(['fluxo_discover', 'fluxo_prepare', 'fluxo_fill', '
 const LEITURA_EXTERNA = new Set(['fluxo_followup', 'fluxo_open_platform']);
 const ESCOPOS_DE_ESTADO = new Set(['campaign', 'queue', 'applications', 'installation', 'preflight', 'checkpoint', 'memory', 'discovery', 'followup', 'exceptions']);
 
-export function createDomainTools({ rootDir, readState, discoveryService, fitService, memoryService, applicationFlow, browserAdapter, followUpMonitor, runService, resumeImportService, intakeService, budget, platformUrls = () => ({}) } = {}) {
+export function createDomainTools({ rootDir, readState, discoveryService, fitService, memoryService, applicationFlow, browserAdapter, followUpMonitor, runService, resumeImportService, intakeService, queueService, budget, platformUrls = () => ({}) } = {}) {
   const string = { type: 'string' };
   // Parâmetro de escopo é opcional: a ferramenta continua válida com `{}`.
   const opcional = (type) => ({ type, optional: true });
@@ -83,9 +83,15 @@ export function createDomainTools({ rootDir, readState, discoveryService, fitSer
       }
       return discoveryService.discover({ searchUrl, platforms: [plataforma] });
     }],
-    ['fluxo_shortlist', 'Comparar vagas com os fatos confirmados; limit define quantas retornar. A nota fica gravada em cada vaga.', { limit: opcional('number') }, async (input) => {
+    // A pessoa manda: vagas de uma busca antiga ou que ela não quer saem da fila
+    // ativa e não voltam como novidade. Descarte é decisão dela, nunca da IA sozinha.
+    ['fluxo_discard', 'Descartar vagas da fila a pedido da pessoa: por itemIds (separados por vírgula) ou por texto de cargo/empresa (query). Elas saem da fila e não voltam na próxima busca.', { itemIds: opcional('string'), query: opcional('string'), reason: string }, async (input) => {
+      if (!queueService?.discardItems) throw fail('discard_unavailable');
+      return queueService.discardItems({ ids: String(input.itemIds ?? '').split(',').map((id) => id.trim()).filter(Boolean), query: input.query ?? '', reason: input.reason });
+    }],
+    ['fluxo_shortlist', 'Comparar vagas com os fatos confirmados; limit define quantas retornar. A nota fica gravada em cada vaga. Só considera vagas ativas (não descartadas).', { limit: opcional('number') }, async (input) => {
       const resultado = fitService.shortlist({
-        opportunities: (await readState()).queue.items,
+        opportunities: (await readState()).queue.items.filter((item) => ['na fila', 'em andamento'].includes(item.status)),
         facts: (await memoryService.safeSummary()).facts,
         limit: Number(input.limit ?? 10)
       });
