@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { join } from 'node:path';
 
-export function createStdioAgentTransport({ command = 'codex', shell = false, args = ['app-server', '--listen', 'stdio://'], cwd, env = process.env, authMode = 'chatgpt', onNotification = () => {}, onRequest, timeoutMs = 60_000 }) {
+export function createStdioAgentTransport({ command = 'codex', shell = false, args = ['app-server', '--listen', 'stdio://'], cwd, env = process.env, authMode = 'chatgpt', onNotification = () => {}, onRequest, onClose = () => {}, timeoutMs = 60_000 }) {
   const childEnv = { ...env };
   if (authMode === 'chatgpt') {
     for (const key of ['OPENAI_API_KEY', 'CODEX_API_KEY', 'CODEX_ACCESS_TOKEN']) delete childEnv[key];
@@ -38,7 +38,7 @@ export function createStdioAgentTransport({ command = 'codex', shell = false, ar
       if (message.error) request.reject(Object.assign(new Error(message.error.message), { code: message.error.code }));
       else request.resolve(message.result);
     } else if (message.method) {
-      onNotification(message);
+      notificar(message);
     }
   });
 
@@ -48,10 +48,16 @@ export function createStdioAgentTransport({ command = 'codex', shell = false, ar
       : Object.assign(new Error(`Não foi possível iniciar o Codex: ${error?.message ?? error}`), { code: 'agent_unavailable', cause: error });
     rejectPending(spawnFailure);
   });
+  // Notificações e pedidos nunca podem derrubar o leitor: um ouvinte que lança
+  // seria uma exceção solta no processo do serviço.
+  const notificar = (message) => { try { onNotification(message); } catch { /* ouvinte defeituoso não derruba o transporte */ } };
   child.on('close', (code) => {
     if (closed) return;
     spawnFailure ??= Object.assign(new Error(`Agente encerrou com código ${code}.`), { code: 'agent_closed' });
     rejectPending(spawnFailure);
+    // Quem depende do processo (adaptador, conversa, saúde) fica sabendo na hora,
+    // não pelo timeout do próximo pedido.
+    try { onClose(spawnFailure); } catch { /* idem */ }
   });
 
   return {

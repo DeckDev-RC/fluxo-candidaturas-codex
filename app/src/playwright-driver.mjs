@@ -82,9 +82,14 @@ export function createPlaywrightDriver({ rootDir, headless = false, browserType,
   }
 
   // A janela abre a aba carregando a URL marcadora; a página com essa URL é a aba.
+  // Depois de uma reconexão, a aba já navegou para a plataforma: a janela informa
+  // a URL atual de cada aba e a página é reconhecida por ela, sem recarregar
+  // (recarregar a marcadora perderia login e formulário em andamento).
   async function abaHospedada(ctx, nome) {
     const marcadora = host.markerUrl(nome);
-    const encontrar = () => ctx.pages().find((candidata) => !candidata.isClosed() && candidata.url().startsWith(marcadora));
+    const abertas = host.listTabs ? await Promise.resolve(host.listTabs()).catch(() => []) : [];
+    const registrada = (abertas ?? []).find((aba) => String(aba.platform).toUpperCase() === nome);
+    const encontrar = () => ctx.pages().find((candidata) => !candidata.isClosed() && (candidata.url().startsWith(marcadora) || (registrada?.url && candidata.url() === registrada.url)));
     let encontrada = encontrar();
     if (!encontrada) {
       await host.openTab(nome, marcadora);

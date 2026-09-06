@@ -8,6 +8,37 @@ const JSON_HEADERS = {
 
 const MAX_BODY_BYTES = 64 * 1024;
 
+// Fluxo SSE seguro: escrita ignorada depois que a resposta terminou (no
+// encerramento, `end()` acontece antes do socket fechar e um evento nesse
+// intervalo lançaria ERR_STREAM_WRITE_AFTER_END), batimento e assinaturas
+// cancelados tanto no fechamento do cliente quanto no fim da resposta.
+export function abrirFluxo(request, response, { batimentoMs = 25_000 } = {}) {
+  response.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache', connection: 'keep-alive' });
+  const limpezas = new Set();
+  let encerrado = false;
+  const escrever = (texto) => {
+    if (encerrado || response.writableEnded || response.destroyed) return false;
+    try { response.write(texto); return true; } catch { encerrar(); return false; }
+  };
+  const encerrar = () => {
+    if (encerrado) return;
+    encerrado = true;
+    for (const limpeza of limpezas) { try { limpeza(); } catch { /* já limpo */ } }
+    limpezas.clear();
+  };
+  const batimento = batimentoMs > 0 ? setInterval(() => escrever(': vivo\n\n'), batimentoMs) : null;
+  if (batimento) limpezas.add(() => clearInterval(batimento));
+  request.once('close', encerrar);
+  response.once('finish', encerrar);
+  response.once('close', encerrar);
+  escrever(': conectado\n\n');
+  return {
+    evento(type, dados, id) { return escrever(`${id ? `id: ${id}\n` : ''}${type ? `event: ${type}\n` : ''}data: ${typeof dados === 'string' ? dados : JSON.stringify(dados)}\n\n`); },
+    aoEncerrar(limpeza) { if (typeof limpeza === 'function') limpezas.add(limpeza); },
+    encerrar
+  };
+}
+
 export function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, JSON_HEADERS);
   const body = response.__mutationEnvelope && statusCode < 400 && payload && typeof payload === 'object' && !Array.isArray(payload)

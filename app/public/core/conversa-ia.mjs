@@ -33,13 +33,18 @@ export function connectConversation() {
   const desde = window.localStorage.getItem(CHAVE_ULTIMO()) ?? '';
   retomarEstado();
   fonte = new EventSource(`/api/v1/conversation/events?stream=1${desde ? `&desde=${encodeURIComponent(desde)}` : ''}`);
-  for (const tipo of TIPOS) fonte.addEventListener(tipo, (evento) => { try { tratar(JSON.parse(evento.data)); } catch {} });
+  fonte.onopen = () => { tentativas = 0; };
+  for (const tipo of TIPOS) fonte.addEventListener(tipo, (evento) => { let dados; try { dados = JSON.parse(evento.data); } catch { return; } tratar(dados); });
+  // Fechado pelo servidor (IA ausente, sessão expirada): volta a tentar com espera
+  // crescente, até 1 min, em vez de bater a cada 5 s para sempre.
   fonte.onerror = () => {
     if (fonte?.readyState !== EventSource.CLOSED) return;
     fonte = null;
-    setTimeout(connectConversation, 5000);
+    tentativas += 1;
+    setTimeout(connectConversation, Math.min(60_000, 5_000 * 2 ** Math.min(tentativas - 1, 4)));
   };
 }
+let tentativas = 0;
 
 // Ao reabrir a tela com um turno em curso, "Pensando…" e a situação voltam a refletir isso.
 async function retomarEstado() {
@@ -73,10 +78,13 @@ export async function resetConversation() {
   return send('/api/v1/conversation/reset', {});
 }
 
+// Guardar o último id é conveniência (evita repetição ao reconectar); armazenamento
+// cheio ou indisponível nunca impede o tratamento do evento.
 function tratar(evento) {
-  if (evento.id) window.localStorage.setItem(CHAVE_ULTIMO(), evento.id);
+  if (evento.id) { try { window.localStorage.setItem(CHAVE_ULTIMO(), evento.id); } catch {} }
   const acao = TRATADORES[evento.type];
-  if (acao) acao(evento);
+  if (!acao) return;
+  try { acao(evento); } catch (error) { console.error('evento da conversa falhou', evento.type, error); }
 }
 
 const TRATADORES = {

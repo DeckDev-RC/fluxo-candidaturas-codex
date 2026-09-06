@@ -140,19 +140,24 @@ export async function createLocalRuntime({ rootDir, browserDriver, headless, bro
   const eventosDeExecucao = createAgentEventHandler(runService, { budget: campaignBudget });
   let authService = null;
   let conversationService = null;
+  let fechamento = null;
   const agentAdapter = createAgentAdapter({
     domainTools,
     settingsService: codexSettingsService,
-    transportFactory: ({ onNotification, onRequest }) => {
+    transportFactory: ({ onNotification, onRequest, onClose }) => {
       const resolved = codex();
-      return createStdioAgentTransport({ command: resolved.command || resolved.path || 'codex', shell: resolved.shell, cwd: rootDir, authMode: runtimeConfig.authMode, onNotification, onRequest });
+      return createStdioAgentTransport({ command: resolved.command || resolved.path || 'codex', shell: resolved.shell, cwd: rootDir, authMode: runtimeConfig.authMode, onNotification, onRequest, onClose });
     },
+    // Uma notificação do Codex nunca pode derrubar o serviço: falha em um ouvinte
+    // é registrada e os demais seguem.
     onNotification: (message, runId) => {
-      if (authService?.handleNotification(message)) return;
-      if (conversationService?.handleNotification(message)) return;
-      eventosDeExecucao(message, runId);
+      try {
+        if (authService?.handleNotification(message)) return;
+        if (conversationService?.handleNotification(message)) return;
+        eventosDeExecucao(message, runId);
+      } catch (error) { registrarFalhaSilenciosa('notificação do agente', error); }
     },
-    onToolCall: (chamada) => { conversationService?.handleToolCall(chamada); }
+    onToolCall: (chamada) => { try { conversationService?.handleToolCall(chamada); } catch (error) { registrarFalhaSilenciosa('narração de ferramenta', error); } }
   });
   const codexHarnessService = createCodexHarnessService({ request: (method, params) => agentAdapter.request(method, params) });
   authService = createCodexAuthService({ agentAdapter });
@@ -204,17 +209,34 @@ export async function createLocalRuntime({ rootDir, browserDriver, headless, bro
     resumeService, evidenceService, messageService, assessmentService, legacyImportService, pendingService, checkpointService, metricsService,
     memoryService, intakeService, discoveryService, fitService, exceptionService, followUpMonitor, auditService, authService, codexHarnessService, codexSettingsService, orchestrator, autopilotService,
     resumeImportService, schedulerService, schedulerRunner, notificationService, sessionStore, runtimeHealth, campaignBudget, campaignService, consistencyService,
-    async close() {
-      schedulerRunner.stop();
-      await agentAdapter.close();
-      await driver.close?.();
-      for (const service of [queueService, applicationService, pendingService, metricsService]) service.close?.();
-      persistence.close();
-      stateStore.close();
-      approvalService.close();
-      runService.close();
+    // Encerramento idempotente e com prazo por recurso: um agente ou navegador
+    // que não responde não pode impedir o banco de fechar limpo.
+    close() {
+      if (!fechamento) fechamento = (async () => {
+        schedulerRunner.stop();
+        await Promise.allSettled([
+          comPrazo(() => agentAdapter.close(), 3_000),
+          comPrazo(() => driver.close?.(), 3_000)
+        ]);
+        for (const recurso of [queueService, applicationService, pendingService, metricsService, persistence, stateStore, approvalService, runService]) {
+          try { recurso.close?.(); } catch (error) { registrarFalhaSilenciosa('fechar recurso', error); }
+        }
+      })();
+      return fechamento;
     }
   };
+}
+
+async function comPrazo(operacao, ms) {
+  let timer;
+  try {
+    await Promise.race([Promise.resolve().then(operacao), new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('prazo esgotado')), ms); })]);
+  } catch (error) { registrarFalhaSilenciosa('encerramento', error); } finally { clearTimeout(timer); }
+}
+
+// Falhas que não podem interromper o serviço ficam registradas em estado/logs.
+function registrarFalhaSilenciosa(origem, error) {
+  try { process.emitWarning(`${origem}: ${error?.message ?? error}`, { code: 'FLUXO_FALHA_SILENCIOSA' }); } catch { /* sem canal */ }
 }
 
 function safeParse(json) {

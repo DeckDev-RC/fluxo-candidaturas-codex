@@ -34,10 +34,19 @@ export function createConversationService({ agentAdapter, snapshot = async () =>
     // Notificações do app-server pertencentes à conversa: texto e fim do turno.
     handleNotification(message) {
       const params = message?.params ?? {};
+      // O processo do Codex morreu: o turno em curso termina agora, não pelo prazo.
+      if (message?.method === 'transport/closed') {
+        if (turnoAtivo) falharTurno(domainError(params.code ?? 'agent_closed', 'A conexão com o ChatGPT caiu no meio da resposta. Tente de novo.'));
+        retomada = '';
+        return false;
+      }
       const alvo = String(params.threadId ?? params.thread?.id ?? '');
       if (!threadId || alvo !== threadId) return false;
       const turno = turnoAtivo;
-      if (!turno) return true;
+      if (!turno || turno.reservado) return true;
+      // Eventos de um turno antigo (interrompido) não podem fechar nem alimentar o atual.
+      const turnoDoEvento = String(params.turnId ?? params.turn?.id ?? '');
+      if (turnoDoEvento && turno.codexTurnId && turnoDoEvento !== turno.codexTurnId) return true;
       // Deltas de texto não vão para a tela nem para o histórico: a mensagem completa basta.
       if (message.method === 'item/completed' && params.item?.type === 'agentMessage') {
         const texto = String(params.item.text ?? '');
@@ -69,21 +78,25 @@ export function createConversationService({ agentAdapter, snapshot = async () =>
       const pedido = String(texto ?? '').trim();
       if (!pedido) throw domainError('conversation_empty', 'Escreva algo para o Fluxo responder.');
       if (turnoAtivo) throw domainError('conversation_busy', 'O Fluxo ainda está trabalhando na mensagem anterior. Aguarde ou interrompa.');
-      await this.ensureThread();
-      await ensureRun();
-      // O primeiro turno de cada processo avisa que o app foi reaberto: a thread
-      // retomada lembra o que estava fazendo, mas nada disso continua em curso.
-      const contexto = montarContexto(await snapshot(), now(), { sessaoNova: primeiroTurnoDaSessao && retomadaDeGravacao });
-      primeiroTurnoDaSessao = false;
-      const entrada = `${contexto}\n\n${system ? 'SISTEMA (evento da interface, não é fala da pessoa)' : 'Pessoa'}: ${pedido}`;
+      // A reserva é síncrona, antes de qualquer espera: dois pedidos no mesmo
+      // instante não podem passar os dois pela checagem acima.
       const turno = abrirTurno();
+      turno.reservado = true;
       turnoAtivo = turno;
-      registrar(system ? 'conversation.system' : 'conversation.user', { text: pedido });
-      emitir('turn.started', { turnId: turno.id, system });
       try {
+        await this.ensureThread();
+        await ensureRun();
+        // O primeiro turno de cada processo avisa que o app foi reaberto: a thread
+        // retomada lembra o que estava fazendo, mas nada disso continua em curso.
+        const contexto = montarContexto(await snapshot(), now(), { sessaoNova: primeiroTurnoDaSessao && retomadaDeGravacao });
+        primeiroTurnoDaSessao = false;
+        const entrada = `${contexto}\n\n${system ? 'SISTEMA (evento da interface, não é fala da pessoa)' : 'Pessoa'}: ${pedido}`;
+        turno.reservado = false;
+        registrar(system ? 'conversation.system' : 'conversation.user', { text: pedido });
+        emitir('turn.started', { turnId: turno.id, system });
         turno.codexTurnId = await iniciarTurnoNoAgente(entrada);
       } catch (error) {
-        falharTurno(error);
+        if (turnoAtivo === turno) { turno.reservado = false; falharTurno(error); }
         throw error;
       }
       return { turnId: turno.id, threadId, runId };

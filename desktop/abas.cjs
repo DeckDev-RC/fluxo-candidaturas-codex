@@ -42,8 +42,9 @@ function createAbas({ window, criarView, aoMudar = () => {} }) {
       for (const aba of abas.values()) posicionar(aba);
       // A última adicionada fica por cima: reordenar traz a escolhida para a frente.
       const aba = abas.get(nome);
-      window.contentView.removeChildView(aba.view);
-      window.contentView.addChildView(aba.view);
+      if (janelaViva() && !aba.view.webContents?.isDestroyed?.()) {
+        try { window.contentView.removeChildView(aba.view); window.contentView.addChildView(aba.view); } catch { /* view destruída no meio */ }
+      }
       notificar();
       return true;
     },
@@ -96,7 +97,7 @@ function createAbas({ window, criarView, aoMudar = () => {} }) {
 
   function endurecer(view, nome) {
     const contents = view.webContents;
-    contents.setWindowOpenHandler?.(({ url }) => { if (/^https?:\/\//i.test(url)) void contents.loadURL(url); return { action: 'deny' }; });
+    contents.setWindowOpenHandler?.(({ url }) => { if (/^https?:\/\//i.test(url)) contents.loadURL(url).catch?.(() => {}); return { action: 'deny' }; });
     contents.session?.setPermissionRequestHandler?.((_c, _p, callback) => callback(false));
     const atualizar = () => { const aba = abas.get(nome); if (!aba) return; aba.title = contents.getTitle?.() ?? ''; aba.url = contents.getURL?.() ?? ''; notificar(); };
     contents.on?.('did-start-loading', () => { const aba = abas.get(nome); if (aba) { aba.loading = true; notificar(); } });

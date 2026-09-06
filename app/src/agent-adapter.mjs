@@ -20,9 +20,23 @@ export function createAgentAdapter({ transport, transportFactory, onNotification
   let initialization;
 
   async function getTransport() {
-    if (!activeTransport && transportFactory) activeTransport = await transportFactory({ onNotification: handleNotification, onRequest: handleRequest });
+    if (!activeTransport && transportFactory) {
+      const criado = await transportFactory({ onNotification: handleNotification, onRequest: handleRequest, onClose: (erro) => descartarTransporte(criado, erro) });
+      activeTransport = criado;
+    }
     if (!activeTransport) throw Object.assign(new Error('Transporte do agente não configurado.'), { code: 'agent_transport_unavailable' });
     return activeTransport;
+  }
+
+  // O processo do Codex morreu: o transporte sai do cache na hora, a próxima
+  // chamada cria outro, e quem escuta recebe um aviso para encerrar o que
+  // estava em curso (turno da conversa, saúde da IA).
+  function descartarTransporte(morto, erro) {
+    if (activeTransport !== morto) return;
+    activeTransport = null;
+    initialized = false;
+    initialization = null;
+    handleNotification({ method: 'transport/closed', params: { code: erro?.code ?? 'agent_closed', message: erro?.message ?? 'O Codex encerrou.' } });
   }
 
   return {

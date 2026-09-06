@@ -90,7 +90,19 @@ export function createServer(options) {
     || (path.startsWith('/api/v1/exceptions') && s.exceptionService.handlesMutationLock)
     || (path.startsWith('/api/v1/discovery') && s.discoveryService.handlesMutationLock);
 
-  const server = createHttpServer(async (request, response) => {
+  // Nenhuma exceção de rota pode escapar como rejeição solta e derrubar o serviço:
+  // vira 500 em JSON e o servidor segue.
+  const server = createHttpServer((request, response) => {
+    atender(request, response).catch((error) => {
+      try {
+        if (!response.headersSent) sendJson(response, 500, { error: { code: 'internal_error', message: 'Falha inesperada ao atender o pedido. O serviço continua ativo.', detail: String(error?.message ?? error) } });
+        else if (!response.writableEnded) response.end();
+      } catch { /* resposta já fechada */ }
+      s.observability.record?.({ method: request.method, path: request.url, status: 500, error: String(error?.message ?? error) });
+    });
+  });
+
+  async function atender(request, response) {
     const path = new URL(request.url ?? '/', 'http://127.0.0.1').pathname;
     const requestId = randomUUID();
     const startedAt = Date.now();
@@ -135,7 +147,7 @@ export function createServer(options) {
       return;
     }
     sendJson(response, 404, { error: { code: 'not_found', message: 'Recurso não encontrado.' } });
-  });
+  }
 
   server.once('close', () => { for (const service of s.owned) service.close?.(); });
   encerrarFluxosComEducacao(server);
