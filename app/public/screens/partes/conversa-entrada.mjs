@@ -14,6 +14,7 @@ import { store } from '../../core/store.mjs';
 import { currentRoute, go, ROTAS } from '../../core/router.mjs';
 import { openDialog } from '../../ui/dialog.mjs';
 import { abrirMudancaDeObjetivo } from './objetivo.mjs';
+import { abrirCartaoDaIa, fecharCartaoDaIa } from './cartoes-ia.mjs';
 
 const MODALIDADES = ['Remoto', 'Híbrido', 'Presencial'];
 
@@ -33,6 +34,8 @@ export function bindConversationInput(form) {
     const texto = campo.value.trim();
     if (!texto) return;
     campo.value = '';
+    // Uma fala nova substitui qualquer cartão que a IA tenha deixado aberto.
+    fecharCartaoDaIa();
     ask(texto);
     if (currentRoute() !== 'agora') go('agora');
     if (agentDriving()) await conversarComIa(texto);
@@ -52,6 +55,7 @@ async function conversarComIa(texto) {
 }
 
 function executarAcao({ tipo, valor }) {
+  if (abrirCartaoDaIa({ tipo, valor })) return;
   if (tipo === 'abrir' && ROTAS.includes(valor)) { go(valor); return; }
   if (tipo === 'objetivo' && valor) {
     abrirMudancaDeObjetivo({ inicial: valor, aoSalvar: () => say('Objetivo atualizado. Vale para as próximas buscas; o trabalho já preparado continua como está.', { tom: 'sucesso' }) });

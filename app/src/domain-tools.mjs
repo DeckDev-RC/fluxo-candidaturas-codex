@@ -67,7 +67,7 @@ export function createDomainTools({ rootDir, readState, discoveryService, fitSer
     ['fluxo_browser_status', 'Listar as abas abertas do navegador por plataforma, com URL, título, login pendente e desafio.', {}, async () => ({ tabs: await browserAdapter.tabs() })],
     // A busca é feita na plataforma da aba; sem `searchUrl`, a URL vem do
     // objetivo confirmado e do catálogo (ou da URL configurada no .env).
-    ['fluxo_discover', 'Observar vagas na plataforma; searchUrl é opcional (montada a partir do objetivo confirmado). Exige plataforma habilitada na campanha.', { platform: string, searchUrl: opcional('string') }, async input => {
+    ['fluxo_discover', 'Observar vagas na plataforma. query é o termo pedido pela pessoa (ex.: "COBOL"); sem query nem searchUrl, usa o objetivo confirmado. As vagas ficam marcadas com a busca que as trouxe. Exige plataforma habilitada na campanha.', { platform: string, query: opcional('string'), searchUrl: opcional('string') }, async input => {
       const state = await readState();
       const plataforma = String(input.platform).toUpperCase();
       // O que bloqueia a busca é a campanha, não um preflight herdado: a IA já
@@ -75,13 +75,15 @@ export function createDomainTools({ rootDir, readState, discoveryService, fitSer
       const habilitada = (state.campaign?.platforms ?? []).some((item) => String(item.name).toUpperCase() === plataforma && item.enabled !== false);
       if (!habilitada) throw fail('platform_disabled');
       let searchUrl = String(input.searchUrl ?? '').trim();
+      let query = String(input.query ?? '').trim();
       if (!searchUrl) {
         const facts = (await memoryService.safeSummary()).facts ?? {};
-        const [busca] = buildPlatformSearch({ filters: { roles: facts.targetRoles?.value, location: facts.location?.value }, platforms: [plataforma], baseUrls: platformUrls() });
+        const [busca] = buildPlatformSearch({ filters: { roles: query || facts.targetRoles?.value, location: facts.location?.value }, platforms: [plataforma], baseUrls: platformUrls() });
         if (!busca || busca.unavailable || !busca.searchUrl) throw fail('search_unavailable');
         searchUrl = busca.searchUrl;
+        query = query || String(busca.query ?? '');
       }
-      return discoveryService.discover({ searchUrl, platforms: [plataforma] });
+      return discoveryService.discover({ searchUrl, platforms: [plataforma], query });
     }],
     // Ler a página da vaga transforma "aderência possível 50%" (lista sem requisitos)
     // em medida real: requisitos, modalidade e local gravados na vaga e nota recalculada.

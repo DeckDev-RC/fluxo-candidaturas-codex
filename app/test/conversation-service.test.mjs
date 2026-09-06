@@ -256,6 +256,10 @@ test('separarAcoes, contexto e narração não vazam segredo nem vocabulário t�
   const { resposta, acoes } = separarAcoes('Vou abrir suas **oportunidades**.\nAÇÃO: abrir=oportunidades');
   assert.equal(resposta, 'Vou abrir suas oportunidades.');
   assert.deepEqual(acoes, [{ tipo: 'abrir', valor: 'oportunidades' }]);
+  // Cartões da conversa: seleção para descarte, confirmação de dados e respostas rápidas.
+  assert.deepEqual(separarAcoes('Marque as que quer descartar.\nAÇÃO: selecionar-descarte=todas').acoes, [{ tipo: 'selecionar-descarte', valor: 'todas' }]);
+  assert.deepEqual(separarAcoes('Li isto:\nAÇÃO: confirmar=name:Pessoa Exemplo|email:pessoa@example.test').acoes, [{ tipo: 'confirmar', valor: 'name:Pessoa Exemplo|email:pessoa@example.test' }]);
+  assert.deepEqual(separarAcoes('Oi! Por onde seguimos?\nAÇÃO: opcoes=Buscar COBOL|Ver a fila').acoes, [{ tipo: 'opcoes', valor: 'Buscar COBOL|Ver a fila' }]);
   const contexto = montarContexto({ situacao: 'escolher vaga', fila: 3, plataformas: [{ name: 'GUPY', goal: 5 }], fatosConfirmados: ['name'], lacunas: ['location'], abas: [{ platform: 'GUPY', loginPending: true }] });
   assert.match(contexto, /Vagas aguardando na fila: 3/);
   assert.match(contexto, /GUPY \(login pendente\)/);

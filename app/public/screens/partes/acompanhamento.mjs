@@ -119,15 +119,24 @@ function prazos(dados) {
   return secao('Prazos e próximos passos', el('ul', { class: 'acompanhamento-lista' }, itens), acaoSecao('Candidaturas', 'candidaturas', 'Abrir todas as candidaturas'));
 }
 
+// A fila mostra a busca mais recente primeiro e diz de qual busca são as vagas;
+// o que sobrou de buscas anteriores aparece como contagem.
 function fila(dados) {
   const itens = (dados.queue?.items ?? []).filter(disponivel);
   if (!itens.length) return null;
-  const principais = itens.slice().sort((a, b) => String(a.priority ?? 'Z').localeCompare(String(b.priority ?? 'Z'))).slice(0, 3);
-  return secao(`Fila · ${numero(itens.length)}`, el('ul', { class: 'acompanhamento-lista' }, principais.map((item) => linha(
-    item.role ?? 'Vaga',
-    `${item.company ?? 'empresa não informada'} · ${item.platform ?? 'origem não informada'}`,
-    badge(nivelAderencia(item).rotulo, nivelAderencia(item).tom)
-  ))), acaoSecao('Oportunidades', 'oportunidades', 'Abrir todas as oportunidades'));
+  const maisRecente = itens.reduce((max, item) => (String(item.searchAt ?? item.collectedAt ?? '') > max ? String(item.searchAt ?? item.collectedAt ?? '') : max), '');
+  const daBusca = itens.filter((item) => String(item.searchAt ?? item.collectedAt ?? '').slice(0, 16) === maisRecente.slice(0, 16));
+  const antigas = itens.length - daBusca.length;
+  const termo = daBusca.find((item) => item.searchQuery)?.searchQuery ?? '';
+  const principais = daBusca.slice().sort((a, b) => Number(b.fitScore ?? 0) - Number(a.fitScore ?? 0) || String(a.priority ?? 'Z').localeCompare(String(b.priority ?? 'Z'))).slice(0, 3);
+  return secao(`Fila · ${numero(itens.length)}`, [
+    el('p', { class: 'apoio', text: `${numero(daBusca.length)} da busca mais recente${termo ? ` (${termo})` : ''}${antigas ? ` · ${numero(antigas)} de buscas anteriores` : ''}` }),
+    el('ul', { class: 'acompanhamento-lista' }, principais.map((item) => linha(
+      item.role ?? 'Vaga',
+      `${item.company ?? 'empresa não informada'} · ${item.platform ?? 'origem não informada'}`,
+      badge(nivelAderencia(item).rotulo, nivelAderencia(item).tom)
+    )))
+  ], acaoSecao('Oportunidades', 'oportunidades', 'Abrir todas as oportunidades'));
 }
 
 function linha(titulo, apoio, selo) {

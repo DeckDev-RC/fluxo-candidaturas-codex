@@ -25,7 +25,7 @@ export const store = {
   codex: null,
   jornada: { runId: '', status: '', mensagem: '', plano: [], perguntas: [], atualizacoes: [] },
   // Conversa conduzida pela IA: se há turno em curso, o que ela espera de você e as abas do navegador.
-  conversa: { ocupada: false, aguardando: null, abas: [] }
+  conversa: { ocupada: false, aguardando: null, abas: [], cartao: null }
 };
 
 export function subscribe(listener) {

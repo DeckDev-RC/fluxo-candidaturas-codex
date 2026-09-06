@@ -24,6 +24,9 @@ export function oportunidadesScreen() {
     listDetail({
       area: 'oportunidades',
       items: itens,
+      // Agrupadas pela busca que as trouxe, a mais recente primeiro: o que é de agora
+      // fica separado do que sobrou de buscas anteriores.
+      groupBy: (item) => rotuloDaBusca(item),
       onSelect: () => rerender(),
       renderItem: (item) => [
         el('div', {}, [
@@ -159,5 +162,21 @@ function aplicarFiltro(itens) {
     recentes: (a, b) => String(b.addedAt ?? '').localeCompare(String(a.addedAt ?? '')),
     empresa: (a, b) => String(a.company ?? '').localeCompare(String(b.company ?? ''), 'pt-BR')
   };
-  return [...filtrados].sort(ordenadores[filtro.ordem] ?? ordenadores.aderencia);
+  const dentroDoGrupo = ordenadores[filtro.ordem] ?? ordenadores.aderencia;
+  // Primeiro a busca (mais recente antes), depois a ordem escolhida dentro de cada busca.
+  return [...filtrados].sort((a, b) => chaveDaBusca(b).localeCompare(chaveDaBusca(a)) || dentroDoGrupo(a, b));
+}
+
+// Buscas são agrupadas pelo minuto em que rodaram e pelo termo; vagas antigas sem marca ficam juntas.
+function chaveDaBusca(item) {
+  const instante = String(item.searchAt ?? item.collectedAt ?? '');
+  return instante ? `${instante.slice(0, 16)}|${item.searchQuery ?? ''}` : '';
+}
+
+function rotuloDaBusca(item) {
+  const key = chaveDaBusca(item);
+  if (!key) return { key: '', label: 'Buscas anteriores' };
+  const instante = new Date(String(item.searchAt ?? item.collectedAt));
+  const hora = Number.isNaN(instante.getTime()) ? '' : instante.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return { key, label: `Busca de ${hora}${item.searchQuery ? ` · ${item.searchQuery}` : ''}` };
 }

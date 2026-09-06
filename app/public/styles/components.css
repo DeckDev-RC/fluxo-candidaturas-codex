@@ -152,6 +152,9 @@ input[type="file"]::file-selector-button {
 /* Lista comparável com separadores hairline. */
 .lista { background: var(--superficie); border: 1px solid var(--linha); border-radius: var(--raio-lg); overflow: hidden; }
 .lista > li + li { border-top: 1px solid var(--linha); }
+/* Cabeçalho de grupo dentro da lista (ex.: a busca que trouxe as vagas). */
+.lista-grupo { padding: var(--e2) var(--e4); background: var(--superficie-2); }
+.lista-grupo-titulo { margin: 0; font-size: var(--texto-xs); font-weight: var(--peso-medio); color: var(--texto-3); letter-spacing: var(--traco-etiqueta); text-transform: none; }
 
 .item-lista {
   display: grid;

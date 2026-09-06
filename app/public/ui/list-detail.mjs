@@ -8,13 +8,27 @@ const selecionados = new Map();
 
 export function selectId(area, id) { selecionados.set(area, String(id ?? '')); }
 
-export function listDetail({ area, items, renderItem, renderDetail, emptyState, onSelect }) {
+// `groupBy(item)` opcional devolve { key, label }: itens consecutivos com a mesma
+// chave ficam sob um cabeçalho de grupo (ex.: a busca que trouxe as vagas).
+export function listDetail({ area, items, renderItem, renderDetail, emptyState, onSelect, groupBy }) {
   const atual = selecionados.get(area) ?? '';
   const chave = (item) => String(item.id ?? item.key ?? '');
   const escolhido = items.find((item) => chave(item) === atual) ?? null;
   const aberto = Boolean(escolhido);
 
-  const lista = el('ul', { class: 'lista', 'aria-label': `Itens de ${area}` }, items.map((item) => el('li', {}, [
+  let grupoAnterior = null;
+  const lista = el('ul', { class: 'lista', 'aria-label': `Itens de ${area}` }, items.flatMap((item) => {
+    const nos = [];
+    const grupo = groupBy?.(item);
+    if (grupo && grupo.key !== grupoAnterior) {
+      grupoAnterior = grupo.key;
+      nos.push(el('li', { class: 'lista-grupo', role: 'presentation' }, [el('h3', { class: 'lista-grupo-titulo', text: grupo.label })]));
+    }
+    nos.push(itemDaLista(item));
+    return nos;
+  }));
+
+  function itemDaLista(item) { return el('li', {}, [
     el('button', {
       type: 'button',
       class: 'item-lista',
@@ -27,7 +41,7 @@ export function listDetail({ area, items, renderItem, renderDetail, emptyState, 
         requestAnimationFrame(() => document.querySelector('.detalhe button, .detalhe h2')?.focus());
       }
     }, renderItem(item))
-  ])));
+  ]); }
 
   return el('div', { class: 'lista-detalhe', dataset: { detalhe: aberto ? 'aberto' : 'fechado' } }, [
     items.length ? lista : emptyState,
