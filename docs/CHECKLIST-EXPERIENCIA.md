@@ -77,7 +77,8 @@ Sete frentes, na ordem de impacto. Cada item marcado tem teste ou verificação 
 - [x] Suítes verdes: unitários (348), desktop (abas com controles), e2e (23), smoke.
 - [x] Verificação visual: lista agrupada, cartões de descarte/confirmação/opções,
       selo "não medida", atalho "/".
-- [ ] Commit por frente, push, instalador com SHA-256.
+- [x] Commit por frente, push (`codex/fluxo-desktop`), instalador
+      `dist/desktop/Fluxo-1.2.0-Windows-x64.exe` com SHA-256 ao lado.
 
 ## Pendente de validação com conta real
 
