@@ -149,6 +149,17 @@ Sete frentes, na ordem de impacto. Cada item marcado tem teste ou verificação 
       confirmação para efeito externo); orientar e dar dicas, não só executar.
 - [x] Validador de ferramentas aceita parâmetros `object` opcionais ausentes.
 
+## Achado do teste real (13:40): conversa parada até a próxima mensagem
+
+- Os eventos do turno estavam gravados (ferramentas às 16:40:23–44Z) e, em Chromium
+  puro, a mesma sequência atualiza a conversa ao vivo. O que difere no desktop é
+  a aba embutida aparecendo por cima da interface no meio do turno: reordenar a
+  view (remover/adicionar) e mostrá-la pode deixar o compositor da janela sem
+  apresentar o próximo quadro da interface até uma interação (o mesmo mecanismo
+  dos "glitches" relatados). Correção: `mostrar` não reordena mais (só uma aba é
+  visível; a ordem não importa) e toda mudança de visibilidade pede uma repintura
+  explícita da janela (`webContents.invalidate`, agrupada em 50 ms).
+
 ## Pendente de validação com conta real
 
 - Qualidade da extração de requisitos nas páginas reais de Gupy/InfoJobs/LinkedIn

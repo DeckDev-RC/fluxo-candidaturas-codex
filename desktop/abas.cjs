@@ -14,6 +14,7 @@ function createAbas({ window, criarView, aoMudar = () => {} }) {
   let ultimoAviso = '';
   let destruido = false;
   let zoom = 1;
+  let repinturaPendente = null;
 
   const api = {
     // Abre (ou reaproveita) a aba da plataforma e carrega a URL informada; fica oculta até `mostrar`.
@@ -45,15 +46,13 @@ function createAbas({ window, criarView, aoMudar = () => {} }) {
     mostrar(platform) {
       const nome = String(platform ?? '').toUpperCase();
       if (!abas.has(nome)) return false;
-      // Mostrar a aba que já está visível não mexe em nada: reordenar de novo faria piscar.
+      // Mostrar a aba que já está visível não mexe em nada.
       if (visivel === nome) return true;
       visivel = nome;
+      // Só uma aba fica visível por vez, então a ordem das views não importa:
+      // não há reordenação (remover/adicionar a view fazia a janela piscar e,
+      // no teste real, deixava a interface sem repintar até o próximo clique).
       for (const aba of abas.values()) posicionar(aba);
-      // A última adicionada fica por cima: reordenar traz a escolhida para a frente.
-      const aba = abas.get(nome);
-      if (janelaViva() && !aba.view.webContents?.isDestroyed?.()) {
-        try { window.contentView.removeChildView(aba.view); window.contentView.addChildView(aba.view); } catch { /* view destruída no meio */ }
-      }
       notificar();
       return true;
     },
@@ -118,7 +117,7 @@ function createAbas({ window, criarView, aoMudar = () => {} }) {
     },
     fecharTodas() { for (const nome of [...abas.keys()]) api.fechar(nome); },
     // Encerramento: cancela o aviso pendente e fecha tudo sem tocar em objetos destruídos.
-    destruir() { clearTimeout(avisoPendente); avisoPendente = null; destruido = true; api.fecharTodas(); }
+    destruir() { clearTimeout(avisoPendente); avisoPendente = null; clearTimeout(repinturaPendente); repinturaPendente = null; destruido = true; api.fecharTodas(); }
   };
   return api;
 
@@ -136,9 +135,23 @@ function createAbas({ window, criarView, aoMudar = () => {} }) {
     const limites = mostrar ? area : NENHUMA_AREA;
     const chave = `${mostrar}|${limites.x}|${limites.y}|${limites.width}|${limites.height}`;
     if (aba.posicao === chave) return;
+    const mudouVisibilidade = String(aba.posicao ?? '').split('|')[0] !== String(mostrar);
     aba.posicao = chave;
     if (aba.view.webContents?.isDestroyed?.()) return;
     try { aba.view.setVisible?.(mostrar); aba.view.setBounds(limites); } catch { /* view destruída entre a checagem e o uso */ }
+    if (mudouVisibilidade) repintarJanela();
+  }
+
+  // Mostrar ou esconder uma view por cima da interface pode deixar o compositor
+  // da janela sem apresentar o próximo quadro da interface até uma interação.
+  // Um pedido explícito de repintura, agrupado, evita a tela "congelada".
+  function repintarJanela() {
+    if (repinturaPendente || destruido) return;
+    repinturaPendente = setTimeout(() => {
+      repinturaPendente = null;
+      if (!janelaViva() || window.webContents?.isDestroyed?.()) return;
+      try { window.webContents.invalidate?.(); } catch { /* janela fechando */ }
+    }, 50);
   }
 
   function endurecer(view, nome) {
