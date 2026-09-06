@@ -18,6 +18,17 @@
   align-items: start;
 }
 
+/* Na mesa larga, conversa e acompanhamento rolam cada um por si: ler a conversa
+   não move a aba do navegador, e rolar a aba não perde a última fala. A área
+   deixa de rolar e as duas colunas ocupam a altura toda. */
+@media (min-width: 68.01rem) {
+  .area[data-area="agora"] { overflow: hidden; padding-bottom: 0; }
+  .area[data-area="agora"] > #tela { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .area[data-area="agora"] .mesa { flex: 1; min-height: 0; align-items: stretch; }
+  .area[data-area="agora"] .conversa-coluna { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: var(--e2); scrollbar-gutter: stable; }
+  .area[data-area="agora"] .acompanhamento { position: static; min-height: 0; max-height: 100%; overflow-y: auto; overscroll-behavior: contain; margin-bottom: var(--e5); }
+}
+
 /* Navegador embutido: faixa de abas e a área onde a janela pinta a página. */
 .navegador-embutido .abas-faixa { display: flex; flex-wrap: wrap; gap: var(--e1); }
 .botao-aba {
