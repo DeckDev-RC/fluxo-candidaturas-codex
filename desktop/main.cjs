@@ -58,7 +58,9 @@ async function start() {
   protectWindow(mainWindow);
   abas = createAbas({
     window: mainWindow,
-    criarView: () => new WebContentsView({ webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } }),
+    // disableDialogs: alert/confirm/prompt da plataforma não viram janela nativa do
+    // sistema sobre o app (ex.: pedido de localização do InfoJobs); a página segue.
+    criarView: () => new WebContentsView({ webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, disableDialogs: true } }),
     aoMudar: (lista) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('fluxo:abas-mudou', lista); }
   });
   // Ao trocar a página da janela (diagnóstico, nova pasta), nenhuma aba pode ficar sobre ela.
@@ -69,6 +71,12 @@ async function start() {
   };
   ipcMain.handle('fluxo:diagnostics', async event => { trusted(event); return (await import('./diagnostics.mjs')).diagnose(); });
   ipcMain.handle('fluxo:workspace', event => { trusted(event); return { rootDir: workspaceRoot, running: Boolean(backendUrl), embutido: Boolean(cdpEndpoint) }; });
+  ipcMain.handle('fluxo:tema', (event, preferencia) => {
+    trusted(event);
+    nativeTheme.themeSource = { claro: 'light', escuro: 'dark' }[String(preferencia)] ?? 'system';
+    mainWindow?.setBackgroundColor(corDeFundo());
+    return nativeTheme.themeSource;
+  });
   ipcMain.handle('fluxo:abas-area', (event, retangulo) => { trusted(event); abas.definirArea(retangulo && typeof retangulo === 'object' ? retangulo : null); return true; });
   ipcMain.handle('fluxo:abas-mostrar', (event, platform) => { trusted(event); return abas.mostrar(String(platform ?? '')); });
   ipcMain.handle('fluxo:abas-esconder', (event) => { trusted(event); abas.esconder(); return true; });

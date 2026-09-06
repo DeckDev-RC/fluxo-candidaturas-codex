@@ -9,6 +9,8 @@ function createAbas({ window, criarView, aoMudar = () => {} }) {
   const abas = new Map();
   let area = null;
   let visivel = '';
+  let avisoPendente = null;
+  let ultimoAviso = '';
 
   const api = {
     // Abre (ou reaproveita) a aba da plataforma e carrega a URL informada; fica oculta até `mostrar`.
@@ -31,6 +33,8 @@ function createAbas({ window, criarView, aoMudar = () => {} }) {
     mostrar(platform) {
       const nome = String(platform ?? '').toUpperCase();
       if (!abas.has(nome)) return false;
+      // Mostrar a aba que já está visível não mexe em nada: reordenar de novo faria piscar.
+      if (visivel === nome) return true;
       visivel = nome;
       for (const aba of abas.values()) posicionar(aba);
       // A última adicionada fica por cima: reordenar traz a escolhida para a frente.
@@ -68,10 +72,15 @@ function createAbas({ window, criarView, aoMudar = () => {} }) {
   };
   return api;
 
+  // Só toca na view quando visibilidade ou limites mudaram de fato.
   function posicionar(aba) {
     const mostrar = Boolean(area) && visivel === aba.platform;
+    const limites = mostrar ? area : NENHUMA_AREA;
+    const chave = `${mostrar}|${limites.x}|${limites.y}|${limites.width}|${limites.height}`;
+    if (aba.posicao === chave) return;
+    aba.posicao = chave;
     aba.view.setVisible?.(mostrar);
-    aba.view.setBounds(mostrar ? area : NENHUMA_AREA);
+    aba.view.setBounds(limites);
   }
 
   function endurecer(view, nome) {
@@ -87,7 +96,19 @@ function createAbas({ window, criarView, aoMudar = () => {} }) {
   }
 
   function retrato(aba) { return { platform: aba.platform, title: aba.title, url: aba.url, loading: aba.loading, visible: visivel === aba.platform }; }
-  function notificar() { try { aoMudar(api.listar()); } catch { /* ouvinte não pode derrubar as abas */ } }
+
+  // Eventos de carregamento chegam em rajada; a interface recebe um retrato por vez, e só se mudou.
+  function notificar() {
+    if (avisoPendente) return;
+    avisoPendente = setTimeout(() => {
+      avisoPendente = null;
+      const lista = api.listar();
+      const chave = JSON.stringify(lista);
+      if (chave === ultimoAviso) return;
+      ultimoAviso = chave;
+      try { aoMudar(lista); } catch { /* ouvinte não pode derrubar as abas */ }
+    }, 80);
+  }
 }
 
 module.exports = { createAbas };

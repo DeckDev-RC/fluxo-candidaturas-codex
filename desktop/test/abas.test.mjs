@@ -63,7 +63,19 @@ test('uma aba por plataforma, só a visível ocupa a área e a interface é avis
   const lista = abas.listar();
   assert.deepEqual(lista.map((a) => [a.platform, a.visible]), [['LINKEDIN', false], ['GUPY', true]]);
   assert.equal(lista[0].url, 'https://www.linkedin.com/jobs/');
-  assert.ok(avisos.length >= 4, 'cada mudança avisa a interface');
+  // Avisos são agrupados (rajadas de carregamento) e só saem quando o retrato mudou.
+  await new Promise((r) => setTimeout(r, 120));
+  const antes = avisos.length;
+  assert.ok(antes >= 1 && antes <= 4, `avisos agrupados: ${antes}`);
+  assert.deepEqual(avisos.at(-1).map((a) => [a.platform, a.visible]), [['LINKEDIN', false], ['GUPY', true]]);
+  abas.mostrar('GUPY');
+  abas.definirArea(null);
+  await new Promise((r) => setTimeout(r, 120));
+  assert.equal(avisos.length, antes, 'repetir o mesmo estado não avisa de novo');
+  // Mostrar a aba já visível não reordena (reordenar faz a aba piscar).
+  const ordemAntes = [...janela.filhos];
+  abas.mostrar('GUPY');
+  assert.deepEqual(janela.filhos, ordemAntes);
 
   // Endurecimento: popup abre na própria aba e permissões são negadas.
   assert.deepEqual(views[0].webContents.popup({ url: 'https://www.linkedin.com/x' }), { action: 'deny' });

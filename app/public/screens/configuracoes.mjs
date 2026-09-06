@@ -10,6 +10,7 @@ import { executarPreparacao } from '../core/actions.mjs';
 import { notice } from '../ui/messages.mjs';
 import { openDialog } from '../ui/dialog.mjs';
 import { rerender } from '../core/router.mjs';
+import { getTheme, setTheme, TEMAS } from '../core/tema.mjs';
 import { codexPanel } from './partes/conta-codex.mjs';
 import { plataformasPanel } from './partes/plataformas-config.mjs';
 
@@ -21,6 +22,7 @@ export function configuracoesScreen() {
     plataformasPanel(),
     limitesPanel(),
     preparacaoPanel(),
+    aparenciaPanel(),
     dadosPanel(),
     privacidadePanel()
   ] });
@@ -141,6 +143,24 @@ function dadosPanel() {
         button('Exportar pacote para suporte', { variant: 'secundario', onClick: () => exportarPacote() }),
         button('Resolver divergência', { variant: 'perigo', onClick: () => confirmarReconciliacao() })
       ])
+    ]
+  });
+}
+
+// Aparência: a pessoa escolhe; o app não muda de cor sozinho por causa do sistema
+// a menos que ela peça para seguir o sistema.
+function aparenciaPanel() {
+  const atual = getTheme();
+  return panel({
+    kicker: 'aparência',
+    title: 'Tema da janela',
+    children: [
+      el('p', { class: 'leitura secundario', text: 'Escolha como o Fluxo aparece neste computador. "Seguir o sistema" acompanha o modo claro/escuro do Windows, inclusive quando ele muda no meio do dia.' }),
+      el('div', { class: 'linha-acoes', role: 'radiogroup', 'aria-label': 'Tema' }, TEMAS.map((tema) => button(tema.rotulo, {
+        variant: tema.id === atual ? 'primario' : 'secundario',
+        role: 'radio', 'aria-checked': String(tema.id === atual),
+        onClick: () => { setTheme(tema.id); rerender(); }
+      })))
     ]
   });
 }

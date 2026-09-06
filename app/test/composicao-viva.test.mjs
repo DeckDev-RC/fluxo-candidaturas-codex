@@ -55,8 +55,11 @@ test('nenhuma exportação de produção existe apenas para o teste chamá-la', 
 
 test('nenhum módulo da interface fica fora do grafo carregado pela página', async () => {
   const modulos = await listar(PUBLICO, /\.(mjs|js)$/);
-  const alcancados = new Set(['app.js']);
-  const pendentes = ['app.js'];
+  // Raízes: o módulo principal e os scripts comuns que a página carrega no <head>.
+  const pagina = await readFile(new URL('index.html', PUBLICO), 'utf8');
+  const raizes = ['app.js', ...[...pagina.matchAll(/<script src="\/([\w./-]+\.js)"/g)].map(([, nome]) => nome)];
+  const alcancados = new Set(raizes);
+  const pendentes = [...raizes];
   while (pendentes.length) {
     const atual = pendentes.pop();
     const conteudo = await readFile(new URL(atual, PUBLICO), 'utf8');

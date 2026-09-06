@@ -9,6 +9,7 @@ import { onTranscript, startTranscript } from './core/conversa.mjs';
 import { connectAiStatus, refreshAiOnFocus } from './core/ia-status.mjs';
 import { agentDriving, connectConversation, disconnectConversation } from './core/conversa-ia.mjs';
 import { detectEmbeddedBrowser } from './screens/partes/navegador-embutido.mjs';
+import { startTheme } from './core/tema.mjs';
 import { notice, renderNotices } from './ui/messages.mjs';
 import { agoraScreen } from './screens/agora.mjs';
 import { oportunidadesScreen } from './screens/oportunidades.mjs';
@@ -42,6 +43,7 @@ document.querySelector('#atualizar').addEventListener('click', async (evento) =>
 document.querySelector('#editar-objetivo').addEventListener('click', () => abrirMudancaDeObjetivo({ aoSalvar: pintarCabecalho }));
 bindConversationInput(document.querySelector('#conversa'));
 ligarRecolherNavegacao();
+startTheme();
 
 // A navegação lateral recolhe para só ícones (botão ou Ctrl+B) e a escolha
 // fica guardada neste computador. Recolhida, cada item mostra o nome no título.
