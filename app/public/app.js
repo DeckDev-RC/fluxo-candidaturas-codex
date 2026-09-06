@@ -41,6 +41,31 @@ document.querySelector('#atualizar').addEventListener('click', async (evento) =>
 
 document.querySelector('#editar-objetivo').addEventListener('click', () => abrirMudancaDeObjetivo({ aoSalvar: pintarCabecalho }));
 bindConversationInput(document.querySelector('#conversa'));
+ligarRecolherNavegacao();
+
+// A navegação lateral recolhe para só ícones (botão ou Ctrl+B) e a escolha
+// fica guardada neste computador. Recolhida, cada item mostra o nome no título.
+function ligarRecolherNavegacao() {
+  const aplicacao = document.querySelector('.aplicacao');
+  const botao = document.querySelector('#alternar-navegacao');
+  const CHAVE = 'fluxo-navegacao';
+  const aplicar = (recolhida) => {
+    aplicacao.dataset.navegacao = recolhida ? 'recolhida' : 'aberta';
+    botao.setAttribute('aria-expanded', String(!recolhida));
+    botao.setAttribute('aria-label', recolhida ? 'Expandir menu' : 'Recolher menu');
+    botao.title = `${recolhida ? 'Expandir' : 'Recolher'} menu (Ctrl+B)`;
+    for (const link of document.querySelectorAll('.navegacao a')) link.title = recolhida ? link.getAttribute('aria-label') ?? '' : '';
+    try { window.localStorage.setItem(CHAVE, recolhida ? 'recolhida' : 'aberta'); } catch {}
+  };
+  const alternar = () => aplicar(aplicacao.dataset.navegacao !== 'recolhida');
+  botao.addEventListener('click', alternar);
+  window.addEventListener('keydown', (evento) => {
+    if ((evento.ctrlKey || evento.metaKey) && !evento.altKey && evento.key.toLowerCase() === 'b') { evento.preventDefault(); alternar(); }
+  });
+  let salva = 'aberta';
+  try { salva = window.localStorage.getItem(CHAVE) ?? 'aberta'; } catch {}
+  aplicar(salva === 'recolhida');
+}
 
 subscribe(() => { pintarCabecalho(); agendarRepintura(); ligarConversaDaIa(); });
 onTranscript(agendarRepintura);
