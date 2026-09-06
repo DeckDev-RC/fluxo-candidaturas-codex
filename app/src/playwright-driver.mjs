@@ -37,6 +37,10 @@ export function createPlaywrightDriver({ rootDir, headless = false, browserType,
         browser = await chromium.connectOverCDP(host.cdpEndpoint);
         context = browser.contexts()[0] ?? await browser.newContext();
         browser.once('disconnected', () => { context = null; browser = null; page = null; abas.clear(); ativa = ''; starting = null; });
+        // Ao conectar, o Playwright impõe esquema de cores claro a toda página que
+        // enxerga, inclusive a janela do app: devolvemos cada página ao sistema.
+        for (const existente of context.pages()) void semEmulacao(existente);
+        context.on('page', (nova) => { void semEmulacao(nova); });
         return context;
       }
       await mkdir(join(rootDir, 'estado', 'browser-profile'), { recursive: true });
@@ -175,6 +179,10 @@ export function createPlaywrightDriver({ rootDir, headless = false, browserType,
 }
 
 function error(code, message) { return Object.assign(new Error(message), { code }); }
+
+async function semEmulacao(page) {
+  try { await page.emulateMedia({ colorScheme: null, reducedMotion: null, forcedColors: null }); } catch { /* página fechada no meio */ }
+}
 
 // Runs inside the page. Desafios são detectados pela estrutura (widgets de CAPTCHA,
 // campo de código de uso único, banner de consentimento), nunca pelo texto: em um

@@ -17,6 +17,19 @@ const { pathToFileURL } = require('node:url');
 const { readFile, writeFile, mkdir } = require('node:fs/promises');
 
 if (process.env.FLUXO_DESKTOP_USER_DATA) app.setPath('userData', resolve(process.env.FLUXO_DESKTOP_USER_DATA));
+
+// Erro inesperado no processo principal vai para o log em userData, não para uma
+// caixa nativa que derruba o app. O log é o que a pessoa envia no suporte.
+const { appendFileSync, mkdirSync } = require('node:fs');
+function registrarErro(origem, erro) {
+  try {
+    const pasta = join(app.getPath('userData'), 'logs');
+    mkdirSync(pasta, { recursive: true });
+    appendFileSync(join(pasta, 'principal.log'), `${new Date().toISOString()} ${origem}: ${erro?.stack ?? erro}\n`);
+  } catch { /* sem onde registrar */ }
+}
+process.on('uncaughtException', (erro) => registrarErro('uncaughtException', erro));
+process.on('unhandledRejection', (erro) => registrarErro('unhandledRejection', erro));
 let mainWindow; let diagnosticWindow; let supervisor; let workspaceRoot; let backendUrl; let quitting = false; let changingWorkspace = false;
 let abas; let cdpEndpoint = '';
 const preload = join(__dirname, 'preload.cjs');
@@ -46,15 +59,17 @@ async function start() {
       worker.on('message', (mensagem) => { if (mensagem?.type === 'abas') void atenderWorker(worker, mensagem); });
       return worker;
     },
-    onExit: () => { abas?.fecharTodas(); if (!quitting && mainWindow) { backendUrl = null; void mainWindow.loadURL(diagnosticUrl); } }
+    onExit: () => { abas?.fecharTodas(); if (!quitting && mainWindow && !mainWindow.isDestroyed()) { backendUrl = null; mainWindow.loadURL(diagnosticUrl).catch(() => {}); } }
   });
 
   // Mínimo baixo o suficiente para 1024×768 com zoom de texto: a interface tem
   // composição de coluna única abaixo de 48rem (U8-03).
   mainWindow = new BrowserWindow({ width: 1280, height: 860, minWidth: 720, minHeight: 560, title: 'Fluxo', show: false, ...janelaBase() });
   mainWindow.once('ready-to-show', () => mainWindow.show());
-  nativeTheme.on('updated', () => { mainWindow?.setBackgroundColor(corDeFundo()); diagnosticWindow?.setBackgroundColor(corDeFundo()); });
-  mainWindow.on('closed', () => { mainWindow = null; });
+  nativeTheme.on('updated', () => { for (const janela of [mainWindow, diagnosticWindow]) if (janela && !janela.isDestroyed()) janela.setBackgroundColor(corDeFundo()); });
+  // As abas fecham com a janela, enquanto ela ainda existe; depois disso nada toca nela.
+  mainWindow.on('close', () => { abas?.destruir(); });
+  mainWindow.on('closed', () => { mainWindow = null; abas = null; });
   protectWindow(mainWindow);
   abas = createAbas({
     window: mainWindow,
@@ -64,19 +79,22 @@ async function start() {
     aoMudar: (lista) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('fluxo:abas-mudou', lista); }
   });
   // Ao trocar a página da janela (diagnóstico, nova pasta), nenhuma aba pode ficar sobre ela.
-  mainWindow.webContents.on('did-start-navigation', (event) => { if (event.isMainFrame) abas.definirArea(null); });
+  mainWindow.webContents.on('did-start-navigation', (event) => { if (event.isMainFrame) abas?.definirArea(null); });
   const trusted = event => {
     const url = event.senderFrame?.url || '';
     if (event.senderFrame !== event.sender.mainFrame || !(url === diagnosticUrl || backendUrl && new URL(url).origin === backendUrl)) throw new Error('Origem não autorizada.');
   };
   ipcMain.handle('fluxo:diagnostics', async event => { trusted(event); return (await import('./diagnostics.mjs')).diagnose(); });
   ipcMain.handle('fluxo:workspace', event => { trusted(event); return { rootDir: workspaceRoot, running: Boolean(backendUrl), embutido: Boolean(cdpEndpoint) }; });
+  // O tema efetivo vem do processo principal: o renderer não pode confiar em
+  // prefers-color-scheme, que o driver do navegador (CDP) altera ao se conectar.
   ipcMain.handle('fluxo:tema', (event, preferencia) => {
     trusted(event);
     nativeTheme.themeSource = { claro: 'light', escuro: 'dark' }[String(preferencia)] ?? 'system';
-    mainWindow?.setBackgroundColor(corDeFundo());
-    return nativeTheme.themeSource;
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setBackgroundColor(corDeFundo());
+    return { themeSource: nativeTheme.themeSource, escuro: nativeTheme.shouldUseDarkColors };
   });
+  nativeTheme.on('updated', () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('fluxo:tema-mudou', { escuro: nativeTheme.shouldUseDarkColors }); });
   ipcMain.handle('fluxo:abas-area', (event, retangulo) => { trusted(event); abas.definirArea(retangulo && typeof retangulo === 'object' ? retangulo : null); return true; });
   ipcMain.handle('fluxo:abas-mostrar', (event, platform) => { trusted(event); return abas.mostrar(String(platform ?? '')); });
   ipcMain.handle('fluxo:abas-esconder', (event) => { trusted(event); abas.esconder(); return true; });
@@ -181,7 +199,7 @@ app.on('window-all-closed', () => app.quit());
 app.on('before-quit', event => {
   if (quitting) return;
   event.preventDefault(); quitting = true;
-  abas?.fecharTodas();
+  abas?.destruir();
   browserInstaller?.kill();
   Promise.resolve(supervisor?.stop()).finally(() => app.quit());
 });

@@ -19,14 +19,15 @@ function paginaFalsa(url) {
     async goto(destino) { pagina._url = destino; pagina.navegacoes.push(destino); },
     async waitForLoadState() {},
     async bringToFront() { pagina.trazida = true; },
-    async evaluate() { return { url: pagina._url, title: 'Página', challenge: null, loginPending: /login/.test(pagina._url) }; }
+    async evaluate() { return { url: pagina._url, title: 'Página', challenge: null, loginPending: /login/.test(pagina._url) }; },
+    async emulateMedia(opcoes) { pagina.emulacao = opcoes; }
   };
   return pagina;
 }
 
 function navegadorFalso() {
   const paginas = [];
-  const contexto = { pages: () => paginas, async newPage() { const p = paginaFalsa('about:blank'); paginas.push(p); return p; } };
+  const contexto = { pages: () => paginas, on() {}, async newPage() { const p = paginaFalsa('about:blank'); paginas.push(p); return p; } };
   const browser = { fechado: false, contexts: () => [contexto], once() {}, async close() { browser.fechado = true; } };
   const chromium = {
     conexoes: [],
@@ -50,8 +51,12 @@ test('abre a aba pela janela, encontra a página pela URL marcadora e mostra a a
   };
   const driver = createPlaywrightDriver({ rootDir, browserType: chromium, host });
 
+  // A janela do app já existe como página quando o driver conecta: ela não pode
+  // herdar o esquema de cores claro que o Playwright impõe ao conectar.
+  paginas.push(paginaFalsa('http://127.0.0.1:4173/#agora'));
   const aberta = await driver.openPlatform('LINKEDIN', 'https://www.linkedin.com/login');
   assert.deepEqual(chromium.conexoes, ['http://127.0.0.1:9333']);
+  assert.deepEqual(paginas[0].emulacao, { colorScheme: null, reducedMotion: null, forcedColors: null }, 'a página da interface volta ao tema do sistema');
   assert.equal(chromium.lancamentos, 0, 'nenhum Chromium próprio');
   assert.deepEqual(pedidos, [['abrir', 'LINKEDIN', 'http://127.0.0.1:4173/aba/LINKEDIN'], ['mostrar', 'LINKEDIN']]);
   assert.equal(aberta.loginPending, true);

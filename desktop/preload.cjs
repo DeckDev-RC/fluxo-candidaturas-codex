@@ -6,6 +6,11 @@ contextBridge.exposeInMainWorld('fluxoDesktop', Object.freeze({
   workspace: () => ipcRenderer.invoke('fluxo:workspace'),
   // Tema escolhido na interface: a janela nativa acompanha (fundo, controles).
   tema: (preferencia) => ipcRenderer.invoke('fluxo:tema', preferencia),
+  aoMudarTema: (callback) => {
+    const ouvinte = (_evento, valor) => callback(valor);
+    ipcRenderer.on('fluxo:tema-mudou', ouvinte);
+    return () => ipcRenderer.removeListener('fluxo:tema-mudou', ouvinte);
+  },
   // Abas das plataformas embutidas na janela: a interface diz onde e qual mostrar.
   abas: Object.freeze({
     area: (retangulo) => ipcRenderer.invoke('fluxo:abas-area', retangulo),
