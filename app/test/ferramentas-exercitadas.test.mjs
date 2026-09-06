@@ -52,7 +52,8 @@ test('toda ferramenta registrada é exercitada em uma jornada real, inclusive a 
     assert.match(quadro.abas[0].url, /^https:\/\/www\.infojobs\.com\.br\//);
     assert.equal((await chamar('fluxo_browser_status', {}, run.id)).tabs.length, 1);
 
-    // Busca, aderência e preparação.
+    // Busca, aderência e preparação. Só a campanha limita a busca: plataforma fora dela é recusada.
+    await assert.rejects(chamar('fluxo_discover', { searchUrl: 'https://quadro.test/jobs', platform: 'GUPY' }, run.id), { code: 'platform_disabled' });
     const busca = await chamar('fluxo_discover', { searchUrl: 'https://quadro.test/jobs', platform: 'INFOJOBS' }, run.id);
     assert.equal(busca.created.length, 1);
     const lista = await chamar('fluxo_shortlist', { limit: 5 }, run.id);

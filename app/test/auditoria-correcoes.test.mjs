@@ -67,7 +67,7 @@ test('F2-05 — ferramenta de domínio não fura o limite da campanha', async ()
     rootDir: '',
     runService,
     budget,
-    readState: async () => ({ installation: { ready: true }, queue: { items: [] } }),
+    readState: async () => ({ installation: { ready: true }, campaign: { platforms: [{ name: 'INFOJOBS', enabled: true }] }, queue: { items: [] } }),
     discoveryService: { async discover() { buscas += 1; return { created: [], failures: [] }; } },
     memoryService: { async safeSummary() { return { facts: {} }; } },
     followUpMonitor: { async check() { return { newEvents: [] }; } }

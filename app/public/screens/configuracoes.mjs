@@ -110,8 +110,9 @@ function preparacaoPanel() {
         ? el('ul', { class: 'lista' }, pendencias.map((item) => staticListItem({
           title: item.item ?? item.name ?? 'Dependência',
           support: item.detail ?? item.message ?? 'sem detalhe',
-          detail: item.action ?? 'Resolva e verifique novamente.',
-          right: [badge(item.status ?? 'pendente', 'atencao')]
+          // Só o que é crítico pede ação sua; o resto a IA resolve na conversa.
+          detail: item.fix || item.action || (item.level === 'critical' ? 'Resolva e verifique novamente.' : 'A IA cuida disto durante a conversa.'),
+          right: [badge(item.level === 'critical' ? 'bloqueia' : item.level === 'warning' ? 'atenção' : 'informação', item.level === 'critical' ? 'erro' : item.level === 'warning' ? 'atencao' : 'informacao')]
         })))
         : el('p', { class: 'apoio', text: 'Nenhuma pendência registrada na última verificação.' }),
       el('div', { class: 'linha-acoes' }, [

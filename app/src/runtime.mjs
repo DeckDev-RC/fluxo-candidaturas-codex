@@ -52,6 +52,7 @@ import { createSchedulerService } from './scheduler-service.mjs';
 import { createSchedulerRunner } from './scheduler-runner.mjs';
 import { createNotificationService } from './notification-service.mjs';
 import { createRuntimeHealth } from './runtime-health.mjs';
+import { createReadinessService } from './readiness-service.mjs';
 import { createSessionStore } from './session-store.mjs';
 import { createCampaignBudget } from './campaign-budget.mjs';
 import { createCampaignService } from './campaign-service.mjs';
@@ -181,9 +182,14 @@ export async function createLocalRuntime({ rootDir, browserDriver, headless, sch
     tabs: () => browserAdapter.tabs(),
     snapshot: () => retratoParaConversa({ rootDir, persistence, memoryService, approvalService, runService, runtimeHealth, browserAdapter })
   });
+  // A preparação é do próprio app e roda na partida: installation.ready reflete o
+  // que importa para a IA operar (navegador e plataformas), sem clique da pessoa.
+  const readinessService = createReadinessService({ rootDir, memoryService, campaignService, runtimeHealth, browserTabs: () => browserAdapter.tabs() });
+  await readinessService.run({ probeAi: false }).catch(() => {});
 
   return {
     conversationService,
+    readinessService,
     runtimeConfig,
     persistence,
     queueService,

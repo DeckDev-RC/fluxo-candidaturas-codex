@@ -132,6 +132,12 @@ plataforma (`src/platform-cards.mjs`) e a esperar a lista renderizar.
 - [x] Leitor de cartões por plataforma, com empresa "não informada" quando o cartão não a traz.
 - [x] Falso positivo de "biometria" removido (texto legal do LinkedIn acionava o desafio).
 - [x] Aderência gravada na vaga (`queueService.recordFit`): nota, prioridade A/B/C e explicação, nos dois caminhos (IA e orquestrador).
+- [x] Preflight herdado substituído pela preparação do app (`src/readiness-service.mjs`),
+      feita para o fluxo com IA: só navegador ausente ou nenhuma plataforma com meta
+      bloqueiam; perfil, currículo, IA e login viram avisos que a IA resolve na
+      conversa; a meta total passa a ser a soma das plataformas. Roda na partida
+      (sem consultar o app-server) e em "Verificar agora". `fluxo_discover` deixa de
+      depender do preflight e só recusa plataforma fora da campanha.
 - [ ] Aposentar o orquestrador programado como condutor (deixar só leitura offline): decisão adiada até a aceitação real com contas; hoje ele é o caminho de reserva sem IA.
 
 ## Fase 5 — Entrega

@@ -12,6 +12,7 @@ const MENSAGENS = {
   checkpoint_mismatch: 'A tela aberta pertence a outra vaga ou etapa. Abra novamente a vaga correta.',
   unsupported_target_url: 'Só é possível abrir endereços da própria plataforma.',
   preflight_blocked: 'A preparação do ambiente precisa ser concluída antes desta ação.',
+  platform_disabled: 'Esta plataforma não está habilitada na campanha. Ajuste em plataformas e metas.',
   agent_unavailable: 'A automação de IA não está disponível agora. Você continua podendo revisar seus dados.',
   runtime_probe_timeout: 'A automação de IA não respondeu no prazo.',
   campaign_platforms_required: 'Habilite ao menos uma plataforma antes de buscar.',
