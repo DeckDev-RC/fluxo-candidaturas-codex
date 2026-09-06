@@ -85,7 +85,7 @@ export async function createLocalRuntime({ rootDir, browserDriver, headless, sch
   const intakeService = createIntakeService({ rootDir, memoryService });
   const fixtureDiscoveryAdapters = createFixtureDiscoveryAdapters();
   const discoveryService = createDiscoveryService({ rootDir, persistence, queueService, adapters: platformAdapters, fixtureAdapters: fixtureDiscoveryAdapters, mutationLock: false });
-  const fitService = createFitService();
+  const fitService = createFitService({ queueService });
   const exceptionService = createExceptionService({ rootDir, persistence, runService, mutationLock: false });
   const followUpMonitor = createFollowUpMonitor({ rootDir, persistence, adapters: platformAdapters });
   const auditService = createAuditService({ rootDir });

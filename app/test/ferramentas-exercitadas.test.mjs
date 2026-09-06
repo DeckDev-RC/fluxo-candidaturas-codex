@@ -57,6 +57,11 @@ test('toda ferramenta registrada é exercitada em uma jornada real, inclusive a 
     assert.equal(busca.created.length, 1);
     const lista = await chamar('fluxo_shortlist', { limit: 5 }, run.id);
     assert.equal(lista.items.length, 1);
+    // A comparação fica gravada na vaga: nota, prioridade e explicação.
+    const [avaliada] = (await runtime.queueService.listQueue()).items;
+    assert.equal(avaliada.fitScore, lista.items[0].fit.score);
+    assert.equal(avaliada.priority, lista.items[0].fit.classification === 'forte' ? 'A' : 'B');
+    assert.match(avaliada.fitExplanation, /^Aderência/);
     const preparada = await chamar('fluxo_prepare', { itemId: lista.items[0].id }, run.id);
     assert.ok(preparada.run.id);
     await chamar('fluxo_fill', { runId: preparada.run.id, fieldMap: { name: 'name' } }, run.id);

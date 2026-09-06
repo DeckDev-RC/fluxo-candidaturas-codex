@@ -79,11 +79,15 @@ export function createDomainTools({ rootDir, readState, discoveryService, fitSer
       }
       return discoveryService.discover({ searchUrl, platforms: [plataforma] });
     }],
-    ['fluxo_shortlist', 'Comparar vagas com os fatos confirmados; limit define quantas retornar.', { limit: opcional('number') }, async (input) => fitService.shortlist({
-      opportunities: (await readState()).queue.items,
-      facts: (await memoryService.safeSummary()).facts,
-      limit: Number(input.limit ?? 10)
-    })],
+    ['fluxo_shortlist', 'Comparar vagas com os fatos confirmados; limit define quantas retornar. A nota fica gravada em cada vaga.', { limit: opcional('number') }, async (input) => {
+      const resultado = fitService.shortlist({
+        opportunities: (await readState()).queue.items,
+        facts: (await memoryService.safeSummary()).facts,
+        limit: Number(input.limit ?? 10)
+      });
+      await fitService.record?.(resultado);
+      return resultado;
+    }],
     ['fluxo_prepare', 'Reservar vaga e abrir formulário; retorna referências observadas.', { itemId: string }, async (input, parentRunId) => applicationFlow.prepareNext({ itemId: input.itemId, parentRunId })],
     ['fluxo_fill', 'Preencher referências do formulário usando somente chaves do perfil confirmado.', { runId: string, fieldMap: { type: 'object', additionalProperties: string } }, async (input, parentRunId) => {
       const workflow = owned(input.runId, parentRunId);

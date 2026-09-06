@@ -2,6 +2,16 @@ import { mkdir } from 'node:fs/promises';
 import { dirname, join, resolve, relative } from 'node:path';
 import { createHash } from 'node:crypto';
 import { platformOfUrl } from './platform-search.mjs';
+import { CARTOES_DE_VAGA, EMPRESA_DESCONHECIDA, lerCartoesDeVaga } from './platform-cards.mjs';
+
+// O leitor de cartões entra na página junto com o catálogo, como texto.
+// eslint-disable-next-line no-new-func
+const OBSERVAR_PAGINA = new Function('args', `const [catalogo, empresaDesconhecida] = args; const lerCartoesDeVaga = ${lerCartoesDeVaga.toString()}; return (${observePage.toString()})(catalogo, empresaDesconhecida, lerCartoesDeVaga);`);
+// Páginas de busca renderizam a lista depois do HTML: esperar a rede assentar
+// evita fotografar a página antes das vagas aparecerem.
+const ESPERA_RENDERIZACAO_MS = 8_000;
+async function assentar(page) { await page.waitForLoadState('networkidle', { timeout: ESPERA_RENDERIZACAO_MS }).catch(() => {}); }
+const ARGUMENTOS_DA_PAGINA = [CARTOES_DE_VAGA, EMPRESA_DESCONHECIDA];
 
 // The driver owns the browser process; importing it or reading local state never launches Chromium.
 // Uma aba por plataforma: a URL decide em qual aba a navegação acontece, e a
@@ -63,12 +73,14 @@ export function createPlaywrightDriver({ rootDir, headless = false, browserType,
       const alvo = plataforma ? await pageFor(plataforma) : await getPage();
       ativa = plataforma;
       await alvo.goto(String(url), { waitUntil: 'domcontentloaded' });
+      await assentar(alvo);
     },
     // Abre a plataforma na própria aba, traz para a frente e diz se a pessoa precisa entrar.
     async openPlatform(platform, url) {
       const alvo = await pageFor(platform);
       ativa = String(platform).toUpperCase();
       await alvo.goto(String(url), { waitUntil: 'domcontentloaded' });
+      await assentar(alvo);
       await alvo.bringToFront().catch(() => {});
       return { platform: ativa, ...(await alvo.evaluate(observeLogin)) };
     },
@@ -85,7 +97,7 @@ export function createPlaywrightDriver({ rootDir, headless = false, browserType,
       }
       return lista;
     },
-    async snapshot() { const current = await getPage(); const observed = await current.evaluate(observePage); const formHash = createHash('sha256').update(JSON.stringify(observed.formValues)).digest('hex'); return { ...observed, formHash, observedAt: new Date().toISOString() }; },
+    async snapshot() { const current = await getPage(); const observed = await current.evaluate(OBSERVAR_PAGINA, ARGUMENTOS_DA_PAGINA); const formHash = createHash('sha256').update(JSON.stringify(observed.formValues)).digest('hex'); return { ...observed, formHash, observedAt: new Date().toISOString() }; },
     async state() { return this.snapshot(); },
     async fill(ref, value) { const field = await locator(ref); if (await field.getAttribute('type') === 'file') throw error('browser_upload_required', 'Use a operação explícita de anexo.'); await field.fill(String(value)); },
     async click(ref) { await (await locator(ref)).click(); },
@@ -122,16 +134,17 @@ function error(code, message) { return Object.assign(new Error(message), { code 
 // Runs inside the page: só o necessário para saber se a pessoa precisa entrar.
 function observeLogin() {
   const text = document.body?.innerText ?? '';
-  const challenge = /captcha/i.test(text) ? 'captcha' : /\bmfa\b|two.factor|multifator|c[oó]digo de verifica/i.test(text) ? 'mfa' : /biometr/i.test(text) ? 'biometric' : null;
+  const challenge = /captcha/i.test(text) ? 'captcha' : /\bmfa\b|two.factor|multifator|c[oó]digo de verifica/i.test(text) ? 'mfa' : /(verifica|autentica|reconhecimento)\w*\s+(facial|biom\w+)|biometr\w+\s+(verification|authentication|check)/i.test(text) ? 'biometric' : null;
   const senha = Boolean(document.querySelector('input[type="password"]'));
   const urlDeLogin = /login|signin|sign-in|entrar|auth|autentica|checkpoint/i.test(location.pathname + location.search);
   return { url: location.href, title: document.title, challenge, loginPending: senha || urlDeLogin };
 }
 
 // Runs inside the observed page. Only rendered facts and explicit structured job metadata are returned.
-function observePage() {
+// `lerCartoes` chega como argumento porque a função é serializada para a página.
+function observePage(catalogo = {}, empresaDesconhecida = '', lerCartoes = () => []) {
   const text = document.body?.innerText ?? '';
-  const challenge = /captcha/i.test(text) ? 'captcha' : /\bmfa\b|two.factor|multifator/i.test(text) ? 'mfa' : /biometr/i.test(text) ? 'biometric' : null;
+  const challenge = /captcha/i.test(text) ? 'captcha' : /\bmfa\b|two.factor|multifator/i.test(text) ? 'mfa' : /(verifica|autentica|reconhecimento)\w*\s+(facial|biom\w+)|biometr\w+\s+(verification|authentication|check)/i.test(text) ? 'biometric' : null;
   const fields = []; const fieldDetails = []; const formValues = {};
   for (const [index, element] of [...document.querySelectorAll('input:not([type="hidden"]),textarea,select,button')].entries()) {
     const ref = element.getAttribute('data-fluxo-ref') || `field-${index}`;
@@ -152,6 +165,8 @@ function observePage() {
     if (value['@graph']) visit(value['@graph']);
   }
   for (const script of document.querySelectorAll('script[type="application/ld+json"]')) { try { visit(JSON.parse(script.textContent)); } catch { /* Invalid optional website metadata is ignored; unsupported pages still fail in discovery. */ } }
+  // Sem JSON-LD, os cartões da plataforma são a fonte das vagas.
+  if (!jobs.length) { try { jobs.push(...lerCartoes(catalogo, empresaDesconhecida)); } catch { /* página sem cartões reconhecidos segue como não suportada */ } }
   const confirmation = document.querySelector('[data-confirmation], [role="status"], .application-confirmation');
   const jobId = confirmation?.getAttribute('data-job-id') || document.body?.getAttribute('data-job-id') || '';
   const jobUrl = confirmation?.getAttribute('data-job-url') || document.body?.getAttribute('data-job-url') || '';

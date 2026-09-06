@@ -1,7 +1,14 @@
 import { applyCampaignFilters } from './campaign-filters.mjs';
 
-export function createFitService({ recordDecision = async () => {}, now = () => new Date() } = {}) {
+export function createFitService({ recordDecision = async () => {}, queueService = null, now = () => new Date() } = {}) {
   return {
+    // Grava na fila a nota e a classificação de tudo o que foi comparado, para a
+    // ordenação e a tela refletirem a comparação real (não só o retorno da chamada).
+    async record(result = {}) {
+      if (!queueService?.recordFit) return { updated: 0 };
+      const avaliadas = [...(result.items ?? []), ...(result.excluded ?? [])].map((item) => item.fit).filter(Boolean);
+      return queueService.recordFit(avaliadas);
+    },
     assess({ opportunity = {}, facts = {}, filters = {} } = {}) {
       const required = list(opportunity.requirements);
       const eliminators = list(opportunity.eliminators);
