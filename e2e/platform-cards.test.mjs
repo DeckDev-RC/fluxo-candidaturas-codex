@@ -41,7 +41,11 @@ test('desafios são detectados pela estrutura da página, não pelo texto das va
     '/texto': '<h1>Vagas</h1><p>Sistema de controle de acesso por reconhecimento facial e captcha interno. Código de verificação de qualidade.</p>',
     '/captcha': '<h1>Entrar</h1><div class="g-recaptcha" style="width:300px;height:78px">captcha</div>',
     '/codigo': '<h1>Confirme</h1><input autocomplete="one-time-code" inputmode="numeric" maxlength="6">',
-    '/cookies': '<h1>Vagas</h1><div id="cookie-banner" role="dialog" style="position:fixed;bottom:0;width:100%;height:120px;background:#eee"><p>Usamos cookies.</p><button>Aceitar todos</button><button>Saiba mais</button></div>'
+    '/cookies': '<h1>Vagas</h1><div id="cookie-banner" role="dialog" style="position:fixed;bottom:0;width:100%;height:120px;background:#eee"><p>Usamos cookies.</p><button>Aceitar todos</button><button>Saiba mais</button></div>',
+    // Página de visitante como a do LinkedIn: sem campo de senha, URL neutra, mas "Sign in" no topo.
+    '/visitante': '<nav style="height:60px"><a href="/">Logo</a><a href="https://x.test/signup">Join now</a><a href="https://x.test/login?x=1">Sign in</a></nav><h1>Cadastre-se agora e descubra vagas</h1>',
+    // Página de quem já entrou: o único "Entrar" está no rodapé, longe do topo.
+    '/entrou': '<nav style="height:60px"><a href="/">Logo</a><a href="/perfil">Minha área</a></nav><div style="height:1200px"></div><footer><a href="/login">Entrar</a></footer>'
   };
   const servidor = createServer((request, response) => { response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); response.end(`<!doctype html><title>Teste</title>${paginas[request.url] ?? ''}`); });
   await new Promise((resolve) => servidor.listen(0, '127.0.0.1', resolve));
@@ -60,6 +64,12 @@ test('desafios são detectados pela estrutura da página, não pelo texto das va
   const estado = await driver.loginState();
   assert.equal(estado.challenge, null);
   assert.equal(estado.consentPending, true, 'banner de consentimento é da pessoa, não desafio nem erro');
+  // Achado do teste real: a página de visitante do LinkedIn não tem senha nem URL de
+  // login, e o driver dizia "você já está conectado".
+  await driver.goto(`${base}/visitante`);
+  assert.equal((await driver.loginState()).loginPending, true, 'botão de entrar/cadastrar no topo é login pendente');
+  await driver.goto(`${base}/entrou`);
+  assert.equal((await driver.loginState()).loginPending, false, 'link de entrar no rodapé não conta');
 });
 
 test('o catálogo de cartões é válido: expressões compilam e seletores são aceitos pelo navegador', { timeout: 30_000 }, async () => {
