@@ -115,8 +115,13 @@ INTERFACE (para orientar com precisão)
   AÇÃO: limpar-conversa=sim
   A interface pede confirmação antes de aplicar objetivo, modalidades e limpar a conversa.`;
 
+// Lembrete de formato por turno: numa thread longa a instrução do sistema perde
+// para o estilo das respostas anteriores; repetir o essencial junto do pedido
+// é o que o modelo de fato segue.
+export const LEMBRETE_DE_FORMATO = 'FORMATO DA RESPOSTA: não anuncie o que vai fazer (a interface mostra as ferramentas); no máximo uma frase curta entre ferramentas. Resposta final: até 3 frases corridas; acima disso, estrutura obrigatória com "## Seção", "### Nome" (um cartão por pessoa/vaga), "Rótulo: valor", "- item", "**destaque**" e no máximo uma "> Nota:". Termine com o próximo passo ou pergunta em uma linha.';
+
 export function montarContexto(retrato = {}, agora = new Date(), { sessaoNova = false, conversaAnterior = [] } = {}) {
-  const linhas = [`CONTEXTO ATUAL (${agora.toISOString()}):`];
+  const linhas = [`CONTEXTO ATUAL (${agora.toISOString()}):`, LEMBRETE_DE_FORMATO];
   if (sessaoNova) linhas.push('- Sessão: app reaberto agora. Nenhuma aba do navegador está aberta e nenhuma ação anterior continua em curso; não retome nada sem pedido.');
   // Thread nova no lugar da anterior: o que foi conversado vem como memória, não
   // como pedido. A IA lembra sem repetir ações nem cumprimentar como estranha.

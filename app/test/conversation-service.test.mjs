@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assinaturaDasFerramentas, createConversationService, separarAcoes } from '../src/conversation-service.mjs';
+import { assinaturaDasFerramentas, createConversationService, estruturarEntidades, separarAcoes } from '../src/conversation-service.mjs';
 import { montarContexto } from '../src/conversation-prompt.mjs';
 import { resumirFerramenta } from '../src/conversation-narration.mjs';
 import { createServer } from '../src/http-server.mjs';
@@ -348,6 +348,22 @@ test('separarAcoes, contexto e narração não vazam segredo nem vocabulário t�
   assert.deepEqual(acoes, [{ tipo: 'abrir', valor: 'oportunidades' }]);
   // Marcação fora do subconjunto é trazida para dentro dele.
   assert.equal(separarAcoes('#### Perfil\n* __Nome__ ok\n| Gupy | 10 |\n|---|---|\n`x`').resposta, '## Perfil\n- **Nome** ok\n- Gupy · 10\nx');
+  // Achado real (14:42): relatório de dois perfis em texto corrido, sem marcação.
+  // Parágrafos "Nome Próprio: descrição" viram cartões; "Conclusão:" vira seção.
+  const corrido = 'Verifiquei o LinkedIn e encontrei 2 conexões pendentes.\n\nPessoa Exemplo: Full Stack Developer em Brasília, com foco em React, Next.js e Node.js. Tem projetos práticos publicados no GitHub.\n\nProfissional Demonstração: profissional de TI em Guarulhos, com atuação em desenvolvimento web, suporte técnico e redes.\n\nConclusão: Pessoa Exemplo tem alta relevância profissional para sua área. Não aceitei nem ignorei os convites.';
+  const estruturado = separarAcoes(corrido).resposta;
+  assert.match(estruturado, /\n### Pessoa Exemplo\nFull Stack Developer/);
+  assert.match(estruturado, /\n### Profissional Demonstração\nprofissional de TI/);
+  assert.match(estruturado, /\n## Conclusão\nLuiz tem alta/);
+  assert.equal(estruturado.startsWith('Verifiquei o LinkedIn'), true, 'a frase de abertura fica como está');
+  // Um único parágrafo "Nome: texto" não é comparação: nada muda.
+  assert.equal(estruturarEntidades('Resultado: encontrei 8 vagas de COBOL, todas remotas e com salário informado.'), 'Resultado: encontrei 8 vagas de COBOL, todas remotas e com salário informado.');
+  // Texto já marcado pelo modelo não é tocado.
+  assert.equal(estruturarEntidades('### A\nx: y\n\n### B\nz: w'), '### A\nx: y\n\n### B\nz: w');
+  // Mudar as instruções renova a thread (a assinatura inclui o texto delas).
+  assert.notEqual(assinaturaDasFerramentas([], 'instrução A'), assinaturaDasFerramentas([], 'instrução B'));
+  // Todo turno leva o lembrete de formato junto do pedido.
+  assert.match(montarContexto({}), /FORMATO DA RESPOSTA: não anuncie o que vai fazer/);
   // Cartões da conversa: seleção para descarte, confirmação de dados e respostas rápidas.
   assert.deepEqual(separarAcoes('Marque as que quer descartar.\nAÇÃO: selecionar-descarte=todas').acoes, [{ tipo: 'selecionar-descarte', valor: 'todas' }]);
   assert.deepEqual(separarAcoes('Li isto:\nAÇÃO: confirmar=name:Pessoa Exemplo|email:pessoa@example.test').acoes, [{ tipo: 'confirmar', valor: 'name:Pessoa Exemplo|email:pessoa@example.test' }]);

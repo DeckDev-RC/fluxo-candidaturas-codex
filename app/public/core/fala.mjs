@@ -29,7 +29,9 @@ export function renderizarFala(texto) {
 // Verdadeiro quando o texto tem alguma marca de estrutura; texto simples segue no <p> único.
 export function temEstrutura(texto) {
   const t = String(texto ?? '');
-  return /(^|\n)\s*(#{2,3}\s|[-*•]\s|\d+[.)]\s|>\s)|\*\*.+?\*\*/.test(t) || t.split('\n').filter((linha) => PAR.test(linha.trim())).length >= 2;
+  // Texto com quebra de linha também passa por aqui: parágrafos separados em vez
+  // de um bloco único (a quebra de linha sumia num <p> comum).
+  return /\n/.test(t.trim()) || /(^|\n)\s*(#{2,3}\s|[-*•]\s|\d+[.)]\s|>\s)|\*\*.+?\*\*/.test(t) || t.split('\n').filter((linha) => PAR.test(linha.trim())).length >= 2;
 }
 
 function montarBlocos(linhas) {

@@ -26,9 +26,13 @@ const OBSERVACAO_PRAZO_MS = 10 * 60 * 1000;
 // nasce e `thread/resume` não aceita uma lista nova: uma thread retomada fica
 // com o conjunto antigo, sem as ferramentas criadas depois. A assinatura do
 // conjunto atual fica gravada com a thread; se mudou, uma thread nova começa.
-export function assinaturaDasFerramentas(definitions = []) {
+// As instruções entram na assinatura: uma thread longa imita o próprio estilo
+// anterior (dezenas de respostas em texto corrido pesam mais que a instrução
+// nova), então mudar as instruções também recomeça a thread, com a memória
+// resumida da anterior.
+export function assinaturaDasFerramentas(definitions = [], instrucoes = INSTRUCOES_DA_CONVERSA) {
   const base = (Array.isArray(definitions) ? definitions : []).map((tool) => ({ name: tool.name, description: tool.description, inputSchema: tool.inputSchema ?? tool.parameters ?? null }));
-  return createHash('sha1').update(JSON.stringify(base)).digest('hex').slice(0, 16);
+  return createHash('sha1').update(JSON.stringify(base)).update(String(instrucoes ?? '')).digest('hex').slice(0, 16);
 }
 
 export function createConversationService({ agentAdapter, snapshot = async () => ({}), rootDir = '', runService = null, tabs = null, loginState = null, toolsSignature = '', now = () => new Date(), timeoutMs = PRAZO_TURNO_MS, watchIntervalMs = OBSERVACAO_INTERVALO_MS } = {}) {
@@ -297,7 +301,27 @@ export function separarAcoes(texto) {
     acoes.push({ tipo: m[1].toLowerCase(), valor: m[2].trim() });
     return false;
   });
-  return { resposta: normalizarMarcacao(linhas.join('\n')), acoes };
+  return { resposta: estruturarEntidades(normalizarMarcacao(linhas.join('\n'))), acoes };
+}
+
+// Rede de segurança quando o modelo ignora o formato: parágrafos que começam com
+// um nome próprio e dois-pontos ("Pessoa Exemplo: Full Stack…") viram
+// cartões, e "Conclusão:"/"Recomendação:" viram seção. Só age quando há pelo
+// menos dois desses parágrafos e nenhuma marcação; caso contrário devolve igual.
+const ENTIDADE = /^((?:[A-ZÀ-Ú][\wÀ-ú.'’-]*)(?:\s(?:[A-ZÀ-Úa-zà-ú][\wÀ-ú.'’-]*)){1,4}):\s+(.{30,})$/s;
+const SECAO = /^(Conclusão|Recomendação|Recomendações|Resumo|Próximo passo|Próximos passos|Pendências|Observação):\s+(.+)$/s;
+export function estruturarEntidades(texto) {
+  if (/(^|\n)\s*(#{2,3}\s|[-*]\s|\d+[.)]\s|>\s)/.test(texto)) return texto;
+  const paragrafos = texto.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+  const entidades = paragrafos.filter((p) => ENTIDADE.test(p) && !SECAO.test(p));
+  if (entidades.length < 2) return texto;
+  return paragrafos.map((p) => {
+    const secao = p.match(SECAO);
+    if (secao) return `## ${secao[1]}\n${secao[2]}`;
+    const entidade = p.match(ENTIDADE);
+    if (entidade) return `### ${entidade[1]}\n${entidade[2]}`;
+    return p;
+  }).join('\n\n');
 }
 
 // A interface desenha um subconjunto de marcação (## seção, - item, 1. item,
