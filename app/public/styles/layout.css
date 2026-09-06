@@ -38,6 +38,21 @@
 
 .marca svg { flex: none; color: var(--acao); }
 
+/* Topo da navegação: marca e o botão de recolher. */
+.navegacao-topo { display: flex; align-items: center; justify-content: space-between; gap: var(--e2); }
+.navegacao-alternar { min-height: 2rem; min-width: 2rem; padding: 0; color: var(--texto-3); }
+.navegacao-alternar svg { width: 1rem; height: 1rem; }
+
+/* Navegação recolhida: só os ícones, com o nome no título de cada item. */
+.aplicacao[data-navegacao="recolhida"] { --nav-largura: 3.75rem; }
+.aplicacao[data-navegacao="recolhida"] .navegacao { padding-inline: var(--e2); }
+.aplicacao[data-navegacao="recolhida"] .navegacao-topo { flex-direction: column; gap: var(--e2); }
+.aplicacao[data-navegacao="recolhida"] .marca { padding: var(--e1) 0; justify-content: center; }
+.aplicacao[data-navegacao="recolhida"] .marca span,
+.aplicacao[data-navegacao="recolhida"] .navegacao a span { display: none; }
+.aplicacao[data-navegacao="recolhida"] .navegacao a { justify-content: center; padding: var(--e2); }
+.aplicacao[data-navegacao="recolhida"] .navegacao a svg { width: 1.125rem; height: 1.125rem; }
+
 .navegacao nav ul,
 .navegacao-rodape { display: flex; flex-direction: column; gap: 2px; }
 
@@ -158,6 +173,11 @@
   .coluna-trabalho { border-left: 0; border-top: 1px solid var(--linha); }
   .navegacao { flex-direction: row; align-items: center; gap: var(--e3); overflow-x: auto; padding: var(--e2) var(--e3); }
   .navegacao nav ul, .navegacao-rodape { flex-direction: row; }
+  /* Em faixa não há o que recolher; o estado recolhido não se aplica. */
+  .navegacao-alternar { display: none; }
+  .aplicacao[data-navegacao="recolhida"] { --nav-largura: 14.5rem; }
+  .aplicacao[data-navegacao="recolhida"] .navegacao-topo { flex-direction: row; }
+  .aplicacao[data-navegacao="recolhida"] .marca span, .aplicacao[data-navegacao="recolhida"] .navegacao a span { display: inline; }
   .navegacao-rodape { margin-top: 0; margin-left: auto; }
   .lista-detalhe { grid-template-columns: minmax(0, 1fr); }
   .detalhe { position: static; max-height: none; }
