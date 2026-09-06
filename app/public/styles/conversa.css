@@ -93,7 +93,7 @@
    total; concluído, "N etapas · 12s". Abrir mostra a lista compacta. */
 .balao-atividade { margin-top: var(--e1); }
 .balao-atividade .balao-avatar { visibility: hidden; }
-.atividade { border: 1px solid var(--linha); border-radius: var(--raio); background: var(--superficie); font-size: var(--texto-sm); color: var(--texto-2); overflow: hidden; }
+.atividade { border: 1px solid var(--cartao-borda); border-radius: var(--raio); background: var(--cartao-fundo); font-size: var(--texto-sm); color: var(--texto-2); overflow: hidden; }
 .atividade-resumo { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: var(--e2); padding: var(--e2) var(--e3); cursor: pointer; list-style: none; user-select: none; }
 .atividade-resumo::-webkit-details-marker { display: none; }
 .atividade-resumo:hover { background: var(--superficie-2); }
@@ -121,7 +121,7 @@
 
 /* Fala estruturada: a resposta vira componentes (seções, cartões, fichas, listas,
    notas) numa superfície própria, em vez de um parágrafo denso. */
-.fala-estruturada { display: flex; flex-direction: column; gap: var(--e3); padding: var(--e4); border: 1px solid var(--linha); border-radius: var(--raio-xl); background: var(--superficie); }
+.fala-estruturada { display: flex; flex-direction: column; gap: var(--e3); padding: var(--e4) var(--e5); border: 1px solid var(--cartao-borda); border-radius: var(--raio-xl); background: var(--cartao-fundo); box-shadow: var(--cartao-sombra); }
 .fala-estruturada > p { margin: 0; }
 .fala-estruturada > p:first-child { font-size: var(--texto-md, 1.0625rem); color: var(--texto); }
 .fala-titulo { margin: var(--e2) 0 calc(-1 * var(--e1)); font-size: var(--texto-xs); font-weight: var(--peso-medio); color: var(--texto-3); letter-spacing: var(--traco-etiqueta); text-transform: uppercase; }
@@ -141,13 +141,13 @@
 .fala-ficha dt { color: var(--texto-3); }
 .fala-ficha dd { margin: 0; color: var(--texto); min-width: 0; overflow-wrap: anywhere; }
 .fala-fichas { display: inline-flex; flex-wrap: wrap; gap: var(--e1); }
-.fala-ficha-item { padding: 1px var(--e2); border: 1px solid var(--linha); border-radius: 999px; background: var(--fundo); font-size: var(--texto-xs); color: var(--texto-2); white-space: nowrap; }
+.fala-ficha-item { padding: 1px var(--e2); border: 1px solid var(--cartao-interno-borda); border-radius: 999px; background: var(--cartao-fundo); font-size: var(--texto-xs); color: var(--texto-2); white-space: nowrap; }
 .fala-selo { vertical-align: middle; }
 
 /* Cartões: um por entidade (pessoa, vaga, plataforma); lado a lado quando há mais de um. */
 .fala-cartoes { display: grid; grid-template-columns: 1fr; gap: var(--e3); }
 .fala-cartoes[data-quantidade="2"], .fala-cartoes[data-quantidade="3"] { grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); }
-.fala-cartao { display: flex; flex-direction: column; gap: var(--e2); padding: var(--e3) var(--e4); border: 1px solid var(--linha); border-radius: var(--raio-lg); background: var(--fundo); min-width: 0; }
+.fala-cartao { display: flex; flex-direction: column; gap: var(--e2); padding: var(--e3) var(--e4); border: 1px solid var(--cartao-interno-borda); border-radius: var(--raio-lg); background: var(--cartao-interno-fundo); min-width: 0; }
 .fala-cartao-titulo { margin: 0; font-size: var(--texto-sm); font-weight: var(--peso-medio); color: var(--texto); }
 .fala-cartao .fala-ficha { font-size: var(--texto-xs); }
 .fala-cartao .fala-lista { font-size: var(--texto-sm); }
@@ -219,7 +219,7 @@
 
 /* Cartões pedidos pela IA: seleção de vagas, confirmação de dados, respostas rápidas. */
 .balao-cartao-ia .balao-avatar { visibility: hidden; }
-.cartao-ia { display: flex; flex-direction: column; gap: var(--e3); padding: var(--e4); border: 1px solid var(--linha); border-radius: var(--raio-lg); background: var(--superficie); }
+.cartao-ia { display: flex; flex-direction: column; gap: var(--e3); padding: var(--e4); border: 1px solid var(--cartao-borda); border-radius: var(--raio-lg); background: var(--cartao-fundo); box-shadow: var(--cartao-sombra); }
 .cartao-ia-titulo { font-weight: var(--peso-medio); }
 .cartao-ia-lista { display: flex; flex-direction: column; gap: var(--e2); }
 .cartao-ia-item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--e3); align-items: center; }
