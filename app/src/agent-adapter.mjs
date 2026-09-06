@@ -1,3 +1,16 @@
+// Toda thread nasce com sandbox só leitura, sem aprovação automática, sem shell,
+// sem patch e sem web. A de operação recebe as ferramentas fluxo_*; a de
+// conversa (`conversation`) não recebe ferramenta nenhuma.
+function parametrosDeThread(params, domainTools) {
+  const { conversation = false, ...resto } = params;
+  const restricoes = { sandbox: 'read-only', approvalPolicy: 'never', config: { 'features.shell_tool': false, 'features.unified_exec': false, 'features.apply_patch_freeform': false, 'web_search': 'disabled' } };
+  // Instruções próprias (ex.: agente condutor) prevalecem sobre a frase padrão de operação.
+  const operacao = domainTools && !conversation
+    ? { dynamicTools: domainTools.definitions, developerInstructions: resto.developerInstructions ?? 'Use exclusivamente ferramentas fluxo_* para operar candidaturas. Nunca altere arquivos diretamente. Aprovação humana é obrigatória e não pode ser decidida pelo agente. Um turn concluído não significa uma candidatura enviada.' }
+    : {};
+  return { ...resto, ...restricoes, ...operacao };
+}
+
 export function createAgentAdapter({ transport, transportFactory, onNotification = () => {}, onToolCall = () => {}, settingsService, domainTools } = {}) {
   let initialized = false;
   let activeTransport = transport;
@@ -45,13 +58,14 @@ export function createAgentAdapter({ transport, transportFactory, onNotification
     // não recebe ferramenta nenhuma e usa as próprias instruções.
     async startThread(params = {}) {
       await this.initialize();
-      const { conversation = false, ...resto } = params;
-      const restricoes = { sandbox: 'read-only', approvalPolicy: 'never', config: { 'features.shell_tool': false, 'features.unified_exec': false, 'features.apply_patch_freeform': false, 'web_search': 'disabled' } };
-      // Instruções próprias (ex.: agente condutor) prevalecem sobre a frase padrão de operação.
-      const operacao = domainTools && !conversation
-        ? { dynamicTools: domainTools.definitions, developerInstructions: resto.developerInstructions ?? 'Use exclusivamente ferramentas fluxo_* para operar candidaturas. Nunca altere arquivos diretamente. Aprovação humana é obrigatória e não pode ser decidida pelo agente. Um turn concluído não significa uma candidatura enviada.' }
-        : {};
-      return (await getTransport()).request('thread/start', { ...resto, ...restricoes, ...operacao });
+      return (await getTransport()).request('thread/start', parametrosDeThread(params, domainTools));
+    },
+
+    // Retoma uma thread gravada pelo app-server (sobrevive ao reinício do processo),
+    // com as mesmas restrições e ferramentas de uma thread nova.
+    async resumeThread(threadId, params = {}) {
+      await this.initialize();
+      return (await getTransport()).request('thread/resume', { threadId, ...parametrosDeThread(params, domainTools) });
     },
 
     async request(method, params) {

@@ -19,6 +19,8 @@ const ACOES = /^AÇÃO:\s*(abrir|objetivo|modalidades)\s*=\s*(.+)$/imu;
 export function createConversationService({ agentAdapter, snapshot = async () => ({}), rootDir = '', runService = null, tabs = null, now = () => new Date(), timeoutMs = PRAZO_TURNO_MS } = {}) {
   if (!agentAdapter?.request) throw new TypeError('A conversa requer o adaptador do agente.');
   let threadId = '';
+  // Thread que este processo do app-server já conhece (retomada ou criada aqui).
+  let retomada = '';
   let runId = '';
   let carregado = false;
   let turnoAtivo = null;
@@ -73,11 +75,9 @@ export function createConversationService({ agentAdapter, snapshot = async () =>
       registrar(system ? 'conversation.system' : 'conversation.user', { text: pedido });
       emitir('turn.started', { turnId: turno.id, system });
       try {
-        const resultado = await agentAdapter.runTurnForRun(runId, threadId, entrada);
-        turno.codexTurnId = String(resultado?.turn?.id ?? '');
+        turno.codexTurnId = await iniciarTurnoNoAgente(entrada);
       } catch (error) {
         falharTurno(error);
-        if (/thread|not found|unknown/i.test(String(error?.message ?? '')) && error?.code !== 'agent_unavailable') await this.reset({ silencioso: true });
         throw error;
       }
       return { turnId: turno.id, threadId, runId };
@@ -91,12 +91,20 @@ export function createConversationService({ agentAdapter, snapshot = async () =>
       return { interrupted: true };
     },
 
+    // A thread gravada é retomada no app-server (a memória da conversa sobrevive
+    // ao reinício do app); se ele não a conhecer mais, uma nova começa.
     async ensureThread() {
       if (!carregado) { threadId = (await carregar(rootDir)).threadId ?? ''; carregado = true; }
-      if (threadId) return threadId;
-      const iniciado = await agentAdapter.startThread({ metadata: { mode: 'fluxo-condutor' }, developerInstructions: INSTRUCOES_DA_CONVERSA });
+      if (threadId && retomada === threadId) return threadId;
+      const parametros = { metadata: { mode: 'fluxo-condutor' }, developerInstructions: INSTRUCOES_DA_CONVERSA };
+      if (threadId && agentAdapter.resumeThread) {
+        try { await agentAdapter.resumeThread(threadId, parametros); retomada = threadId; return threadId; }
+        catch (error) { if (!threadPerdida(error)) throw error; threadId = ''; }
+      }
+      const iniciado = await agentAdapter.startThread(parametros);
       threadId = String(iniciado?.thread?.id ?? iniciado?.threadId ?? '');
       if (!threadId) throw domainError('conversation_thread_failed', 'O Codex não abriu uma conversa.');
+      retomada = threadId;
       await persistir(rootDir, { threadId, startedAt: now().toISOString() });
       return threadId;
     },
@@ -104,6 +112,7 @@ export function createConversationService({ agentAdapter, snapshot = async () =>
     async reset({ silencioso = false } = {}) {
       if (turnoAtivo) await this.interrupt();
       threadId = '';
+      retomada = '';
       runId = '';
       carregado = true;
       await persistir(rootDir, { threadId: '' });
@@ -115,6 +124,28 @@ export function createConversationService({ agentAdapter, snapshot = async () =>
     status() { return { threadId, runId, busy: Boolean(turnoAtivo), turnId: turnoAtivo?.id ?? '' }; }
   };
   return service;
+
+  // Começa o turno; se a thread sumiu no app-server (reinício, expiração),
+  // abre outra em silêncio e repete uma vez. A pessoa não vê o erro técnico.
+  async function iniciarTurnoNoAgente(entrada) {
+    try {
+      const resultado = await agentAdapter.runTurnForRun(runId, threadId, entrada);
+      return String(resultado?.turn?.id ?? '');
+    } catch (error) {
+      if (!threadPerdida(error)) throw error;
+      threadId = ''; retomada = '';
+      await persistir(rootDir, { threadId: '' });
+      await service.ensureThread();
+      agentAdapter.bindRun?.(runId, threadId);
+      runService?.setAgentThread?.(runId, threadId);
+      try {
+        const resultado = await agentAdapter.runTurnForRun(runId, threadId, entrada);
+        return String(resultado?.turn?.id ?? '');
+      } catch (novoErro) {
+        throw domainError('conversation_thread_lost', `A conversa anterior não está mais disponível e não consegui abrir outra: ${novoErro?.message ?? novoErro}`);
+      }
+    }
+  }
 
   // Um run por sessão do processo é dono das chamadas de ferramenta; um run
   // que deixou de estar em execução (reinício, reconciliação) é substituído.
@@ -206,6 +237,10 @@ async function persistir(rootDir, valor) {
   if (!rootDir) return;
   await mkdir(join(rootDir, 'estado'), { recursive: true });
   await writeFile(join(rootDir, ARQUIVO), JSON.stringify(valor, null, 2), 'utf8');
+}
+
+function threadPerdida(error) {
+  return /thread (not found|n[aã]o encontrad)|unknown thread|no such thread|thread .* (expired|expirou)/i.test(String(error?.message ?? '')) && error?.code !== 'agent_unavailable';
 }
 
 function domainError(code, message) { const error = new Error(message); error.code = code; return error; }
