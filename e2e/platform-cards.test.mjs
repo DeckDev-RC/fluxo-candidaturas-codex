@@ -8,7 +8,7 @@ import { CARTOES_DE_VAGA, EMPRESA_DESCONHECIDA, lerCartoesDeVaga } from '../app/
 // no formato observado em cada plataforma, sem tocar as plataformas.
 const PAGINA = `
 <ul>
-  <li><a href="https://empresa.gupy.io/job/abc?jobBoardSource=gupy_portal"><p>Cambuhy Agrícola</p><h3>Auxiliar de Viveiro | Matão - SP</h3><span>Matão - SP</span></a></li>
+  <li><a href="https://empresa.gupy.io/job/abc?jobBoardSource=gupy_portal"><p>Cambuhy Agrícola</p><h3>Auxiliar de Viveiro | Matão - SP<div>Auxiliar de Viveiro | Matão - SP</div></h3><span>Matão - SP</span></a></li>
   <li><a href="https://empresa.gupy.io/job/abc?jobBoardSource=gupy_portal"><p>Cambuhy Agrícola</p><h3>Auxiliar de Viveiro | Matão - SP</h3></a></li>
   <li><a href="https://outra.gupy.io/job/def"><h3>Engenharia de Dados</h3></a></li>
   <li><a href="https://portal.gupy.io/">Início</a></li>
@@ -23,7 +23,9 @@ test('os cartões viram vagas com título, empresa e local, sem duplicar o mesmo
     const catalogo = { TESTE: { ...CARTOES_DE_VAGA.GUPY, host: '^$' } };
     const vagas = await page.evaluate(([fonte, cat, desconhecida]) => (new Function(`return (${fonte})`))()(cat, desconhecida), [lerCartoesDeVaga.toString(), catalogo, EMPRESA_DESCONHECIDA]);
     assert.equal(vagas.length, 2, 'link repetido e link fora do padrão não viram vaga');
-    assert.deepEqual(vagas[0], { title: 'Auxiliar de Viveiro | Matão - SP', company: 'Cambuhy Agrícola', url: 'https://empresa.gupy.io/job/abc?jobBoardSource=gupy_portal', id: 'https://empresa.gupy.io/job/abc?jobBoardSource=gupy_portal', location: 'Matão - SP', requirements: [], deadline: '', source: 'card' });
+    // Título repetido num trecho oculto (como no LinkedIn) não vira "Cargo Cargo"; e a
+    // vaga não carrega `source` (a plataforma é a da página, não "card").
+    assert.deepEqual(vagas[0], { title: 'Auxiliar de Viveiro | Matão - SP', company: 'Cambuhy Agrícola', url: 'https://empresa.gupy.io/job/abc?jobBoardSource=gupy_portal', id: 'https://empresa.gupy.io/job/abc?jobBoardSource=gupy_portal', location: 'Matão - SP', requirements: [], deadline: '', observedFrom: 'card' });
     assert.equal(vagas[1].company, EMPRESA_DESCONHECIDA, 'sem empresa no cartão, a vaga entra com empresa não informada');
   } finally { await browser.close(); }
 });
