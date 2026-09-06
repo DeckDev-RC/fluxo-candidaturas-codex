@@ -141,7 +141,10 @@ async function descartarVaga(item) {
 function motivo(item) {
   const partes = [];
   const nota = Number(item.fitScore ?? 0);
-  if (nota > 0) partes.push(`${nota}% dos requisitos observados coincidem com seus dados confirmados`);
+  const requisitos = [item.requirements].flat().filter(Boolean).length;
+  // Sem requisitos lidos, a nota é o valor neutro da lista: a frase diz isso em vez de "50% coincidem".
+  if (nota > 0 && requisitos) partes.push(`${nota}% dos ${requisitos} requisitos lidos coincidem com seus dados confirmados`);
+  else if (nota > 0) partes.push('requisitos ainda não lidos; o Fluxo lê a página da vaga antes de preparar');
   if (item.priority) partes.push(`prioridade ${item.priority}`);
   if ([item.eliminators].flat().filter(Boolean).length) partes.push('há requisito eliminatório a conferir');
   if (!partes.length) partes.push('aderência ainda não calculada para esta vaga');
