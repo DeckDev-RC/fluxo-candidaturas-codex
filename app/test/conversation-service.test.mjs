@@ -45,6 +45,7 @@ function runServiceFalso() {
     getRun(id) { return runs.get(id) ?? null; },
     setAgentThread(id, threadId) { runs.get(id).agentThreadId = threadId; },
     appendEvent(evento) { eventos.push(evento); },
+    listEvents(runId) { return eventos.filter((evento) => evento.runId === runId); },
     eventos
   };
 }
@@ -289,17 +290,36 @@ test('ferramentas novas desde que a thread nasceu: não retoma (o app-server man
 
   const { adapter, chamadas } = adaptadorFalso(() => [{ mensagem: 'Posso descartar as vagas antigas.' }]);
   adapter.resumeThread = async (threadId) => { chamadas.push(['thread/resume', { threadId }]); return { thread: { id: threadId } }; };
-  const service = createConversationService({ agentAdapter: adapter, rootDir, runService: runServiceFalso(), snapshot: async () => ({}), toolsSignature: nova });
+  // A sessão anterior deixou a conversa gravada nos eventos do seu run: vira memória.
+  const runService = runServiceFalso();
+  const anterior = runService.startRun({ kind: 'autopilot', mode: 'conversa', goal: 'x' });
+  runService.appendEvent({ runId: anterior.id, type: 'conversation.user', payload: { text: 'quero vagas de COBOL remotas' } });
+  runService.appendEvent({ runId: anterior.id, type: 'conversation.tool', payload: { tool: 'fluxo_discover', summary: 'Buscando…' } });
+  // Como o run-service real devolve: carga em JSON texto.
+  runService.appendEvent({ runId: anterior.id, type: 'conversation.assistant', payloadJson: JSON.stringify({ text: 'Encontrei 8 vagas de COBOL. ' + 'x'.repeat(400) }) });
+  await writeFile(join(rootDir, 'estado', 'conversa.json'), JSON.stringify({ threadId: 'thread-antiga', toolsSignature: 'assinatura-velha', runId: anterior.id }));
+  const service = createConversationService({ agentAdapter: adapter, rootDir, runService, snapshot: async () => ({}), toolsSignature: nova });
   adapter.ligar(service);
   const fim = ate(service, 'turn.completed');
   await service.turn('quero limpar a fila');
   await fim;
   assert.equal(chamadas.some(([m]) => m === 'thread/resume'), false, 'a thread com ferramentas velhas não é retomada');
   assert.equal(chamadas.filter(([m]) => m === 'thread/start').length, 1);
-  assert.match(chamadas.find(([m]) => m === 'turn/start')[1].text, /Sessão: app reaberto/, 'a conversa nova ainda avisa que nada continua em curso');
+  const primeiroTexto = chamadas.find(([m]) => m === 'turn/start')[1].text;
+  assert.match(primeiroTexto, /Sessão: app reaberto/, 'a conversa nova ainda avisa que nada continua em curso');
+  assert.match(primeiroTexto, /Conversa anterior \(memória resumida/);
+  assert.match(primeiroTexto, /Pessoa: quero vagas de COBOL remotas/);
+  assert.match(primeiroTexto, /Fluxo: Encontrei 8 vagas de COBOL\. x+…/, 'fala longa é encurtada');
+  assert.doesNotMatch(primeiroTexto, /fluxo_discover|Buscando…/, 'chamadas de ferramenta não entram na memória');
   const gravado = JSON.parse(await readFile(join(rootDir, 'estado', 'conversa.json'), 'utf8'));
   assert.equal(gravado.threadId, 'thread-conversa');
   assert.equal(gravado.toolsSignature, nova);
+  assert.equal(gravado.runId, 'run-2', 'o run desta sessão fica gravado para a próxima');
+  // O segundo turno não repete a memória.
+  const fimSegundo = ate(service, 'turn.completed');
+  await service.turn('e agora?');
+  await fimSegundo;
+  assert.doesNotMatch(chamadas.filter(([m]) => m === 'turn/start')[1][1].text, /Conversa anterior/);
 
   // Mesma assinatura na próxima abertura: retoma normalmente.
   const segunda = adaptadorFalso(() => [{ mensagem: 'ok' }]);
