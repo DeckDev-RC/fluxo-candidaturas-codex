@@ -93,6 +93,7 @@ export function button(text, { variant = 'botao', onClick, ...props } = {}) {
     : variant === 'secundario' ? 'botao botao-secundario'
     : variant === 'texto' ? 'botao botao-texto'
     : variant === 'perigo' ? 'botao botao-perigo'
+    : variant === 'aba' ? 'botao botao-aba'
     : 'botao';
   const node = el('button', { type: 'button', class: classes, text, ...props });
   if (onClick) {

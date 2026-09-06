@@ -1,8 +1,8 @@
 import { createLocalRuntime } from './runtime.mjs';
 import { createServer } from './http-server.mjs';
 
-export async function createRuntimeServer({ rootDir, port = 4173 } = {}) {
-  const runtime = await createLocalRuntime({ rootDir });
+export async function createRuntimeServer({ rootDir, port = 4173, browserHost = null } = {}) {
+  const runtime = await createLocalRuntime({ rootDir, browserHost });
   const server = createServer({
     rootDir,
     queueService: runtime.queueService,
@@ -36,6 +36,9 @@ export async function createRuntimeServer({ rootDir, port = 4173 } = {}) {
     runtimeHealth: runtime.runtimeHealth,
     conversationService: runtime.conversationService,
     preflightService: { runPreflight: () => runtime.readinessService.run() },
+    browserAdapter: runtime.browserAdapter,
+    browserHost,
+    platformUrls: () => runtime.runtimeConfig?.platformUrls ?? {},
     sessionStore: runtime.sessionStore,
     orchestrator: runtime.orchestrator,
     consistencyService: runtime.consistencyService,

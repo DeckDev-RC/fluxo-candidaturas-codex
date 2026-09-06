@@ -16,7 +16,7 @@ export async function acquireFluxoLock(rootDir) {
       let ownPid = false;
       try {
         recovery = await open(`${lockPath}.recovery`, 'wx');
-        const owner = JSON.parse(await readFile(lockPath, 'utf8'));
+        const owner = await lerDono(lockPath);
         ownPid = owner.pid === process.pid;
         if (Number.isInteger(owner.pid) && owner.pid > 0 && !ownPid) {
           let dead = false;
@@ -49,6 +49,20 @@ export async function acquireFluxoLock(rootDir) {
       if (error?.code !== 'ENOENT') throw error;
     });
   };
+}
+
+// Entre criar o arquivo e gravar o dono há um instante em que ele está vazio;
+// quem lê nesse instante espera um pouco em vez de concluir que é outro processo.
+async function lerDono(lockPath, tentativas = 8) {
+  for (let i = 0; i < tentativas; i += 1) {
+    try { return JSON.parse(await readFile(lockPath, 'utf8')); }
+    catch (error) {
+      if (error?.code === 'ENOENT') throw error;
+      if (!(error instanceof SyntaxError) || i === tentativas - 1) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  }
+  throw new SyntaxError('lock vazio');
 }
 
 export function wrapMutations(service, names, { rootDir, mutationLock = true, lock = () => acquireFluxoLock(rootDir) } = {}) {

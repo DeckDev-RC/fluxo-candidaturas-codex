@@ -13,6 +13,7 @@ import { createCampaignRoutes } from './routes/campaign-routes.mjs';
 import { createExecutionRoutes } from './routes/execution-routes.mjs';
 import { createCodexRoutes } from './routes/codex-routes.mjs';
 import { createConversationRoutes } from './routes/conversation-routes.mjs';
+import { createBrowserRoutes } from './routes/browser-routes.mjs';
 import { readJsonBody, sendDomainError, sendJson } from './routes/http-helpers.mjs';
 
 // O servidor cuida só de transporte: origem local, sessão, trava de mutação,
@@ -41,6 +42,9 @@ export function resolveStaticAsset(path) {
 }
 
 const PUBLICOS = new Set(['/health', '/', '/api/v1/auth/session']);
+// A página marcadora é carregada pela aba embutida, que não tem a sessão da interface.
+const MARCADORA_DE_ABA = /^\/aba\/[A-Za-z0-9_-]{1,32}$/;
+const publico = (path) => PUBLICOS.has(path) || MARCADORA_DE_ABA.test(path);
 const METODOS_MUTACAO = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 export function createServer(options) {
@@ -58,6 +62,7 @@ export function createServer(options) {
     createStateRoutes({ rootDir, checkpointService: s.checkpointService, preflightService: s.preflightService, metricsService: s.metricsService, pendingService: s.pendingService, observability: s.observability, stateStore: s.stateStore }),
     createCodexRoutes({ sessionAuth: s.sessionAuth, authService: s.authService, codexHarnessService: s.codexHarnessService, codexSettingsService: s.codexSettingsService }),
     createConversationRoutes({ conversationService: s.conversationService }),
+    createBrowserRoutes({ browserAdapter: options.browserAdapter ?? null, browserHost: options.browserHost ?? null, platformUrls: () => options.platformUrls?.() ?? {} }),
     createKnowledgeRoutes(s),
     createCampaignRoutes({ rootDir, queueService: s.queueService, campaignService: s.campaignService, exportService: s.exportService, stateStore: s.stateStore }),
     createExecutionRoutes({ rootDir, runService: s.runService, approvalService: s.approvalService, applicationFlow: s.applicationFlow, autopilotService: s.autopilotService, agentAdapter: s.agentAdapter, followUpService: s.followUpService, memoryService: s.memoryService, actorResolver: s.actorResolver })
@@ -67,8 +72,10 @@ export function createServer(options) {
   // Login e logout do Codex não tocam os dados do Fluxo e podem esperar o usuário no
   // navegador: segurar a trava aqui bloquearia todo o resto durante o login.
   // A conversa não toca dados do Fluxo e pode levar segundos: não segura a trava.
+  // Abrir uma aba do navegador leva segundos e não toca os dados: também fica fora da trava.
   const travaDoServico = (path) => path.startsWith('/api/v1/auth/openai/')
     || path.startsWith('/api/v1/conversation/')
+    || path.startsWith('/api/v1/browser/')
     || (path.startsWith('/api/v1/queue/') && s.queueService.handlesMutationLock)
     || (path === '/api/v1/campaign' && s.campaignService.handlesMutationLock)
     || (path === '/api/v1/onboarding' && s.onboardingService.handlesMutationLock)
@@ -95,7 +102,7 @@ export function createServer(options) {
     if (!isLocalRequest(request)) { sendJson(response, 403, { error: { code: 'local_auth_required', message: 'Apenas conexões locais são permitidas.' } }); return; }
     const isMutation = METODOS_MUTACAO.has(request.method);
     const authorization = s.sessionAuth.authorize(request, { mutation: isMutation });
-    if (!PUBLICOS.has(path) && !authorization.ok) {
+    if (!publico(path) && !authorization.ok) {
       sendJson(response, authorization.status, { error: { code: authorization.code, message: authorization.message, retryable: false, actionRequired: 'authenticate', request_id: requestId } });
       return;
     }

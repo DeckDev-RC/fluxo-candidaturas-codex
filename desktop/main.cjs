@@ -1,4 +1,11 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme, shell, utilityProcess } = require('electron');
+const { app, BrowserWindow, Menu, WebContentsView, dialog, ipcMain, nativeTheme, shell, utilityProcess } = require('electron');
+const { createAbas } = require('./abas.cjs');
+
+// A IA opera as plataformas em abas dentro desta janela: o backend liga o
+// Playwright ao Chromium do próprio Electron pela porta de depuração local
+// (aleatória, só loopback, viva enquanto o app roda). Sem a porta, o app segue
+// com o navegador separado.
+if (!process.env.FLUXO_DESKTOP_SEM_NAVEGADOR_EMBUTIDO) app.commandLine.appendSwitch('remote-debugging-port', '0');
 
 // Mesma cor de fundo dos tokens da interface (--fundo), para a janela não piscar
 // em branco antes de carregar e acompanhar o tema do sistema. A barra de menu
@@ -11,6 +18,7 @@ const { readFile, writeFile, mkdir } = require('node:fs/promises');
 
 if (process.env.FLUXO_DESKTOP_USER_DATA) app.setPath('userData', resolve(process.env.FLUXO_DESKTOP_USER_DATA));
 let mainWindow; let diagnosticWindow; let supervisor; let workspaceRoot; let backendUrl; let quitting = false; let changingWorkspace = false;
+let abas; let cdpEndpoint = '';
 const preload = join(__dirname, 'preload.cjs');
 const bundleRoot = app.isPackaged ? join(process.resourcesPath, 'fluxo-runtime') : resolve(__dirname, '..');
 const diagnosticUrl = pathToFileURL(join(__dirname, 'diagnostics.html')).href;
@@ -31,9 +39,14 @@ async function start() {
   workspaceRoot = process.env.FLUXO_DESKTOP_ROOT || preferences.rootDir || join(app.getPath('userData'), 'workspace');
   await initializeWorkspace({ rootDir: workspaceRoot, bundleRoot });
 
+  cdpEndpoint = await lerEndpointDeDepuracao(app.getPath('userData'));
   supervisor = createSupervisor({
-    launch: () => utilityProcess.fork(join(__dirname, 'backend-worker.mjs'), [workspaceRoot], { cwd: workspaceRoot, stdio: 'ignore', serviceName: 'Fluxo local' }),
-    onExit: () => { if (!quitting && mainWindow) { backendUrl = null; void mainWindow.loadURL(diagnosticUrl); } }
+    launch: () => {
+      const worker = utilityProcess.fork(join(__dirname, 'backend-worker.mjs'), [workspaceRoot, cdpEndpoint], { cwd: workspaceRoot, stdio: 'ignore', serviceName: 'Fluxo local' });
+      worker.on('message', (mensagem) => { if (mensagem?.type === 'abas') void atenderWorker(worker, mensagem); });
+      return worker;
+    },
+    onExit: () => { abas?.fecharTodas(); if (!quitting && mainWindow) { backendUrl = null; void mainWindow.loadURL(diagnosticUrl); } }
   });
 
   // Mínimo baixo o suficiente para 1024×768 com zoom de texto: a interface tem
@@ -43,12 +56,23 @@ async function start() {
   nativeTheme.on('updated', () => { mainWindow?.setBackgroundColor(corDeFundo()); diagnosticWindow?.setBackgroundColor(corDeFundo()); });
   mainWindow.on('closed', () => { mainWindow = null; });
   protectWindow(mainWindow);
+  abas = createAbas({
+    window: mainWindow,
+    criarView: () => new WebContentsView({ webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } }),
+    aoMudar: (lista) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('fluxo:abas-mudou', lista); }
+  });
+  // Ao trocar a página da janela (diagnóstico, nova pasta), nenhuma aba pode ficar sobre ela.
+  mainWindow.webContents.on('did-start-navigation', (event) => { if (event.isMainFrame) abas.definirArea(null); });
   const trusted = event => {
     const url = event.senderFrame?.url || '';
     if (event.senderFrame !== event.sender.mainFrame || !(url === diagnosticUrl || backendUrl && new URL(url).origin === backendUrl)) throw new Error('Origem não autorizada.');
   };
   ipcMain.handle('fluxo:diagnostics', async event => { trusted(event); return (await import('./diagnostics.mjs')).diagnose(); });
-  ipcMain.handle('fluxo:workspace', event => { trusted(event); return { rootDir: workspaceRoot, running: Boolean(backendUrl) }; });
+  ipcMain.handle('fluxo:workspace', event => { trusted(event); return { rootDir: workspaceRoot, running: Boolean(backendUrl), embutido: Boolean(cdpEndpoint) }; });
+  ipcMain.handle('fluxo:abas-area', (event, retangulo) => { trusted(event); abas.definirArea(retangulo && typeof retangulo === 'object' ? retangulo : null); return true; });
+  ipcMain.handle('fluxo:abas-mostrar', (event, platform) => { trusted(event); return abas.mostrar(String(platform ?? '')); });
+  ipcMain.handle('fluxo:abas-esconder', (event) => { trusted(event); abas.esconder(); return true; });
+  ipcMain.handle('fluxo:abas-listar', (event) => { trusted(event); return abas.listar(); });
   ipcMain.handle('fluxo:select-workspace', async event => { trusted(event); return selectWorkspace(preferencesPath); });
   ipcMain.handle('fluxo:install-browser', async event => { trusted(event); return installBrowser(); });
   Menu.setApplicationMenu(Menu.buildFromTemplate([
@@ -74,6 +98,7 @@ async function selectWorkspace(preferencesPath) {
   try {
     const rootDir = result.filePaths[0];
     await (await import('./workspace.mjs')).initializeWorkspace({ rootDir, bundleRoot });
+    abas?.fecharTodas();
     await supervisor.stop(); backendUrl = null; workspaceRoot = rootDir;
     backendUrl = (await supervisor.start()).url;
     await writeFile(preferencesPath, JSON.stringify({ rootDir }, null, 2), 'utf8');
@@ -105,6 +130,37 @@ function installBrowser() {
   return browserInstall;
 }
 
+// O worker pede abrir/mostrar/listar abas; a URL de abertura precisa ser local
+// (marcadora do backend) ou https, nunca outro esquema.
+async function atenderWorker(worker, mensagem) {
+  const { id, op, platform, url } = mensagem;
+  const responder = (ok, result, error) => { try { worker.postMessage({ type: 'abas-resposta', id, ok, result, error }); } catch { /* worker já encerrou */ } };
+  try {
+    if (!abas) throw new Error('Janela ainda não está pronta.');
+    if (op === 'abrir') {
+      if (!/^https?:\/\//i.test(String(url ?? ''))) throw new Error('URL de aba inválida.');
+      return responder(true, await abas.abrir(platform, url));
+    }
+    if (op === 'mostrar') return responder(true, abas.mostrar(platform));
+    if (op === 'esconder') { abas.esconder(); return responder(true, true); }
+    if (op === 'listar') return responder(true, abas.listar());
+    throw new Error(`Operação desconhecida: ${op}`);
+  } catch (error) { responder(false, null, error.message); }
+}
+
+// O Chromium grava a porta escolhida em DevToolsActivePort logo após iniciar.
+async function lerEndpointDeDepuracao(userData, tentativas = 20) {
+  if (process.env.FLUXO_DESKTOP_SEM_NAVEGADOR_EMBUTIDO) return '';
+  for (let i = 0; i < tentativas; i += 1) {
+    try {
+      const [porta] = (await readFile(join(userData, 'DevToolsActivePort'), 'utf8')).split(/\r?\n/);
+      if (Number(porta) > 0) return `http://127.0.0.1:${Number(porta)}`;
+    } catch { /* ainda não escrito */ }
+    await new Promise(resolve => setTimeout(resolve, 150));
+  }
+  return '';
+}
+
 function protectWindow(window) {
   window.webContents.setWindowOpenHandler(({ url }) => { if (/^https:\/\//i.test(url)) void shell.openExternal(url); return { action: 'deny' }; });
   window.webContents.on('will-navigate', (event, url) => {
@@ -117,6 +173,7 @@ app.on('window-all-closed', () => app.quit());
 app.on('before-quit', event => {
   if (quitting) return;
   event.preventDefault(); quitting = true;
+  abas?.fecharTodas();
   browserInstaller?.kill();
   Promise.resolve(supervisor?.stop()).finally(() => app.quit());
 });

@@ -16,8 +16,14 @@ const ARGUMENTOS_DA_PAGINA = [CARTOES_DE_VAGA, EMPRESA_DESCONHECIDA];
 // The driver owns the browser process; importing it or reading local state never launches Chromium.
 // Uma aba por plataforma: a URL decide em qual aba a navegação acontece, e a
 // pessoa vê cada site no próprio lugar quando a IA conduz.
-export function createPlaywrightDriver({ rootDir, headless = false, browserType, page: suppliedPage } = {}) {
-  let context; let page = suppliedPage; let starting;
+// Modo hospedado (`host`): em vez de lançar um Chromium próprio, o driver se
+// conecta por CDP ao Chromium do app (Electron) e opera as abas que a janela
+// abre a pedido — cada uma identificada pela URL marcadora do backend.
+const ABA_GENERICA = 'FLUXO';
+const ESPERA_ABA_MS = 10_000;
+
+export function createPlaywrightDriver({ rootDir, headless = false, browserType, page: suppliedPage, host = null } = {}) {
+  let context; let browser; let page = suppliedPage; let starting;
   const abas = new Map();
   let ativa = '';
 
@@ -25,6 +31,12 @@ export function createPlaywrightDriver({ rootDir, headless = false, browserType,
     if (context) return context;
     if (!starting) starting = (async () => {
       const chromium = browserType ?? (await import('playwright')).chromium;
+      if (host?.cdpEndpoint) {
+        browser = await chromium.connectOverCDP(host.cdpEndpoint);
+        context = browser.contexts()[0] ?? await browser.newContext();
+        browser.once('disconnected', () => { context = null; browser = null; page = null; abas.clear(); ativa = ''; starting = null; });
+        return context;
+      }
       await mkdir(join(rootDir, 'estado', 'browser-profile'), { recursive: true });
       context = await chromium.launchPersistentContext(join(rootDir, 'estado', 'browser-profile'), { headless, viewport: { width: 1280, height: 900 } });
       const openedContext = context;
@@ -37,6 +49,8 @@ export function createPlaywrightDriver({ rootDir, headless = false, browserType,
   async function getPage() {
     if (ativa && abas.get(ativa) && !abas.get(ativa).isClosed()) return abas.get(ativa);
     if (page && !page.isClosed()) return page;
+    // Hospedado: página fora do catálogo vai para a aba genérica, escondida.
+    if (host?.cdpEndpoint) { page = await pageFor(ABA_GENERICA); return page; }
     const ctx = await getContext();
     page = ctx.pages()[0] ?? await ctx.newPage();
     page.setDefaultTimeout(15_000);
@@ -49,12 +63,32 @@ export function createPlaywrightDriver({ rootDir, headless = false, browserType,
     const existente = abas.get(nome);
     if (existente && !existente.isClosed()) return existente;
     const ctx = await getContext();
-    // A primeira plataforma reaproveita a aba inicial em branco; as demais abrem a própria.
-    const disponivel = !abas.size && ctx.pages()[0] && ctx.pages()[0].url() === 'about:blank' ? ctx.pages()[0] : await ctx.newPage();
+    const disponivel = host?.cdpEndpoint ? await abaHospedada(ctx, nome) : await abaPropria(ctx);
     disponivel.setDefaultTimeout(15_000);
     disponivel.once('close', () => { if (abas.get(nome) === disponivel) abas.delete(nome); if (ativa === nome) ativa = ''; });
     abas.set(nome, disponivel);
     return disponivel;
+  }
+
+  // A primeira plataforma reaproveita a aba inicial em branco; as demais abrem a própria.
+  async function abaPropria(ctx) {
+    return !abas.size && ctx.pages()[0] && ctx.pages()[0].url() === 'about:blank' ? ctx.pages()[0] : await ctx.newPage();
+  }
+
+  // A janela abre a aba carregando a URL marcadora; a página com essa URL é a aba.
+  async function abaHospedada(ctx, nome) {
+    const marcadora = host.markerUrl(nome);
+    const encontrar = () => ctx.pages().find((candidata) => !candidata.isClosed() && candidata.url().startsWith(marcadora));
+    let encontrada = encontrar();
+    if (!encontrada) {
+      await host.openTab(nome, marcadora);
+      const inicio = Date.now();
+      while (!(encontrada = encontrar())) {
+        if (Date.now() - inicio > (host.tabTimeoutMs ?? ESPERA_ABA_MS)) throw error('browser_tab_unavailable', 'A janela não abriu a aba da plataforma.');
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    }
+    return encontrada;
   }
 
   async function locator(ref) {
@@ -70,8 +104,10 @@ export function createPlaywrightDriver({ rootDir, headless = false, browserType,
     async goto(url) {
       if (!/^https?:\/\//i.test(String(url))) throw error('invalid_browser_url', 'A navegação exige uma URL HTTP ou HTTPS.');
       const plataforma = platformOfUrl(url);
-      const alvo = plataforma ? await pageFor(plataforma) : await getPage();
+      // A aba ativa muda antes de resolver a página: URL fora do catálogo nunca
+      // navega dentro da aba de uma plataforma.
       ativa = plataforma;
+      const alvo = plataforma ? await pageFor(plataforma) : await getPage();
       await alvo.goto(String(url), { waitUntil: 'domcontentloaded' });
       await assentar(alvo);
     },
@@ -81,7 +117,8 @@ export function createPlaywrightDriver({ rootDir, headless = false, browserType,
       ativa = String(platform).toUpperCase();
       await alvo.goto(String(url), { waitUntil: 'domcontentloaded' });
       await assentar(alvo);
-      await alvo.bringToFront().catch(() => {});
+      if (host?.showTab) await host.showTab(ativa).catch(() => {});
+      else await alvo.bringToFront().catch(() => {});
       return { platform: ativa, ...(await alvo.evaluate(observeLogin)) };
     },
     async loginState(platform) {
@@ -92,7 +129,8 @@ export function createPlaywrightDriver({ rootDir, headless = false, browserType,
     async tabs() {
       const lista = [];
       for (const [plataforma, aba] of abas) {
-        if (aba.isClosed()) continue;
+        // A aba genérica do modo hospedado é interna: não é uma plataforma da pessoa.
+        if (aba.isClosed() || plataforma === ABA_GENERICA) continue;
         lista.push({ platform: plataforma, ...(await aba.evaluate(observeLogin).catch(() => ({ url: aba.url(), title: '', challenge: null, loginPending: false }))) });
       }
       return lista;
@@ -125,7 +163,12 @@ export function createPlaywrightDriver({ rootDir, headless = false, browserType,
       await page.screenshot({ path: absolute, fullPage: true });
       return { ok: true, path, scope: 'page' };
     },
-    async close() { if (context) await context.close(); context = null; page = suppliedPage; abas.clear(); ativa = ''; starting = null; }
+    // Hospedado: só desconecta; o navegador é a janela do app e continua vivo.
+    async close() {
+      if (browser) await browser.close().catch(() => {});
+      else if (context) await context.close();
+      browser = null; context = null; page = suppliedPage; abas.clear(); ativa = ''; starting = null;
+    }
   };
 }
 

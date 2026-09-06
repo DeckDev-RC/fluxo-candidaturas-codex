@@ -15,6 +15,7 @@ const PRINCIPAL = fileURLToPath(new URL('../../../../docs/', import.meta.url));
 const SO_DO_APP = new Set([
   'ARQUITETURA-IMPLEMENTADA.md',
   'CHECKLIST-IA-CONDUTORA.md',
+  'CHECKLIST-NAVEGADOR-EMBUTIDO.md',
   'CONSOLIDACAO.md',
   'CONTRATO-DE-EXECUCAO.md',
   'DESKTOP.md',
