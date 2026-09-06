@@ -44,6 +44,16 @@
   --linha-controle: #8f8f98;
   --anel-foco: #4f46e5;
 
+  /* Cartões na conversa (resposta estruturada, cartões internos, atividade):
+     superfície elevada com borda e sombra próprias, para "ler" como cartão nos
+     dois temas. No claro basta a borda; no escuro a elevação vem de um fundo
+     mais claro que a página, uma borda translúcida e um brilho no topo. */
+  --cartao-fundo: #ffffff;
+  --cartao-borda: #e4e4e7;
+  --cartao-sombra: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --cartao-interno-fundo: #fafafa;
+  --cartao-interno-borda: #e4e4e7;
+
   /* Tipografia: Inter empacotada (offline), com a pilha do sistema como reserva. */
   --fonte: "Inter", "Inter Variable", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Noto Sans", Arial, sans-serif;
   --fonte-numeros: var(--fonte);
@@ -128,6 +138,11 @@
     --linha-forte: #3f3f46;
     --linha-controle: #6b6b74;
     --anel-foco: #818cf8;
+    --cartao-fundo: #17171b;
+    --cartao-borda: rgba(255, 255, 255, 0.10);
+    --cartao-sombra: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 8px 24px rgba(0, 0, 0, 0.35);
+    --cartao-interno-fundo: #1e1e23;
+    --cartao-interno-borda: rgba(255, 255, 255, 0.08);
     --elevacao-painel: 0 1px 2px rgba(0, 0, 0, 0.4);
     --elevacao-flutuante: 0 12px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.08);
     --veu: rgba(0, 0, 0, 0.6);

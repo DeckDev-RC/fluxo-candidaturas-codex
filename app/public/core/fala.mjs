@@ -46,7 +46,8 @@ function montarBlocos(linhas) {
 
   for (const bruta of linhas) {
     const linha = bruta.trim();
-    if (!linha) { fecharTudo(); continue; }
+    // Linha em branco fecha o que estava aberto e marca o fim de um cartão.
+    if (!linha) { fecharTudo(); blocos.push({ tipo: 'quebra' }); continue; }
     const cartao = linha.match(/^###\s+(.+?)\s*$/);
     if (cartao) { fecharTudo(); blocos.push({ tipo: 'cartao', titulo: cartao[1] }); continue; }
     const titulo = linha.match(/^#{1,2}\s+(.+?)\s*$/);
@@ -81,22 +82,25 @@ function montarBlocos(linhas) {
   return blocos;
 }
 
-// "### Nome" abre um cartão que recebe os blocos seguintes até a próxima seção ou
-// cartão; cartões seguidos ficam numa grade, lado a lado (comparação).
+// "### Nome" abre um cartão que recebe os blocos seguintes até a primeira linha em
+// branco (ou próxima seção/cartão); cartões seguidos ficam numa grade, lado a lado.
+// Depois da linha em branco, um cartão novo entra na mesma grade; qualquer outro
+// bloco (nota, parágrafo, seção) fecha a grade e segue fora dos cartões.
 function agruparCartoes(blocos) {
   const saida = [];
   let grade = null;
   let cartao = null;
   for (const bloco of blocos) {
+    if (bloco.tipo === 'quebra') { cartao = null; continue; }
     if (bloco.tipo === 'cartao') {
       cartao = el('article', { class: 'fala-cartao' }, [el('h5', { class: 'fala-cartao-titulo' }, inline(bloco.titulo))]);
       if (!grade) { grade = el('div', { class: 'fala-cartoes' }); saida.push(grade); }
       grade.append(cartao);
       continue;
     }
-    if (bloco.tipo === 'titulo') { grade = null; cartao = null; }
     if (cartao && bloco.tipo !== 'titulo') { cartao.append(bloco.no); continue; }
     grade = null;
+    cartao = null;
     saida.push(bloco.no);
   }
   for (const g of saida.filter((no) => no.classList?.contains('fala-cartoes'))) g.dataset.quantidade = String(Math.min(g.children.length, 3));
