@@ -4,6 +4,7 @@
 import { badge, button, definitions, el, emptyState, field, panel, screen } from '../core/dom.mjs';
 import { nivelAderencia } from '../core/aderencia.mjs';
 import { frescor, salario } from '../core/format.mjs';
+import { situacaoFila } from '../core/rotulos.mjs';
 import { loadState, store } from '../core/store.mjs';
 import { send } from '../core/api.mjs';
 import { notice } from '../ui/messages.mjs';
@@ -100,7 +101,7 @@ function detalhe(item) {
         ['Prazo', item.deadline || 'sem prazo divulgado'],
         ['Origem', item.source || item.platform],
         ['Observado em', frescor(item.sourceObservedAt ?? item.collectedAt, { prefixo: 'Observado' })],
-        ['Situação na fila', item.status]
+        ['Situação na fila', situacaoFila(item.status)[0]]
       ]),
       el('p', { class: 'etiqueta', text: 'por que esta vaga foi recomendada' }),
       el('p', { class: 'leitura quebra', text: motivo(item) }),

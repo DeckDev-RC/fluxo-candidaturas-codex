@@ -3,6 +3,7 @@
 
 import { FluxoError, fileToBase64, send } from './api.mjs';
 import { loadState, setJourney, store } from './store.mjs';
+import { plural } from './rotulos.mjs';
 import { connectJourney, forgetJourney } from './stream.mjs';
 import { agentDriving, interruptConversation, nomePlataforma, resetConversation, sendTurn } from './conversa-ia.mjs';
 import { ask } from './conversa.mjs';
@@ -240,10 +241,10 @@ export async function consultarNovidades() {
   const novidades = resultado.newEvents?.length ?? 0;
   const semAdaptador = (resultado.failures ?? []).filter((falha) => falha.type === 'unsupported').length;
   notice(
-    novidades ? `${novidades} novidade(s) registrada(s) no histórico.` : 'Nenhuma novidade observada nas plataformas suportadas.',
+    novidades ? `${plural(novidades, 'novidade registrada', 'novidades registradas')} no histórico.` : 'Nenhuma novidade observada nas plataformas suportadas.',
     novidades ? 'sucesso' : 'informacao'
   );
-  if (semAdaptador) notice(`${semAdaptador} candidatura(s) não têm consulta automática nesta versão. Confira manualmente.`, 'atencao');
+  if (semAdaptador) notice(`${plural(semAdaptador, 'candidatura não tem', 'candidaturas não têm')} consulta automática nesta versão. Confira manualmente.`, 'atencao');
   await loadState();
   return resultado;
 }

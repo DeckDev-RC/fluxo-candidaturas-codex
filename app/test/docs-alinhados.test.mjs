@@ -14,6 +14,7 @@ const PRINCIPAL = fileURLToPath(new URL('../../../../docs/', import.meta.url));
 // Documentos que só existem na linha do app: ninguém precisa duplicá-los.
 const SO_DO_APP = new Set([
   'ARQUITETURA-IMPLEMENTADA.md',
+  'CHECKLIST-EXPERIENCIA.md',
   'CHECKLIST-IA-CONDUTORA.md',
   'CHECKLIST-NAVEGADOR-EMBUTIDO.md',
   'CONSOLIDACAO.md',
