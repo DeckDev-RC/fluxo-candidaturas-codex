@@ -33,6 +33,17 @@ export function platformHome(platform, baseUrls = {}) {
   return HOME_PATHS[name] ?? '';
 }
 
+// O termo pesquisado, lido de volta da URL de busca (para rotular as vagas por busca).
+export function queryFromSearchUrl(url) {
+  try {
+    const parsed = new URL(String(url));
+    for (const chave of ['term', 'palabra', 'keywords', 'q', 'query']) { const valor = parsed.searchParams.get(chave); if (valor) return valor.trim(); }
+    const termo = parsed.pathname.match(/job-search\/term=([^/]+)|\/vagas\/([^/]+)\/?$|vagas-de-([^/]+)/);
+    const bruto = termo?.[1] ?? termo?.[2] ?? termo?.[3] ?? '';
+    return decodeURIComponent(bruto).replace(/[-+]/g, ' ').trim();
+  } catch { return ''; }
+}
+
 // Plataforma a que uma URL pertence, pelo domínio; '' quando não é uma das conhecidas.
 export function platformOfUrl(url) {
   let host = '';

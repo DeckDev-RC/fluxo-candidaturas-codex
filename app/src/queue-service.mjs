@@ -202,6 +202,8 @@ function normalizeInput(input, now) {
     location: String(input.location ?? ''), salary: String(input.salary ?? ''),
     requirements: asArray(input.requirements).map(String), eliminators: asArray(input.eliminators).map(String),
     collectedAt: String(input.collectedAt ?? timestamp), sourceObservedAt: String(input.sourceObservedAt ?? timestamp), sourceEvidence: input.sourceEvidence ?? null,
+    // A busca que trouxe a vaga (termo e instante), para agrupar a fila por busca.
+    searchQuery: String(input.searchQuery ?? ''), searchAt: String(input.searchAt ?? input.collectedAt ?? timestamp),
     priority: ['A', 'B', 'C'].includes(input.priority) ? input.priority : 'B',
     fitScore: Math.max(0, Math.min(100, numberOrZero(input.fitScore))),
     workMode: String(input.workMode ?? ''),

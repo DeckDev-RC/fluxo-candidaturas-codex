@@ -140,6 +140,17 @@
 .mesa[data-estado-agora="decisao-pendente"] .balao-atual .balao-corpo { border-color: var(--acento); box-shadow: 0 0 0 3px var(--acento-fraco); }
 
 .balao-cartao { margin-top: var(--e2); }
+
+/* Cartões pedidos pela IA: seleção de vagas, confirmação de dados, respostas rápidas. */
+.balao-cartao-ia .balao-avatar { visibility: hidden; }
+.cartao-ia { display: flex; flex-direction: column; gap: var(--e3); padding: var(--e4); border: 1px solid var(--linha); border-radius: var(--raio-lg); background: var(--superficie); }
+.cartao-ia-titulo { font-weight: var(--peso-medio); }
+.cartao-ia-lista { display: flex; flex-direction: column; gap: var(--e2); }
+.cartao-ia-item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--e3); align-items: center; }
+.cartao-ia-item label { display: flex; flex-direction: column; min-width: 0; cursor: pointer; }
+.cartao-ia-item input[type="checkbox"] { width: 1.125rem; height: 1.125rem; accent-color: var(--acento); }
+.cartao-ia-campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: var(--e3); }
+.cartao-ia-opcoes { flex-direction: row; flex-wrap: wrap; gap: var(--e2); padding: 0; border: 0; background: transparent; }
 .balao-cartao .painel { border: 0; padding: 0; box-shadow: none; }
 .balao-cartao .painel > .painel-cabecalho { display: none; }
 

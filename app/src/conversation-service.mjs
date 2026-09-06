@@ -14,7 +14,7 @@ const ARQUIVO = 'estado/conversa.json';
 const PRAZO_TURNO_MS = 15 * 60 * 1000;
 const HISTORICO_EVENTOS = 200;
 // Linhas finais "AÇÃO: ..." que a interface sabe executar com confirmação da pessoa.
-const ACOES = /^AÇÃO:\s*(abrir|objetivo|modalidades)\s*=\s*(.+)$/imu;
+const ACOES = /^AÇÃO:\s*(abrir|objetivo|modalidades|selecionar-descarte|confirmar|opcoes)\s*=\s*(.+)$/imu;
 
 export function createConversationService({ agentAdapter, snapshot = async () => ({}), rootDir = '', runService = null, tabs = null, now = () => new Date(), timeoutMs = PRAZO_TURNO_MS } = {}) {
   if (!agentAdapter?.request) throw new TypeError('A conversa requer o adaptador do agente.');

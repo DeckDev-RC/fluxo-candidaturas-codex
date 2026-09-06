@@ -1,6 +1,6 @@
 import { acquireFluxoLock, wrapMutations } from './lock.mjs';
 import { detectUnsupportedPage } from './unsupported-page.mjs';
-import { classifySearchPage } from './platform-search.mjs';
+import { classifySearchPage, queryFromSearchUrl } from './platform-search.mjs';
 import { createStateDocument } from './state-document.mjs';
 
 export function createDiscoveryService({ rootDir = '', persistence, queueService, adapters = {}, fixtureAdapters = {}, now = () => new Date(), mutationLock = true, lock = () => acquireFluxoLock(rootDir) } = {}) {
@@ -14,6 +14,10 @@ export function createDiscoveryService({ rootDir = '', persistence, queueService
       const failures = [];
       const empty = [];
       let duplicates = 0;
+      // Cada vaga carrega a busca que a trouxe: a fila acumula buscas diferentes e a
+      // pessoa precisa saber o que é de agora e o que é de antes.
+      const searchAt = now().toISOString();
+      const termoDosCriterios = list(criteria.query ?? criteria.roles ?? criteria.targetRoles).join(', ');
       for (const platform of platforms) {
         const adapter = criteria.mode === 'fixture' ? fixtureAdapters[platform] ?? adapters[platform] : adapters[platform];
         if (!adapter?.search) { failures.push({ platform, type: 'adapter_unavailable', message: 'A plataforma não está configurada.', retryable: true }); continue; }
@@ -25,8 +29,9 @@ export function createDiscoveryService({ rootDir = '', persistence, queueService
           const classificacao = classifySearchPage({ jobs: Array.isArray(found) ? found : [], emptyResults: criteria.emptyResults === true });
           if (classificacao.kind === 'unavailable') { failures.push({ platform, type: 'platform_unavailable', message: classificacao.message, retryable: true }); continue; }
           if (classificacao.kind === 'empty') { empty.push({ platform, message: classificacao.message }); }
+          const busca = { searchAt, searchQuery: termoDosCriterios || queryFromSearchUrl(planned.searchUrl) };
           for (const raw of Array.isArray(found) ? found : []) {
-            const item = normalizeOpportunity(raw, platform, now);
+            const item = { ...normalizeOpportunity(raw, platform, now), ...busca };
             try { const stored = await queueService.addQueueItem(item); opportunities.push(stored ?? item); }
             catch (error) { if (error?.code === 'queue_duplicate' || error?.code === 'queue_duplicate_cross_platform') duplicates += 1; else throw error; }
           }

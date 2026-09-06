@@ -15,6 +15,7 @@ import { decisionList } from '../decisoes.mjs';
 import { marcaFluxo } from '../../ui/marca.mjs';
 import { acoesDaSituacao } from './situacao-acoes.mjs';
 import { botaoPreparar } from './preparar-candidatura.mjs';
+import { cartaoDaIa } from './cartoes-ia.mjs';
 
 // Nestas situações o motivo repete o corpo ou já aparece na ação "ocupado".
 const SEM_MOTIVO = new Set(['primeiro-uso', 'pronta-para-buscar', 'trabalhando', 'decisao-pendente', 'escolher-vaga']);
@@ -29,6 +30,7 @@ export function conversationColumn(situacao, pendentes) {
     el('ol', { class: 'linha-do-tempo', id: 'linha-do-tempo' }, [
       atual,
       transcript().map(balao),
+      cartaoDaIa(),
       isThinking() ? el('li', { class: 'balao', dataset: { autor: 'fluxo' }, 'aria-live': 'polite' }, [avatar(), el('div', { class: 'balao-corpo' }, [el('span', { class: 'ocupado', text: 'Pensando…' })])]) : null
     ])
   ]);
