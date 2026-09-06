@@ -12,7 +12,8 @@
 *::before,
 *::after { box-sizing: border-box; }
 
-html { color-scheme: light dark; }
+/* O esquema de cores vem do tema efetivo (tokens.css); sem atributo, ambos são aceitos. */
+html:not([data-tema-efetivo]) { color-scheme: light dark; }
 
 body {
   margin: 0;

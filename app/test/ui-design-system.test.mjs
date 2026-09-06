@@ -19,7 +19,10 @@ test('tokens definem cor, tipografia, espaçamento, borda, elevação e moviment
   assert.doesNotMatch(css, /--sucesso:\s*var\(--acento\)/);
   assert.match(css, /prefers-reduced-motion/);
   assert.match(css, /--duracao-curta:\s*0ms/, 'movimento reduzido precisa zerar a duração');
-  assert.match(css, /prefers-color-scheme: dark/, 'o tema escuro é redefinição de tokens, não de componentes');
+  // O tema escuro é redefinição de tokens sob um atributo do <html>, escolhido pela
+  // pessoa ou herdado do sistema por /tema.js antes da primeira pintura.
+  assert.match(css, /:root\[data-tema-efetivo="escuro"\]\s*\{/, 'o tema escuro é redefinição de tokens, não de componentes');
+  assert.doesNotMatch(css, /prefers-color-scheme/, 'a preferência do sistema é decidida em um só lugar (tema.js), não no CSS');
 });
 
 test('contraste dos pares principais atende WCAG 2.2 AA', async () => {

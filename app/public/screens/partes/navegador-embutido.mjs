@@ -85,10 +85,20 @@ function ouvirJanela() {
 // A seção se atualiza no lugar: a repintura geral espera a pessoa terminar de
 // digitar, mas a aba que acabou de abrir precisa aparecer na hora.
 function receberAbas(lista) {
+  const anterior = abasDaJanela;
   abasDaJanela = Array.isArray(lista) ? lista : [];
   const atual = document.querySelector('.navegador-embutido');
+  // Mudou só título ou carregamento: ajusta o texto e não recria a seção (recriar
+  // move a área e faz a aba piscar). Mudou a lista ou a aba visível: redesenha.
+  const mesmaEstrutura = anterior.length === abasDaJanela.length && anterior.every((aba, i) => aba.platform === abasDaJanela[i].platform && aba.visible === abasDaJanela[i].visible);
+  if (atual && mesmaEstrutura) {
+    const endereco = atual.querySelector('.abas-endereco');
+    const ativa = abasDaJanela.find((aba) => aba.visible);
+    if (endereco && ativa) endereco.textContent = ativa.title || ativa.url || '';
+    return;
+  }
   if (atual) atual.replaceWith(embeddedBrowserSection());
-  notify();
+  else notify();
 }
 
 // Onde a aba deve aparecer: o retângulo visível da área, em coordenadas da
