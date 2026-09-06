@@ -8,6 +8,7 @@ import { restoreJourney } from './core/stream.mjs';
 import { onTranscript, startTranscript } from './core/conversa.mjs';
 import { connectAiStatus, refreshAiOnFocus } from './core/ia-status.mjs';
 import { agentDriving, connectConversation, disconnectConversation } from './core/conversa-ia.mjs';
+import { detectEmbeddedBrowser } from './screens/partes/navegador-embutido.mjs';
 import { notice, renderNotices } from './ui/messages.mjs';
 import { agoraScreen } from './screens/agora.mjs';
 import { oportunidadesScreen } from './screens/oportunidades.mjs';
@@ -74,6 +75,8 @@ async function start() {
   } catch (error) {
     notice(`Não foi possível ler os dados locais: ${describeError(error)}`, 'erro');
   }
+  // Desktop com navegador embutido: a coluna de acompanhamento vira o lugar das abas.
+  if (!isDemo() && await detectEmbeddedBrowser()) document.querySelector('#conteudo').dataset.navegador = 'embutido';
   startRouter({ routes: rotas, onChange: aoTrocarRota });
   if (!isDemo()) {
     restoreJourney();

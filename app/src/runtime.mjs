@@ -59,7 +59,7 @@ import { createCampaignService } from './campaign-service.mjs';
 import { createConsistencyService } from './consistency-service.mjs';
 import { createFormController } from './form-controller.mjs';
 
-export async function createLocalRuntime({ rootDir, browserDriver, headless, schedulerTickMs = 60_000 } = {}) {
+export async function createLocalRuntime({ rootDir, browserDriver, headless, browserHost = null, schedulerTickMs = 60_000 } = {}) {
   await mkdir(join(rootDir, 'estado'), { recursive: true });
   const persistence = createPersistenceAuthority({ rootDir });
   if (!['campanha/config.json', 'fila/vagas.json', 'candidaturas/candidaturas.json'].some(path => existsSync(join(rootDir, path)))) await persistence.initializeNew();
@@ -70,7 +70,7 @@ export async function createLocalRuntime({ rootDir, browserDriver, headless, sch
   const approvalService = createApprovalService({ dbPath });
   const policyGateway = createPolicyGateway({ approvalService });
   const stateStore = createStore({ rootDir, dbPath });
-  const driver = browserDriver ?? createPlaywrightDriver({ rootDir, headless: headless ?? runtimeConfig.playwrightHeadless });
+  const driver = browserDriver ?? createPlaywrightDriver({ rootDir, headless: headless ?? runtimeConfig.playwrightHeadless, host: browserHost });
   const platformAdapters = createPlatformAdapters({ driver });
   const browserAdapter = createBrowserAdapter({ driver, evidenceRoot: rootDir });
   const applicationService = createApplicationService({ rootDir, mutationLock: false });

@@ -3,15 +3,46 @@
 
 /* Avisos persistentes continuam visíveis aqui (U7-05): a linha da conversa
    registra o histórico, mas rola; o aviso fica até ser dispensado. */
+/* Larguras da mesa: com o navegador embutido (desktop), a coluna de
+   acompanhamento cresce para caber a página da plataforma. */
+.coluna-trabalho { --acompanhamento-largura: 19rem; --mesa-largura: 78rem; }
+.coluna-trabalho:has(#conteudo[data-navegador="embutido"]) { --acompanhamento-largura: clamp(26rem, 42vw, 40rem); --mesa-largura: 110rem; }
+
 .area[data-area="agora"] > #tela,
-.area[data-area="agora"] > .regiao-mensagens { max-width: 78rem; }
+.area[data-area="agora"] > .regiao-mensagens { max-width: var(--mesa-largura, 78rem); }
 
 .mesa {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 19rem;
+  grid-template-columns: minmax(0, 1fr) var(--acompanhamento-largura, 19rem);
   gap: var(--e6);
   align-items: start;
 }
+
+/* Navegador embutido: faixa de abas e a área onde a janela pinta a página. */
+.navegador-embutido .abas-faixa { display: flex; flex-wrap: wrap; gap: var(--e1); }
+.botao-aba {
+  padding: var(--e1) var(--e3);
+  border: 1px solid var(--linha);
+  border-radius: var(--raio);
+  background: var(--fundo);
+  color: var(--texto-2);
+  font-size: var(--texto-sm);
+}
+.botao-aba[aria-selected="true"] { background: var(--superficie-2); color: var(--texto); border-color: var(--texto-3); }
+.botao-aba::before { content: ''; display: inline-block; width: 0.45rem; height: 0.45rem; margin-right: var(--e2); border-radius: 50%; background: var(--linha); vertical-align: middle; }
+.botao-aba[data-situacao="conectada"]::before { background: var(--sucesso); }
+.botao-aba[data-situacao="login"]::before, .botao-aba[data-situacao="desafio"]::before { background: var(--atencao); }
+.abas-area {
+  display: grid;
+  place-items: center;
+  min-height: min(32rem, 60vh);
+  padding: var(--e4);
+  border: 1px dashed var(--linha);
+  border-radius: var(--raio-lg);
+  background: var(--superficie);
+  text-align: center;
+}
+.abas-endereco { max-width: 60%; font-size: var(--texto-xs); text-align: right; }
 
 .conversa-coluna { min-width: 0; width: 100%; max-width: 46rem; margin-inline: auto; }
 .linha-do-tempo { display: flex; flex-direction: column; padding-bottom: var(--e4); }
@@ -134,8 +165,8 @@
 /* A barra de escrita pertence à coluna da conversa: mesma margem e sem
    avançar sob o acompanhamento (19rem + intervalo). */
 .coluna-trabalho:has(#conteudo[data-area="agora"]) .conversa {
-  padding-right: calc(max(var(--e5), (100% - 78rem) / 2) + 19rem + var(--e6));
-  padding-left: max(var(--e5), calc((100% - 78rem) / 2));
+  padding-right: calc(max(var(--e5), (100% - var(--mesa-largura, 78rem)) / 2) + var(--acompanhamento-largura, 19rem) + var(--e6));
+  padding-left: max(var(--e5), calc((100% - var(--mesa-largura, 78rem)) / 2));
 }
 
 @media (max-width: 68rem) {

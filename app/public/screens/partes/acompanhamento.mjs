@@ -9,6 +9,7 @@ import { go } from '../../core/router.mjs';
 import { disponivel } from '../agora-estados.mjs';
 import { nivelAderencia } from '../../core/aderencia.mjs';
 import { nomePlataforma } from '../../core/conversa-ia.mjs';
+import { embeddedBrowserSection, isEmbeddedBrowser, seloDaAba } from './navegador-embutido.mjs';
 import { exportarEvidencias, journeySteps } from './percurso.mjs';
 
 const ENCERRADAS = new Set(['rejeitada', 'encerrada', 'desistência']);
@@ -30,6 +31,7 @@ export function trackingPanel(situacao) {
   if (situacao.estado === 'primeiro-uso') {
     return el('aside', { class: 'acompanhamento', 'aria-labelledby': 'acompanhamento-titulo' }, [
       Object.assign(titulo, { id: 'acompanhamento-titulo' }),
+      isEmbeddedBrowser() ? embeddedBrowserSection() : null,
       secao('O que vai acontecer', [
         journeySteps({ plano: PLANO_PADRAO }),
         el('p', { class: 'apoio', text: 'Cada etapa aparece aqui conforme avança. Você decide antes de qualquer envio.' })
@@ -59,13 +61,15 @@ function andamento(_situacao, jornada) {
 }
 
 // Abas que a IA abriu, uma por plataforma, e o que cada uma espera de você.
+// No desktop com navegador embutido, a própria página aparece aqui.
 function navegador(conversa) {
+  if (isEmbeddedBrowser()) return embeddedBrowserSection();
   const abas = conversa?.abas ?? [];
   if (!abas.length) return null;
   return secao('Navegador', el('ul', { class: 'acompanhamento-lista' }, abas.map((aba) => linha(
     nomePlataforma(aba.platform),
     aba.title || aba.url || '',
-    aba.challenge ? badge('verificação pendente', 'atencao') : aba.loginPending ? badge('login pendente', 'atencao') : badge('conectado', 'sucesso')
+    seloDaAba(aba)
   ))));
 }
 
