@@ -46,7 +46,7 @@ export function conversationColumn(situacao, pendentes) {
 // A barra só aparece quando a fala atual saiu da área visível.
 function observarFalaAtual(atual, barra) {
   observador?.disconnect();
-  const raiz = document.querySelector('#conteudo');
+  const raiz = contenedorDeRolagem();
   if (!raiz || !atual.isConnected) return;
   observador = new IntersectionObserver(([entrada]) => { barra.dataset.visivel = entrada.isIntersecting ? 'false' : 'true'; }, { root: raiz, threshold: 0.05 });
   observador.observe(atual);
@@ -149,8 +149,16 @@ function avatar() {
   return marcaFluxo({ tamanho: 24, classe: 'balao-avatar' });
 }
 
+// Quem rola é a coluna da conversa quando ela tem rolagem própria (mesa larga);
+// senão, a área inteira (janela estreita).
+function contenedorDeRolagem() {
+  const coluna = document.querySelector('.conversa-coluna');
+  if (coluna && coluna.scrollHeight > coluna.clientHeight && getComputedStyle(coluna).overflowY !== 'visible') return coluna;
+  return document.querySelector('#conteudo');
+}
+
 function rolarParaOFim() {
-  const area = document.querySelector('#conteudo');
+  const area = contenedorDeRolagem();
   if (area) area.scrollTop = area.scrollHeight;
 }
 

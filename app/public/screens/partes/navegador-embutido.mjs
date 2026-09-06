@@ -198,9 +198,12 @@ function publicarArea() {
   const dialogoAberto = Boolean(document.querySelector('#dialogo')?.open);
   if (areaAtual?.isConnected && currentRoute() === 'agora' && !dialogoAberto && document.visibilityState !== 'hidden') {
     const caixa = areaAtual.getBoundingClientRect();
-    // Recorte pela área de trabalho (que rola sob o cabeçalho), não só pela janela:
-    // a aba nunca cobre o cabeçalho nem a barra de escrita.
-    const limite = areaAtual.closest('.area')?.getBoundingClientRect() ?? { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight };
+    // Recorte pelo contenedor que rola (a coluna de acompanhamento na mesa larga, a
+    // área de trabalho na estreita): a aba nunca cobre cabeçalho, barra de escrita
+    // nem o que está acima/abaixo dela na própria coluna.
+    const coluna = areaAtual.closest('.acompanhamento');
+    const rolaNaColuna = coluna && getComputedStyle(coluna).overflowY !== 'visible';
+    const limite = (rolaNaColuna ? coluna : areaAtual.closest('.area'))?.getBoundingClientRect() ?? { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight };
     const x = Math.max(caixa.left, limite.left, 0);
     const y = Math.max(caixa.top, limite.top, 0);
     const largura = Math.min(caixa.right, limite.right, window.innerWidth) - x;

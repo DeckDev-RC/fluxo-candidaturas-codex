@@ -22,11 +22,13 @@ export function createDomainTools({ rootDir, readState, discoveryService, fitSer
   const entries = [
     // Ferramentas de leitura aceitam escopo para não trazer o estado inteiro
     // quando só uma parte importa.
-    ['fluxo_state', 'Ler campanha, fila e estado persistido; use scope para limitar a leitura.', { scope: opcional('string') }, async (input) => {
+    ['fluxo_state', `Ler campanha, fila e estado persistido. scope opcional, um de: ${[...ESCOPOS_DE_ESTADO].join(', ')} (sem scope, tudo).`, { scope: opcional('string') }, async (input) => {
       const estado = await readState();
       const escopo = String(input.scope ?? 'all');
       if (escopo === 'all') return estado;
-      if (!ESCOPOS_DE_ESTADO.has(escopo)) throw fail('invalid_scope');
+      // Escopo inventado ("summary", "resumo") não é motivo para falhar uma leitura:
+      // devolve tudo e diz quais escopos existem, em vez de virar "Não deu certo" na conversa.
+      if (!ESCOPOS_DE_ESTADO.has(escopo)) return { ...estado, scopeNote: `Escopo "${escopo}" não existe; devolvido o estado completo. Escopos: ${[...ESCOPOS_DE_ESTADO].join(', ')}.` };
       return { [escopo]: estado[escopo] };
     }],
     ['fluxo_profile', 'Ler fatos confirmados do perfil local; use scope para uma única informação.', { scope: opcional('string') }, async (input) => {

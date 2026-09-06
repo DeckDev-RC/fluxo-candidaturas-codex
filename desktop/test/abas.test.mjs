@@ -80,8 +80,11 @@ test('uma aba por plataforma, só a visível ocupa a área e a interface é avis
   const abas = createAbas({ window: janela, criarView: () => { const v = viewFalsa(); views.push(v); return v; }, aoMudar: (lista) => avisos.push(lista) });
 
   await abas.abrir('linkedin', 'http://127.0.0.1:4173/aba/LINKEDIN');
+  // Achado real: a aba aberta pela IA ficava oculta até a pessoa clicar nela.
+  assert.equal(abas.listar()[0].visible, true, 'a aba que a IA acabou de abrir aparece sozinha');
   await abas.abrir('LINKEDIN', 'https://www.linkedin.com/jobs/');
   await abas.abrir('GUPY', 'http://127.0.0.1:4173/aba/GUPY');
+  assert.equal(abas.listar().find((a) => a.platform === 'GUPY').visible, true, 'a aba nova vira a visível');
   assert.equal(views.length, 2, 'reabrir a mesma plataforma reaproveita a view');
   assert.deepEqual(views[0].webContents.carregadas, ['http://127.0.0.1:4173/aba/LINKEDIN', 'https://www.linkedin.com/jobs/']);
   assert.equal(janela.filhos.length, 2);

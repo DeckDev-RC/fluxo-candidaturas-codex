@@ -27,7 +27,11 @@ test('toda ferramenta registrada é exercitada em uma jornada real, inclusive a 
     const estado = await chamar('fluxo_state', {}, run.id);
     assert.ok(estado.campaign);
     assert.deepEqual(Object.keys(await chamar('fluxo_state', { scope: 'queue' }, run.id)), ['queue']);
-    await assert.rejects(chamar('fluxo_state', { scope: 'inventado' }, run.id), { code: 'invalid_scope' });
+    // Achado real: a IA pediu scope "summary" e a leitura virou "Não deu certo" na conversa.
+    // Escopo desconhecido devolve tudo e explica quais existem.
+    const tolerante = await chamar('fluxo_state', { scope: 'inventado' }, run.id);
+    assert.ok(tolerante.campaign && tolerante.queue);
+    assert.match(tolerante.scopeNote, /"inventado" não existe.*campaign, queue/);
     const perfil = await chamar('fluxo_profile', { scope: 'name' }, run.id);
     assert.equal(perfil.facts.name.value, 'Pessoa Ferramenta');
 

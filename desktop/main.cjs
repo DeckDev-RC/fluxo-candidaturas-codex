@@ -95,7 +95,7 @@ async function start() {
     window: mainWindow,
     // disableDialogs: alert/confirm/prompt da plataforma não viram janela nativa do
     // sistema sobre o app (ex.: pedido de localização do InfoJobs); a página segue.
-    criarView: () => new WebContentsView({ webPreferences: { partition: PARTICAO_PLATAFORMAS, sandbox: true, contextIsolation: true, nodeIntegration: false, disableDialogs: true } }),
+    criarView: ({ zoomFactor = 1 } = {}) => new WebContentsView({ webPreferences: { partition: PARTICAO_PLATAFORMAS, sandbox: true, contextIsolation: true, nodeIntegration: false, disableDialogs: true, zoomFactor } }),
     aoMudar: (lista) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('fluxo:abas-mudou', lista); }
   });
   // Ao trocar a página da janela (diagnóstico, nova pasta), nenhuma aba pode ficar sobre ela.

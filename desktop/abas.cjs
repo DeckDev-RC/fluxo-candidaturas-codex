@@ -24,7 +24,8 @@ function createAbas({ window, criarView, aoMudar = () => {} }) {
       let aba = abas.get(nome);
       if (aba && aba.view.webContents?.isDestroyed?.()) { abas.delete(nome); aba = null; }
       if (!aba) {
-        const view = criarView();
+        // A view nasce já no zoom vigente: evita carregar a 100% e encolher depois.
+        const view = criarView({ zoomFactor: zoom });
         endurecer(view, nome);
         window.contentView.addChildView(view);
         aba = { platform: nome, view, title: '', url: '', loading: true };
@@ -32,6 +33,9 @@ function createAbas({ window, criarView, aoMudar = () => {} }) {
         posicionar(aba);
         aplicarZoom(aba);
       }
+      // A aba que a IA acabou de abrir é a que a pessoa quer ver: mostra sem esperar
+      // clique. Se já é a visível, `mostrar` não mexe em nada.
+      api.mostrar(nome);
       // Carregar a marcadora não pode segurar o pedido do serviço: com prazo curto,
       // a aba segue existindo e o driver a encontra quando a página responder.
       if (url) await Promise.race([aba.view.webContents.loadURL(String(url)).catch(() => {}), new Promise((resolve) => setTimeout(resolve, PRAZO_CARREGAMENTO_MS))]);

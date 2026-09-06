@@ -104,6 +104,22 @@ Sete frentes, na ordem de impacto. Cada item marcado tem teste ou verificação 
 - Vagas gravadas pelo leitor de cartões antigo (plataforma "CARD", título "X X")
   são saneadas na leitura da fila (`queue-service.mjs: sanearHerdado`).
 
+## Achados do teste real (12:54) e correções
+
+- "Não deu certo: a ferramenta não pode executar esta ação com o contexto informado":
+  a IA chamou `fluxo_state` com um `scope` inventado ("summary"). Agora a descrição da
+  ferramenta lista os escopos válidos e um escopo desconhecido devolve o estado
+  completo com uma nota, em vez de falhar.
+- A aba aberta pela IA ficava oculta até a pessoa clicar: `abas.abrir` passa a
+  mostrar a aba recém-aberta (sem efeito se já era a visível).
+- Glitch enquanto a IA abria: a view nascia a 100% e encolhia para a miniatura na
+  primeira navegação; agora nasce com `webPreferences.zoomFactor` no zoom vigente.
+- Rolagem separada: na mesa larga, a conversa e o acompanhamento rolam cada um por
+  si (`.area[data-area="agora"]` não rola; as colunas têm `overflow-y: auto`). A
+  barra fixa da situação, a rolagem para o fim e o recorte da aba embutida passaram
+  a usar o contenedor que rola de fato. Em janela estreita (< 68 rem) a área volta a
+  rolar inteira.
+
 ## Pendente de validação com conta real
 
 - Qualidade da extração de requisitos nas páginas reais de Gupy/InfoJobs/LinkedIn
