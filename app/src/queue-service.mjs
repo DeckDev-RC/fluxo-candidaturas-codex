@@ -98,6 +98,30 @@ export function createQueueService({ rootDir, persistence: injectedPersistence, 
       return { updated };
     },
 
+    // Descarte a pedido da pessoa: por identificadores ou por texto (cargo/empresa).
+    // A vaga fica registrada como "descartada": não volta como novidade na próxima busca.
+    async discardItems({ ids = [], query = '', reason = '' } = {}) {
+      const alvos = new Set(asArray(ids).map(String).filter(Boolean));
+      const termo = String(query ?? '').trim().toLocaleLowerCase();
+      if (!alvos.size && !termo) throw domainError('discard_selector_required', 'Informe quais vagas descartar: identificadores ou um texto de cargo/empresa.');
+      const queuePath = join(rootDir, 'fila', 'vagas.json');
+      const queue = await readQueue(rootDir, persistence);
+      const descartadas = [];
+      for (const item of queue) {
+        const porId = alvos.has(item.id) || alvos.has(item.key);
+        const porTexto = termo && `${item.role ?? ''} ${item.company ?? ''}`.toLocaleLowerCase().includes(termo);
+        if (!porId && !porTexto) continue;
+        if (!canTransitionQueue(item.status, QUEUE_STATUS.DISCARDED).allowed) continue;
+        item.status = QUEUE_STATUS.DISCARDED;
+        item.discardReason = String(reason ?? '').trim();
+        item.discardedAt = now().toISOString();
+        item.updatedAt = item.discardedAt;
+        descartadas.push({ id: item.id, role: item.role, company: item.company, platform: item.platform });
+      }
+      if (descartadas.length) await saveQueue(queuePath, queue, persistence);
+      return { discarded: descartadas.length, items: descartadas, remaining: queue.filter((item) => item.status === QUEUE_STATUS.QUEUED || item.status === QUEUE_STATUS.IN_PROGRESS).length };
+    },
+
     async recordQueueFailure(reference, errorMessage) {
       const campaign = await readCampaign(rootDir, persistence);
       const queuePath = join(rootDir, 'fila', 'vagas.json');
@@ -125,7 +149,7 @@ export function createQueueService({ rootDir, persistence: injectedPersistence, 
       return { reference: item.id, attempts, maximum, status: item.status, error: item.lastError };
     }
   };
-  return wrapMutations(service, ['addQueueItem', 'claimNext', 'recordFit', 'recordQueueFailure'], { rootDir, mutationLock, lock });
+  return wrapMutations(service, ['addQueueItem', 'claimNext', 'recordFit', 'discardItems', 'recordQueueFailure'], { rootDir, mutationLock, lock });
 }
 
 async function useSqlite(persistence) { return Boolean(persistence?.isSqliteAuthority && await persistence.isSqliteAuthority()); }
