@@ -9,6 +9,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { INSTRUCOES_DA_CONVERSA, montarContexto } from './conversation-prompt.mjs';
+import { classificarPedido, esforcoParaNavegador } from './conversation-intent.mjs';
 import { resumirFerramenta } from './conversation-narration.mjs';
 
 const ARQUIVO = 'estado/conversa.json';
@@ -35,7 +36,7 @@ export function assinaturaDasFerramentas(definitions = [], instrucoes = INSTRUCO
   return createHash('sha1').update(JSON.stringify(base)).update(String(instrucoes ?? '')).digest('hex').slice(0, 16);
 }
 
-export function createConversationService({ agentAdapter, snapshot = async () => ({}), rootDir = '', runService = null, tabs = null, loginState = null, toolsSignature = '', now = () => new Date(), timeoutMs = PRAZO_TURNO_MS, watchIntervalMs = OBSERVACAO_INTERVALO_MS } = {}) {
+export function createConversationService({ agentAdapter, snapshot = async () => ({}), rootDir = '', runService = null, tabs = null, loginState = null, codexSettings = null, toolsSignature = '', now = () => new Date(), timeoutMs = PRAZO_TURNO_MS, watchIntervalMs = OBSERVACAO_INTERVALO_MS } = {}) {
   if (!agentAdapter?.request) throw new TypeError('A conversa requer o adaptador do agente.');
   let threadId = '';
   // Thread que este processo do app-server já conhece (retomada ou criada aqui).
@@ -48,6 +49,7 @@ export function createConversationService({ agentAdapter, snapshot = async () =>
   let turnoAtivo = null;
   let observacao = null; // intervalo que observa a aba enquanto a IA espera login
   let ferramentasRenovadas = false; // thread anterior descartada por ferramentas novas
+  let ultimoTurnoNavegou = false; // o turno anterior usou o navegador (continuação curta é navegação)
   // Quando a thread anterior não pode ser retomada (ferramentas mudaram, app-server
   // a perdeu), a memória da conversa vem do histórico local gravado nos eventos do
   // run anterior e entra no contexto do primeiro turno da thread nova.
@@ -95,6 +97,8 @@ export function createConversationService({ agentAdapter, snapshot = async () =>
         if (resumo.espera) { emitir('waiting_user', resumo.espera); observarEspera(resumo.espera); }
         if (chamada.ok && ['fluxo_open_platform', 'fluxo_browser_status'].includes(chamada.tool)) publicarAbas(chamada.result);
       }
+      // Um "sim" ou "manda" logo depois de um turno no navegador continua esse trabalho.
+      if (/^browser_/.test(String(chamada.tool))) ultimoTurnoNavegou = true;
       registrar('conversation.tool', { tool: chamada.tool, phase: chamada.phase, ok: chamada.ok ?? null, summary: chamada.phase === 'started' ? resumo.inicio : resumo.fim });
       return true;
     },
@@ -116,13 +120,17 @@ export function createConversationService({ agentAdapter, snapshot = async () =>
         await ensureRun();
         // O primeiro turno de cada processo avisa que o app foi reaberto: a thread
         // retomada lembra o que estava fazendo, mas nada disso continua em curso.
-        const contexto = montarContexto(await snapshot(), now(), { sessaoNova: primeiroTurnoDaSessao && (retomadaDeGravacao || ferramentasRenovadas), conversaAnterior: primeiroTurnoDaSessao ? conversaAnterior : [] });
+        // Pedido de navegação: contexto enxuto (só a aba) e raciocínio mais alto.
+        // Evento da interface nunca é navegação; ele carrega o contexto inteiro.
+        const intencao = system ? { navegador: false } : classificarPedido(pedido, { ultimoTurnoNavegou });
+        const contexto = montarContexto(await snapshot(), now(), { sessaoNova: primeiroTurnoDaSessao && (retomadaDeGravacao || ferramentasRenovadas), conversaAnterior: primeiroTurnoDaSessao ? conversaAnterior : [], modo: intencao.navegador ? 'navegador' : 'completo' });
         primeiroTurnoDaSessao = false;
         const entrada = `${contexto}\n\n${system ? 'SISTEMA (evento da interface, não é fala da pessoa)' : 'Pessoa'}: ${pedido}`;
         turno.reservado = false;
-        registrar(system ? 'conversation.system' : 'conversation.user', { text: pedido });
+        registrar(system ? 'conversation.system' : 'conversation.user', { text: pedido, ...(intencao.navegador ? { modo: 'navegador' } : {}) });
         emitir('turn.started', { turnId: turno.id, system });
-        turno.codexTurnId = await iniciarTurnoNoAgente(entrada);
+        ultimoTurnoNavegou = false;
+        turno.codexTurnId = await iniciarTurnoNoAgente(entrada, intencao.navegador ? await ajustesDeNavegador() : {});
       } catch (error) {
         if (turnoAtivo === turno) { turno.reservado = false; falharTurno(error); }
         throw error;
@@ -185,9 +193,20 @@ export function createConversationService({ agentAdapter, snapshot = async () =>
 
   // Começa o turno; se a thread sumiu no app-server (reinício, expiração),
   // abre outra em silêncio e repete uma vez. A pessoa não vê o erro técnico.
-  async function iniciarTurnoNoAgente(entrada) {
+  // Esforço de raciocínio do turno de navegador: sobe até "high" quando a configuração
+  // da pessoa está abaixo e o modelo aceita. Sem serviço de configuração, nada muda.
+  async function ajustesDeNavegador() {
+    if (!codexSettings?.get) return {};
     try {
-      const resultado = await agentAdapter.runTurnForRun(runId, threadId, entrada);
+      const [configuracao, catalogo] = await Promise.all([codexSettings.get(), codexSettings.listModels ? codexSettings.listModels() : []]);
+      const effort = esforcoParaNavegador(configuracao, catalogo);
+      return effort ? { effort } : {};
+    } catch { return {}; }
+  }
+
+  async function iniciarTurnoNoAgente(entrada, ajustes = {}) {
+    try {
+      const resultado = await agentAdapter.runTurnForRun(runId, threadId, entrada, ajustes);
       return String(resultado?.turn?.id ?? '');
     } catch (error) {
       if (!threadPerdida(error)) throw error;
@@ -197,7 +216,7 @@ export function createConversationService({ agentAdapter, snapshot = async () =>
       agentAdapter.bindRun?.(runId, threadId);
       runService?.setAgentThread?.(runId, threadId);
       try {
-        const resultado = await agentAdapter.runTurnForRun(runId, threadId, entrada);
+        const resultado = await agentAdapter.runTurnForRun(runId, threadId, entrada, ajustes);
         return String(resultado?.turn?.id ?? '');
       } catch (novoErro) {
         throw domainError('conversation_thread_lost', `A conversa anterior não está mais disponível e não consegui abrir outra: ${novoErro?.message ?? novoErro}`);

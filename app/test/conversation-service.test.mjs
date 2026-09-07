@@ -5,6 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { assinaturaDasFerramentas, createConversationService, estruturarEntidades, separarAcoes } from '../src/conversation-service.mjs';
 import { montarContexto } from '../src/conversation-prompt.mjs';
+import { classificarPedido, esforcoParaNavegador } from '../src/conversation-intent.mjs';
 import { resumirFerramenta } from '../src/conversation-narration.mjs';
 import { createServer } from '../src/http-server.mjs';
 
@@ -20,8 +21,8 @@ function adaptadorFalso(roteiro = () => [{ mensagem: 'Olá! Comece pelo cartão 
     request: async (method, params) => { chamadas.push([method, params]); return {}; },
     bindRun(runId, threadId) { vinculos.push([runId, threadId]); },
     async startThread(params) { chamadas.push(['thread/start', params]); return { thread: { id: 'thread-conversa' } }; },
-    async runTurnForRun(runId, threadId, text) {
-      chamadas.push(['turn/start', { runId, threadId, text }]);
+    async runTurnForRun(runId, threadId, text, ajustes = {}) {
+      chamadas.push(['turn/start', { runId, threadId, text, ...ajustes }]);
       const turnId = `turn-${++contador}`;
       setTimeout(() => {
         for (const passo of roteiro(text)) {
@@ -371,14 +372,14 @@ test('separarAcoes, contexto e narração não vazam segredo nem vocabulário t�
   assert.deepEqual(separarAcoes('Pronto.\nAÇÃO: tema=escuro').acoes, [{ tipo: 'tema', valor: 'escuro' }]);
   assert.deepEqual(separarAcoes('Confirme na tela.\nAÇÃO: limpar-conversa=sim').acoes, [{ tipo: 'limpar-conversa', valor: 'sim' }]);
   // Navegação livre e configuração narradas em pt-BR, sem nome de ferramenta.
-  const livre = resumirFerramenta({ tool: 'fluxo_browser_click', arguments: { platform: 'LINKEDIN', ref: 'n2' }, ok: true, result: { url: 'https://www.linkedin.com/mynetwork/', title: 'Minha rede' } });
+  const livre = resumirFerramenta({ tool: 'browser_click', arguments: { platform: 'LINKEDIN', ref: 'n2' }, ok: true, result: { url: 'https://www.linkedin.com/mynetwork/', title: 'Minha rede' } });
   assert.equal(livre.inicio, 'Clicando em um elemento da página.');
-  assert.equal(resumirFerramenta({ tool: 'fluxo_browser_click', arguments: { platform: 'LINKEDIN', role: 'button', name: 'Mensagem' } }).inicio, 'Clicando em "Mensagem" da página.');
-  assert.match(resumirFerramenta({ tool: 'fluxo_browser_wait', arguments: { platform: 'LINKEDIN', text: 'Escreva uma mensagem' } }).inicio, /Esperando "Escreva uma mensagem" aparecer/);
-  assert.equal(resumirFerramenta({ tool: 'fluxo_browser_screenshot', arguments: { platform: 'LINKEDIN' } }).inicio, 'Olhando a tela.');
+  assert.equal(resumirFerramenta({ tool: 'browser_click', arguments: { platform: 'LINKEDIN', role: 'button', name: 'Mensagem' } }).inicio, 'Clicando em "Mensagem" da página.');
+  assert.match(resumirFerramenta({ tool: 'browser_wait_for', arguments: { platform: 'LINKEDIN', text: 'Escreva uma mensagem' } }).inicio, /Esperando "Escreva uma mensagem" aparecer/);
+  assert.equal(resumirFerramenta({ tool: 'browser_take_screenshot', arguments: { platform: 'LINKEDIN' } }).inicio, 'Olhando a tela.');
   assert.equal(livre.fim, 'Cliquei; agora em Minha rede.');
-  assert.match(resumirFerramenta({ tool: 'fluxo_browser_navigate', arguments: { platform: 'LINKEDIN', url: 'https://www.linkedin.com/messaging/?x=1' } }).inicio, /Indo para linkedin\.com\/messaging em LinkedIn/);
-  assert.match(resumirFerramenta({ tool: 'fluxo_browser_click', arguments: {}, ok: false, error: { code: 'confirmation_required', message: 'x' } }).fim, /preciso do seu sim/);
+  assert.match(resumirFerramenta({ tool: 'browser_navigate', arguments: { platform: 'LINKEDIN', url: 'https://www.linkedin.com/messaging/?x=1' } }).inicio, /Indo para linkedin\.com\/messaging em LinkedIn/);
+  assert.match(resumirFerramenta({ tool: 'browser_click', arguments: {}, ok: false, error: { code: 'confirmation_required', message: 'x' } }).fim, /preciso do seu sim/);
   assert.match(resumirFerramenta({ tool: 'fluxo_campaign', arguments: { platforms: {} }, ok: true, result: { updated: true, enabledCount: 2, totalGoal: 20 } }).fim, /Campanha ajustada: 2 plataforma/);
   const contexto = montarContexto({ situacao: 'escolher vaga', fila: 3, plataformas: [{ name: 'GUPY', goal: 5 }], fatosConfirmados: ['name'], lacunas: ['location'], abas: [{ platform: 'GUPY', loginPending: true }] });
   assert.match(contexto, /Vagas aguardando na fila: 3/);
@@ -403,6 +404,61 @@ test('separarAcoes, contexto e narração não vazam segredo nem vocabulário t�
 
 // Achado do teste com conta real: a IA dizia "jornada pausada" quando a execução
 // só esperava a pessoa escolher uma vaga.
+test('pedido de navegação: contexto só da aba, esforço sobe para high se a configuração permitir, e um "sim" curto continua o trabalho', async () => {
+  // Classificação local do pedido.
+  assert.equal(classificarPedido('veja quem quer se conectar comigo no LinkedIn').navegador, true);
+  assert.equal(classificarPedido('mande mensagem para o Pessoa Exemplo').navegador, true);
+  assert.equal(classificarPedido('abra o meu perfil').navegador, true);
+  assert.equal(classificarPedido('buscar vagas de react na InfoJobs').navegador, false, 'busca de vagas é campanha, com contexto inteiro');
+  assert.equal(classificarPedido('qual é a minha meta?').navegador, false);
+  assert.equal(classificarPedido('oi').navegador, false);
+  assert.equal(classificarPedido('sim, pode enviar').navegador, false, 'sem turno anterior no navegador, "sim" é conversa geral');
+  assert.equal(classificarPedido('sim, pode enviar', { ultimoTurnoNavegou: true }).navegador, true);
+  assert.equal(classificarPedido('agora candidate-se a essa vaga', { ultimoTurnoNavegou: true }).navegador, false, 'campanha vence a continuação');
+
+  // Esforço: sobe até high; nunca desce; respeita o catálogo do modelo.
+  assert.equal(esforcoParaNavegador({ effort: 'medium', model: 'gpt-5' }, [{ id: 'gpt-5', efforts: ['low', 'medium', 'high'] }]), 'high');
+  assert.equal(esforcoParaNavegador({ effort: 'low', model: 'x' }, []), 'high', 'sem catálogo, high é o padrão dos modelos do Codex');
+  assert.equal(esforcoParaNavegador({ effort: 'high' }), '');
+  assert.equal(esforcoParaNavegador({ effort: 'xhigh' }), '');
+  assert.equal(esforcoParaNavegador({ effort: 'medium', model: 'mini' }, [{ id: 'mini', efforts: ['low', 'medium'] }]), '', 'modelo sem high fica como está');
+
+  // Contexto enxuto: nada de metas, fila, currículo ou lacunas; só a aba.
+  const retrato = { situacao: 'escolher vaga', fila: 3, curriculo: 'cv.pdf', lacunas: ['location'], plataformas: [{ name: 'LINKEDIN', goal: 5 }], abas: [{ platform: 'LINKEDIN' }], plataformaEmFoco: 'LINKEDIN' };
+  const enxuto = montarContexto(retrato, new Date(), { modo: 'navegador' });
+  assert.match(enxuto, /MODO NAVEGADOR/);
+  assert.match(enxuto, /Navegador: LINKEDIN \(aberta\)/);
+  assert.match(enxuto, /Plataforma em foco: LINKEDIN/);
+  assert.doesNotMatch(enxuto, /Vagas aguardando na fila|Currículo em uso|Lacunas \(não confirmadas\)|meta 5|- Situação:/);
+  assert.match(montarContexto(retrato), /Vagas aguardando na fila: 3/, 'o modo completo segue inteiro');
+  assert.match(montarContexto({ plataformas: [] }, new Date(), { modo: 'navegador' }), /nenhuma aba aberta \(use fluxo_open_platform primeiro\)/);
+
+  // Ponta a ponta: o turno de navegador chega ao agente com effort high e contexto enxuto;
+  // o "sim" seguinte também é navegação porque o turno anterior usou browser_*.
+  const rootDir = await mkdtemp(join(tmpdir(), 'fluxo-conversa-nav-'));
+  const { adapter, chamadas } = adaptadorFalso((texto) => (/Pessoa: veja/.test(texto) ? [{ ferramenta: 'browser_snapshot', args: { platform: 'LINKEDIN' }, result: { snapshot: '- main' } }, { mensagem: 'Tem 2 convites. Aceito?' }] : [{ mensagem: 'Feito.' }]));
+  const runService = runServiceFalso();
+  const codexSettings = { get: async () => ({ model: 'gpt-5', effort: 'medium' }), listModels: async () => [{ id: 'gpt-5', efforts: ['medium', 'high'] }] };
+  const service = createConversationService({ agentAdapter: adapter, rootDir, runService, codexSettings, snapshot: async () => retrato });
+  adapter.ligar(service);
+  let fim = ate(service, 'turn.completed'); await service.turn('veja quem quer se conectar comigo'); await fim;
+  const navegacao = chamadas.find(([metodo, params]) => metodo === 'turn/start' && /Pessoa: veja/.test(params.text))[1];
+  assert.equal(navegacao.effort, 'high');
+  assert.match(navegacao.text, /MODO NAVEGADOR/);
+  assert.doesNotMatch(navegacao.text, /Vagas aguardando na fila/);
+  fim = ate(service, 'turn.completed'); await service.turn('sim'); await fim;
+  const continuacao = chamadas.find(([metodo, params]) => metodo === 'turn/start' && /Pessoa: sim$/.test(params.text))[1];
+  assert.equal(continuacao.effort, 'high', 'a continuação curta herda o modo navegador');
+  fim = ate(service, 'turn.completed'); await service.turn('qual é a minha meta?'); await fim;
+  const geral = chamadas.find(([metodo, params]) => metodo === 'turn/start' && /minha meta/.test(params.text))[1];
+  assert.equal(geral.effort, undefined, 'pergunta geral volta ao esforço configurado');
+  assert.match(geral.text, /Vagas aguardando na fila: 3/);
+  // Evento da interface nunca vira modo navegador.
+  fim = ate(service, 'turn.completed'); await service.turn('a pessoa abriu o LinkedIn', { system: true }); await fim;
+  const sistema = chamadas.find(([metodo, params]) => metodo === 'turn/start' && /SISTEMA/.test(params.text))[1];
+  assert.equal(sistema.effort, undefined);
+});
+
 test('o retrato distingue espera pela pessoa de pausa deliberada', async () => {
   const { retratoParaConversa } = await import('../src/conversation-snapshot.mjs');
   const base = {

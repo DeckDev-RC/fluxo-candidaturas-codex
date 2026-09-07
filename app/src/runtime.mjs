@@ -187,6 +187,7 @@ export async function createLocalRuntime({ rootDir, browserDriver, headless, bro
     runService,
     tabs: () => browserAdapter.tabs(),
     loginState: (platform) => browserAdapter.loginState(platform),
+    codexSettings: codexSettingsService,
     toolsSignature: assinaturaDasFerramentas(domainTools.definitions),
     snapshot: () => retratoParaConversa({ rootDir, persistence, memoryService, approvalService, runService, runtimeHealth, browserAdapter })
   });

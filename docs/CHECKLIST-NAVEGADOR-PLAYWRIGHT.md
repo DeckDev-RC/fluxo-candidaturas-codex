@@ -201,6 +201,45 @@ diagnóstico, assentamento) e o cenário "login quebrado" em
 `e2e/browser-free.test.mjs` (clique que não muda a tela, 403 e erro de console no
 resultado, terceira repetição barrada, segredo da query string fora).
 
+## Contrato do Playwright MCP, esforço e contexto (07/09/2026, tarde)
+
+Por que Codex e Claude Code parecem "quase perfeitos" no navegador: o modelo foi
+treinado nas ferramentas exatas do Playwright MCP, roda com raciocínio alto e com um
+contexto só da tarefa. Os três pontos entraram no Fluxo sem abrir mão de sessão
+local, sem shell e com portões.
+
+- [x] Ferramentas com os nomes e parâmetros do Playwright MCP
+      (`app/src/browser-free-tools.mjs`): `browser_snapshot`, `browser_find`,
+      `browser_click(element, target)`, `browser_type(element, target, text, submit,
+      slowly)`, `browser_select_option(element, target, values)`, `browser_hover`,
+      `browser_press_key(key)`, `browser_navigate(url)`, `browser_navigate_back`,
+      `browser_wait_for(text | textGone | time)`, `browser_take_screenshot`,
+      `browser_console_messages`, `browser_network_requests`; nossos:
+      `browser_read_text`, `browser_scroll`. Extensões opcionais: `platform` (sem ela,
+      a aba em foco), `query` no snapshot, `role`+`name` no lugar de `target`,
+      `confirmed` no clique. `ref` continua aceito como sinônimo de `target`.
+      Mapa: observe→snapshot, read→read_text, select→select_option (`values`),
+      press→press_key, wait→wait_for (`seconds`→`time`), screenshot→take_screenshot,
+      back→navigate_back. `fluxo_open_platform` e `fluxo_browser_status` seguem
+      como estão (são do app, não da página). A assinatura das ferramentas mudou:
+      threads antigas são substituídas na primeira mensagem.
+- [x] Esforço de raciocínio por turno (`conversation-intent.mjs`): pedido de
+      navegação sobe o `effort` do turno até `high` quando a configuração da pessoa
+      está abaixo e o catálogo do modelo aceita; nunca desce o que ela escolheu;
+      pergunta geral volta ao configurado.
+- [x] Contexto enxuto no turno de navegação (`montarContexto` com `modo:
+      'navegador'`): só abas, plataforma em foco e plataformas habilitadas, mais o
+      lembrete do método. Metas, fila, currículo, lacunas e situação ficam de fora
+      (a memória da thread segue inteira). Evento da interface (SISTEMA) nunca é
+      navegação. Classificação local por expressões: campanha ("buscar vagas",
+      "candidatar", "fila", "meta") vence; "sim"/"manda" curto depois de um turno
+      que usou `browser_*` continua no modo navegador.
+
+Testes: `ferramentas-exercitadas.test.mjs` (contrato novo, `target`→ref,
+`values`, `time`, aba em foco, `platform_required`, console e rede),
+`conversation-service.test.mjs` (classificação, esforço, contexto enxuto, ponta a
+ponta com `effort: high` e continuação).
+
 ### O que foi avaliado e não adotado
 
 - Playwright CLI + Skills: exige shell para o modelo; o harness roda sem shell de
