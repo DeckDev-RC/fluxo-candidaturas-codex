@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { assinaturaDasFerramentas, createConversationService, estruturarEntidades, separarAcoes } from '../src/conversation-service.mjs';
 import { montarContexto } from '../src/conversation-prompt.mjs';
-import { classificarPedido, esforcoParaNavegador } from '../src/conversation-intent.mjs';
+import { classificarPedido, esforcoParaNavegador, turnoFoiDeNavegador } from '../src/conversation-intent.mjs';
 import { resumirFerramenta } from '../src/conversation-narration.mjs';
 import { createServer } from '../src/http-server.mjs';
 
@@ -415,6 +415,20 @@ test('pedido de navegação: contexto só da aba, esforço sobe para high se a c
   assert.equal(classificarPedido('sim, pode enviar').navegador, false, 'sem turno anterior no navegador, "sim" é conversa geral');
   assert.equal(classificarPedido('sim, pode enviar', { ultimoTurnoNavegou: true }).navegador, true);
   assert.equal(classificarPedido('agora candidate-se a essa vaga', { ultimoTurnoNavegou: true }).navegador, false, 'campanha vence a continuação');
+  // Calibração nos 61 turnos reais gravados (07/09/2026): o que errava e agora acerta.
+  assert.equal(classificarPedido('Procure uma vaga de desenvolvedor senior', { ultimoTurnoNavegou: true }).navegador, false, '"vaga" é campanha mesmo como continuação');
+  assert.equal(classificarPedido('procure outra então, não quero abrir a gupy no momento', { ultimoTurnoNavegou: true }).navegador, false, '"procure" pesa mais que "abrir"');
+  assert.equal(classificarPedido('Verifique todo o app e veja se faltou configurar algo da minha parte').navegador, false, 'o app e sua configuração não são a página');
+  assert.equal(classificarPedido('oi', { ultimoTurnoNavegou: true }).navegador, false, 'saudação nunca é continuação');
+  assert.equal(classificarPedido('ENTREI', { ultimoTurnoNavegou: true }).navegador, false, 'aviso de login feito volta ao contexto inteiro');
+  assert.equal(classificarPedido('pronto loguei, meta de 100 vagas para infojobs').navegador, false);
+  assert.equal(classificarPedido('Aceite de ambos', { ultimoTurnoNavegou: true }).navegador, true);
+  assert.equal(classificarPedido('Verifica a mensagem que enviaram para mim').navegador, true);
+  assert.equal(classificarPedido('abre a tela de login do infojobs').navegador, true);
+  // O turno "foi de navegador" só quando usou a página e não a campanha; leituras neutras não contam.
+  assert.equal(turnoFoiDeNavegador(['fluxo_state', 'fluxo_open_platform', 'browser_snapshot']), true);
+  assert.equal(turnoFoiDeNavegador(['fluxo_browser_status', 'fluxo_discover']), false, 'abrir a aba e buscar vagas é campanha');
+  assert.equal(turnoFoiDeNavegador(['fluxo_state', 'fluxo_profile']), false);
 
   // Esforço: sobe até high; nunca desce; respeita o catálogo do modelo.
   assert.equal(esforcoParaNavegador({ effort: 'medium', model: 'gpt-5' }, [{ id: 'gpt-5', efforts: ['low', 'medium', 'high'] }]), 'high');

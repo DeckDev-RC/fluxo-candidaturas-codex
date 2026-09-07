@@ -235,6 +235,43 @@ local, sem shell e com portões.
       "candidatar", "fila", "meta") vence; "sim"/"manda" curto depois de um turno
       que usou `browser_*` continua no modo navegador.
 
+### Calibração do classificador nos turnos reais (07/09/2026, 17h)
+
+Método: os 61 turnos de pessoa gravados em `domain_events` (`conversation.user`)
+foram rotulados pelo que a IA de fato usou em seguida (`conversation.tool`):
+campanha (discover, shortlist, discard, campaign, schedule…), navegador
+(`browser_*`, `fluxo_open_platform`) ou conversa (nenhuma). `fluxo_state` e
+`fluxo_profile` são leituras neutras e não contam. Depois, `classificarPedido` foi
+rodado sobre cada texto com a mesma regra de continuação.
+
+| | antes | depois |
+|---|---|---|
+| campanha lida como navegador (perigoso: perde metas e fila) | 14 de 24 | 0 de 12 |
+| navegador lido como navegador | 23 de 23 | 30 de 34 |
+| navegador lido como completo (lado seguro) | 0 | 4 |
+
+O que a medição mostrou e mudou:
+
+- a regra de continuação era a fonte quase única do erro perigoso: "Procure uma
+  vaga…" e "ENTREI" logo depois de "abra o LinkedIn" viravam navegação. Agora a
+  continuação só vale depois de um turno que usou a página e não a campanha
+  (`turnoFoiDeNavegador`), e "vaga", "procure", "busque", "aplique", "app",
+  "configurar" e "histórico" são campanha em qualquer posição;
+- saudação ("oi", "olá") nunca é navegação, nem como continuação: a IA precisa da
+  situação inteira para responder "o que eu faço?";
+- aviso de login feito ("entrei", "loguei", "pronto") volta ao contexto inteiro: nos
+  turnos reais, o que vem depois é buscar e aplicar.
+
+Os 4 casos do lado seguro: "oi" que gerou abertura de aba (era o bug já corrigido
+da IA agir em saudação), "Procura a vaga mais promissora… aplique" (é campanha; a
+IA só abriu a aba e parou), um pedido híbrido de conferir o histórico de
+candidaturas na conta, e "responda o Pessoa Exemplo… mencione o projeto Fluxo que é este
+app" (a palavra "app" pesa mais que a mensagem). Sem custo além do de antes.
+
+Como repetir a medição depois de mais uso: rotular `conversation.user` pelas
+ferramentas do turno e comparar com `classificarPedido`; `conversation.user`
+agora grava `modo: 'navegador'` quando o classificador escolheu esse modo.
+
 Testes: `ferramentas-exercitadas.test.mjs` (contrato novo, `target`→ref,
 `values`, `time`, aba em foco, `platform_required`, console e rede),
 `conversation-service.test.mjs` (classificação, esforço, contexto enxuto, ponta a
