@@ -2,7 +2,9 @@ import { PLATFORM_NAMES } from './platform-adapters.mjs';
 
 const SEARCH_PATHS = {
   GUPY: (q) => `https://portal.gupy.io/job-search/term=${encodeURIComponent(q)}`,
-  INFOJOBS: (q) => `https://www.infojobs.com.br/vagas.aspx?palabra=${encodeURIComponent(q)}`,
+  // Mapeado em conta real (07/09/2026): a busca "home office" tem URL própria e devolve
+  // só vagas remotas; a busca comum aceita `palabra`.
+  INFOJOBS: (q, { remoto = false } = {}) => (remoto ? `https://www.infojobs.com.br/vagas-de-emprego-${slug(q)}-trabalho-home-office.aspx` : `https://www.infojobs.com.br/vagas.aspx?palabra=${encodeURIComponent(q)}`),
   PANDAPE: () => '',
   LINKEDIN: (q) => `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(q)}&location=Brasil`,
   CATHO: (q) => `https://www.catho.com.br/vagas/${encodeURIComponent(q)}/`,
@@ -38,8 +40,8 @@ export function queryFromSearchUrl(url) {
   try {
     const parsed = new URL(String(url));
     for (const chave of ['term', 'palabra', 'keywords', 'q', 'query']) { const valor = parsed.searchParams.get(chave); if (valor) return valor.trim(); }
-    const termo = parsed.pathname.match(/job-search\/term=([^/]+)|\/vagas\/([^/]+)\/?$|vagas-de-([^/]+)/);
-    const bruto = termo?.[1] ?? termo?.[2] ?? termo?.[3] ?? '';
+    const termo = parsed.pathname.match(/job-search\/term=([^/]+)|\/vagas\/([^/]+)\/?$|vagas-de-(?:emprego-)?([^/]+?)(?:-trabalho-home-office)?\.aspx|vagas-de-([^/]+)/);
+    const bruto = termo?.[1] ?? termo?.[2] ?? termo?.[3] ?? termo?.[4] ?? '';
     return decodeURIComponent(bruto).replace(/[-+]/g, ' ').trim();
   } catch { return ''; }
 }
@@ -55,6 +57,9 @@ export function platformOfUrl(url) {
 // Um override com `{q}` recebe a consulta; sem o marcador, a URL é usada como a própria página de busca.
 export function buildPlatformSearch({ filters = {}, platforms = PLATFORM_NAMES, baseUrls = {} } = {}) {
   const query = [filters.roles ?? filters.targetRoles, filters.location, filters.seniority].flat().filter(Boolean).join(' ').trim();
+  // Só remoto quando a pessoa aceita apenas remoto: aí a busca já filtra na origem.
+  const modos = [filters.workModes].flat().filter(Boolean).map((m) => String(m).toLocaleLowerCase());
+  const remoto = modos.length > 0 && modos.every((m) => /remot|home ?office/.test(m));
   const selected = (platforms.length ? platforms : PLATFORM_NAMES).map(namesOf);
   return selected.map(({ platform, searchUrl: configured }) => {
     const override = configured || baseUrls[platform] || '';
@@ -64,8 +69,13 @@ export function buildPlatformSearch({ filters = {}, platforms = PLATFORM_NAMES, 
       return { platform, searchUrl: '', unavailable: true, reason: 'PandaPé não oferece busca pública; use convite.' };
     }
     const builder = SEARCH_PATHS[platform];
-    return { platform, searchUrl: builder ? builder(term) : '', query: term, source: 'padrão' };
+    return { platform, searchUrl: builder ? builder(term, { remoto }) : '', query: term, source: 'padrão' };
   });
+}
+
+// "Desenvolvedor Back-end" → "desenvolvedor-back-end" (URLs amigáveis da InfoJobs).
+function slug(texto) {
+  return String(texto).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'vagas';
 }
 
 function namesOf(item) {

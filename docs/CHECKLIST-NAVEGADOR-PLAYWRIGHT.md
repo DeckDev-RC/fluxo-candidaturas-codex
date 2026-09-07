@@ -169,6 +169,75 @@ e depois clicou "Enviar mensagem com Premium" (portão) — nunca chegou ao envi
    → digitar no compositor sem Enter → mostrar texto e pedir sim → "Enviar"
    confirmado → esperar a mensagem aparecer.
 
+## Guardas mecânicas (07/09/2026)
+
+O método pede à IA que verifique cada ação, não repita e explique falhas. A partir
+desta rodada, o código garante isso (`app/src/browser-free-guard.mjs`), em vez de
+depender só da instrução:
+
+- [x] `changed` em toda ação: impressão digital da página (URL + árvore de
+      acessibilidade sem refs, foco e cursor) antes e depois. `false` = o clique
+      não pegou, o campo não aceitou ou a rede falhou; a IA não segue supondo.
+- [x] Detector de loop: a mesma ação (tipo, alvo, valor, `confirmed`) repetida sem a
+      página mudar é barrada na terceira vez com `browser_loop_detected` e a
+      orientação de mudar de estratégia (outra consulta, `wait`, screenshot, outro
+      elemento, perguntar). Ação que muda a página zera a contagem.
+- [x] Diagnóstico de console e rede: erros de console, `pageerror`, requisições
+      falhas e respostas 4xx/5xx (só fetch/XHR/documento) desde a ação, sem query
+      string nem corpo. Vão em `diagnostics` quando a página não mudou (ou houve
+      erro de console) e em `details.diagnostics` quando a ação falha.
+      "POST /login → 403" substitui "não aconteceu nada".
+- [x] `fluxo_browser_find(platform, text)`: o `observe` já filtrado, com nome
+      explícito para a IA preferir quando sabe o que procura. Ordem sugerida na
+      instrução: find → observe(query) → read → screenshot.
+- [x] Assentamento de rede real: `waitForLoadState('networkidle')` resolve na hora
+      quando o documento já esteve ocioso, então um clique numa SPA era lido antes
+      da resposta chegar (achado do teste desta rodada). Agora as requisições
+      fetch/XHR em voo são contadas e a ação só devolve a tela depois que terminam
+      e a página fica 300 ms quieta (limite 6 s).
+
+Testes: `app/test/browser-free-guard.test.mjs` (impressão, assinatura, loop,
+diagnóstico, assentamento) e o cenário "login quebrado" em
+`e2e/browser-free.test.mjs` (clique que não muda a tela, 403 e erro de console no
+resultado, terceira repetição barrada, segredo da query string fora).
+
+### O que foi avaliado e não adotado
+
+- Playwright CLI + Skills: exige shell para o modelo; o harness roda sem shell de
+  propósito (a IA só age pelos portões do app).
+- Stagehand / Browserbase / Computer Use: segundo modelo com chave de API decidindo
+  cliques dentro da sessão autenticada da pessoa, ou navegador na nuvem com os
+  cookies dela. Contra "local, privado, sem chave" e contra os portões.
+
+## Mapeamento da InfoJobs em conta real (07/09/2026)
+
+Sessão autenticada da pessoa na aba embutida; sondagem lida pelo CDP da janela.
+
+- Busca: `.js_rowCard`, título `h2.js_vacancyTitle`, empresa é o link
+  `/empresa-…aspx` (confidencial vem sem link), local em `.mb-8` com a distância
+  ("a 648 Km de você") anexada, linha de detalhes com salário, escolaridade e
+  modalidade (Home office/Híbrido/Presencial). Rolagem infinita, sem paginação.
+  Remoto tem URL própria: `/vagas-de-emprego-<termo>-trabalho-home-office.aspx`.
+- Vaga: cabeçalho com título, empresa, local, salário e modalidade; descrição num
+  parágrafo só com marcadores inline ("Requisitos Obrigatórios: - a - b
+  Diferenciais: - c"); blocos "Exigências" (eliminatórias), "Valorizado" e
+  "Habilidades" (tags); "Tipo de contrato e Jornada" em `<p>`. Botão
+  `.js_btApplyVacancy` "CANDIDATAR-ME"; os "Candidatar-me" das vagas similares
+  são `.js_btnApplySimilar` e ficam fora.
+- Candidatura em um clique (vaga 90000001, Empresa Sintética, React): sem formulário nem
+  perguntas; aparece `h3` "Você se candidatou à vaga <cargo>" e um convite ao
+  plano Premium ("Agora não"). Ao revisitar, a página volta a mostrar
+  "CANDIDATAR-ME": a InfoJobs não expõe candidatura anterior na tela, então a
+  proteção contra reenvio é o histórico do app (dedupe por URL).
+- No app: o botão da plataforma vira o campo `submit` do snapshot (o envio do
+  fluxo padrão clica nele), a confirmação é lida pelo texto da plataforma
+  (`platform-job.mjs` → `confirmation`, `confirmationText`, `previousText`,
+  `dismiss`), `inspectConfirmation` aceita "você se candidatou" e trata "já se
+  candidatou" como candidatura anterior, e o adaptador espera a confirmação antes
+  de fechar o convite. Réplica em `e2e/platform-cards.test.mjs`.
+- Pendente: vaga com perguntas eliminatórias (`.js_visibleWhileKillers`) ainda não
+  apareceu na conta; mapear quando surgir.
+
 ## Revisão do checklist (antes de implementar)
 
 - Risco: `ariaSnapshot` em páginas enormes (feed do LinkedIn) pode passar de 100

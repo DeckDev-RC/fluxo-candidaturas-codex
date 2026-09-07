@@ -7,6 +7,7 @@
 
 import { LER_TEXTO, nomeAcessivel, observarPlano } from './browser-free-observer.mjs';
 import { lembrarSnapshot, resolverAlvo, traduzirFalhaDeAcao } from './browser-free-target.mjs';
+import { assinaturaDaAcao, createDiagnostics, createLoopGuard, impressaoDoSnapshot } from './browser-free-guard.mjs';
 
 const SNAPSHOT_PADRAO = 12_000;
 const SNAPSHOT_MAXIMO = 40_000;
@@ -28,9 +29,34 @@ export function ehAcaoSensivel(nome) {
   return ACAO_SENSIVEL.test(limpo);
 }
 
-export function createFreeBrowsing({ pageFor, goto, assentar = assentarPadrao }) {
+export function createFreeBrowsing({ pageFor, goto, assentar = assentarPadrao, loopGuard = createLoopGuard(), diagnostics = createDiagnostics() }) {
+  // Toda ação passa por aqui: impressão antes/depois (changed), detector de loop e
+  // diagnóstico de console/rede quando a ação falha ou a página não muda.
+  async function agir(platform, acao, executar) {
+    const page = await pageFor(platform);
+    diagnostics.observar(page);
+    const assinatura = assinaturaDaAcao(acao);
+    loopGuard.verificar(page, assinatura);
+    const inicio = Date.now();
+    const antes = await impressaoAtual(page);
+    let resultado;
+    try {
+      // A rede que a ação disparou termina antes de a tela ser lida.
+      resultado = await executar(page, async (pagina) => { await diagnostics.assentar(pagina); await assentar(pagina); });
+    } catch (error) {
+      loopGuard.registrar(page, assinatura, (await impressaoAtual(page)) !== antes);
+      const diagnostico = diagnostics.desde(page, inicio);
+      if (diagnostico) error.details = { diagnostics: diagnostico };
+      throw error;
+    }
+    const changed = resultado.fingerprint !== antes;
+    loopGuard.registrar(page, assinatura, changed);
+    const diagnostico = diagnostics.desde(page, inicio);
+    return { ...resultado, changed, ...(diagnostico && (!changed || diagnostico.console) ? { diagnostics: diagnostico } : {}) };
+  }
+
   return {
-    async observe(platform, opcoes = {}) { return snapshot(await pageFor(platform), opcoes); },
+    async observe(platform, opcoes = {}) { const page = await pageFor(platform); diagnostics.observar(page); return snapshot(page, opcoes); },
     async read(platform, { maxChars = TEXTO_MAXIMO } = {}) {
       const page = await pageFor(platform);
       const texto = await page.evaluate(LER_TEXTO);
@@ -38,50 +64,58 @@ export function createFreeBrowsing({ pageFor, goto, assentar = assentarPadrao })
       return { url: page.url(), title: await page.title().catch(() => ''), text: texto.slice(0, limite), truncated: texto.length > limite };
     },
     async act(platform, acao = {}) {
-      const page = await pageFor(platform);
       const tipo = String(acao.type ?? '');
-      if (tipo === 'screenshot') return capturar(page, acao);
-      if (tipo === 'navigate') {
-        if (!/^https?:\/\//i.test(String(acao.url))) throw erro('invalid_browser_url', 'A navegação exige uma URL http(s) completa.');
-        if (goto) await goto(String(acao.url), platform); else await page.goto(String(acao.url), { waitUntil: 'domcontentloaded' });
-      } else if (tipo === 'back') {
-        await page.goBack({ waitUntil: 'domcontentloaded' }).catch(() => null);
-      } else if (tipo === 'press') {
-        const tecla = String(acao.key ?? '');
-        if (!TECLA.test(tecla)) throw erro('invalid_key', `Tecla não permitida: ${tecla}. Use letras, números, Enter, Escape, Tab, setas, PageUp/PageDown, Home, End, Backspace, Delete, Space, ou combinações com Control/Shift.`);
-        await page.keyboard.press(tecla);
-      } else if (tipo === 'scroll' && !acao.ref && !acao.role) {
-        await page.mouse.wheel(0, String(acao.direction) === 'up' ? -700 : 700);
-      } else if (tipo === 'wait') {
-        await esperar(page, acao);
-      } else if (['scroll', 'hover', 'click', 'type', 'select'].includes(tipo)) {
-        const { locator: elemento, resolvido } = await resolverAlvo(page, acao);
-        try {
-          if (tipo === 'scroll') await elemento.scrollIntoViewIfNeeded();
-          if (tipo === 'hover') await elemento.hover({ timeout: 10_000 });
-          if (tipo === 'click') {
-            const nome = await elemento.evaluate(nomeAcessivel).catch(() => String(resolvido.name ?? ''));
-            if (ehAcaoSensivel(nome) && acao.confirmed !== true) throw erro('confirmation_required', `"${nome}" tem efeito fora do app. Confirme com a pessoa e repita com confirmed=true.`);
-            await elemento.click({ timeout: 10_000 });
-          }
-          if (tipo === 'type') await digitar(elemento, acao);
-          if (tipo === 'select') { const valor = String(acao.value ?? ''); try { await elemento.selectOption({ label: valor }); } catch { await elemento.selectOption(valor); } }
-        } catch (error) {
-          if (['confirmation_required', 'password_field_forbidden', 'type_not_applied'].includes(error?.code)) throw error;
-          throw traduzirFalhaDeAcao(error, resolvido);
-        }
-        await assentar(page);
-        // A resposta traz o trecho da página onde a ação aconteceu (diálogo, formulário,
-        // seção) com refs novas: é ali que a IA vai agir em seguida (ex.: o compositor
-        // de mensagem e o botão "Enviar").
-        return { ...(await snapshot(page, { maxChars: 6_000 })), target: resolvido, region: await regiaoDoAlvo(page, elemento) };
-      } else {
-        throw erro('invalid_browser_action', `Ação desconhecida: ${tipo}`);
-      }
-      await assentar(page);
-      return snapshot(page, { maxChars: Math.min(SNAPSHOT_PADRAO, 8_000) });
+      if (tipo === 'screenshot') return capturar(await pageFor(platform), acao);
+      return agir(platform, acao, (page, assentar) => executarAcao(page, platform, acao, tipo, assentar));
     }
   };
+
+  async function executarAcao(page, platform, acao, tipo, assentar) {
+    if (tipo === 'navigate') {
+      if (!/^https?:\/\//i.test(String(acao.url))) throw erro('invalid_browser_url', 'A navegação exige uma URL http(s) completa.');
+      if (goto) await goto(String(acao.url), platform); else await page.goto(String(acao.url), { waitUntil: 'domcontentloaded' });
+    } else if (tipo === 'back') {
+      await page.goBack({ waitUntil: 'domcontentloaded' }).catch(() => null);
+    } else if (tipo === 'press') {
+      const tecla = String(acao.key ?? '');
+      if (!TECLA.test(tecla)) throw erro('invalid_key', `Tecla não permitida: ${tecla}. Use letras, números, Enter, Escape, Tab, setas, PageUp/PageDown, Home, End, Backspace, Delete, Space, ou combinações com Control/Shift.`);
+      await page.keyboard.press(tecla);
+    } else if (tipo === 'scroll' && !acao.ref && !acao.role) {
+      await page.mouse.wheel(0, String(acao.direction) === 'up' ? -700 : 700);
+    } else if (tipo === 'wait') {
+      await esperar(page, acao);
+    } else if (['scroll', 'hover', 'click', 'type', 'select'].includes(tipo)) {
+      const { locator: elemento, resolvido } = await resolverAlvo(page, acao);
+      try {
+        if (tipo === 'scroll') await elemento.scrollIntoViewIfNeeded();
+        if (tipo === 'hover') await elemento.hover({ timeout: 10_000 });
+        if (tipo === 'click') {
+          const nome = await elemento.evaluate(nomeAcessivel).catch(() => String(resolvido.name ?? ''));
+          if (ehAcaoSensivel(nome) && acao.confirmed !== true) throw erro('confirmation_required', `"${nome}" tem efeito fora do app. Confirme com a pessoa e repita com confirmed=true.`);
+          await elemento.click({ timeout: 10_000 });
+        }
+        if (tipo === 'type') await digitar(elemento, acao);
+        if (tipo === 'select') { const valor = String(acao.value ?? ''); try { await elemento.selectOption({ label: valor }); } catch { await elemento.selectOption(valor); } }
+      } catch (error) {
+        if (['confirmation_required', 'password_field_forbidden', 'type_not_applied'].includes(error?.code)) throw error;
+        throw traduzirFalhaDeAcao(error, resolvido);
+      }
+      await assentar(page);
+      // A resposta traz o trecho da página onde a ação aconteceu (diálogo, formulário,
+      // seção) com refs novas: é ali que a IA vai agir em seguida (ex.: o compositor
+      // de mensagem e o botão "Enviar").
+      return { ...(await snapshot(page, { maxChars: 6_000 })), target: resolvido, region: await regiaoDoAlvo(page, elemento) };
+    } else {
+      throw erro('invalid_browser_action', `Ação desconhecida: ${tipo}`);
+    }
+    await assentar(page);
+    return snapshot(page, { maxChars: Math.min(SNAPSHOT_PADRAO, 8_000) });
+  }
+}
+
+async function impressaoAtual(page) {
+  if (typeof page.ariaSnapshot !== 'function') return impressaoDoSnapshot(page.url(), '');
+  return impressaoDoSnapshot(page.url(), await page.ariaSnapshot({ mode: 'ai' }).catch(() => ''));
 }
 
 // Digitar: senha e código nunca; editor contenteditable recebe teclas de verdade
@@ -124,6 +158,7 @@ async function regiaoDoAlvo(page, elemento) {
 async function snapshot(page, { query = '', maxChars = SNAPSHOT_PADRAO } = {}) {
   if (typeof page.ariaSnapshot !== 'function') return observarPlano(page, { query });
   let yaml = await page.ariaSnapshot({ mode: 'ai' });
+  const completo = yaml;
   lembrarSnapshot(page, yaml);
   const filtro = String(query ?? '').trim().toLocaleLowerCase();
   if (filtro) yaml = filtrarYaml(yaml, filtro);
@@ -132,7 +167,8 @@ async function snapshot(page, { query = '', maxChars = SNAPSHOT_PADRAO } = {}) {
   return {
     url: page.url(), title: await page.title().catch(() => ''),
     snapshot: truncated ? `${yaml.slice(0, limite)}\n… (cortado; use query para filtrar ou maxChars para ampliar)` : yaml,
-    chars: yaml.length, truncated, filtered: Boolean(filtro), observedAt: new Date().toISOString()
+    chars: yaml.length, truncated, filtered: Boolean(filtro), observedAt: new Date().toISOString(),
+    fingerprint: impressaoDoSnapshot(page.url(), completo)
   };
 }
 

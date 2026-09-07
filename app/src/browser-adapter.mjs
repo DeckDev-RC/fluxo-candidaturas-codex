@@ -127,8 +127,11 @@ export function createBrowserAdapter({ driver, evidenceRoot = '' }) {
         if (observed.confirmed) return { ...observed, attempts: 1 };
         throw domainError('submission_not_confirmed', 'O clique teve resultado incerto; reconciliação necessária.');
       }
+      // Plataformas de um clique confirmam com atraso curto e às vezes abrem um
+      // convite (Premium) por cima: espera a confirmação e só depois fecha o convite.
+      if (driver.awaitConfirmation) await driver.awaitConfirmation().catch(() => null);
       const confirmation = await this.verifySubmission(expected);
-      if (confirmation.confirmed) return { ...confirmation, attempts: 1 };
+      if (confirmation.confirmed) { if (driver.dismissOverlay) await driver.dismissOverlay().catch(() => null); return { ...confirmation, attempts: 1 }; }
       throw domainError('submission_not_confirmed', 'Resultado do envio incerto. Reconcilie a tela antes de qualquer nova tentativa.');
     },
 

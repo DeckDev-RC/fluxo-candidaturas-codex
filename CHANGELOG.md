@@ -1,5 +1,24 @@
 # Histórico de versões
 
+## 1.3.0 — 2026-09-07 — InfoJobs mapeada em conta real e guardas mecânicas do navegador
+
+Evidência nesta base: 355 testes do app, 14 do desktop e 25 de navegador real (Chromium). Primeira evidência R de plataforma: sondagem da InfoJobs autenticada pela aba embutida e uma candidatura real confirmada ("Você se candidatou à vaga Desenvolvedor(A) React", Empresa Sintética, 90000001), autorizada pela pessoa e feita pela sonda de mapeamento; evidência em `evidencias/infojobs-90000001-confirmacao-2026-09-07.png` na pasta de dados. O fluxo de envio do próprio app foi validado na réplica fiel da página; a validação dele em conta real fica para a próxima candidatura.
+
+InfoJobs (`platform-cards.mjs`, `platform-search.mjs`, `platform-job.mjs`):
+
+- cartões de busca com empresa (link `/empresa-`), local sem a distância, modalidade, salário e data;
+- URL própria para busca remota (`…-trabalho-home-office.aspx`);
+- leitor da página da vaga: requisitos, exigências eliminatórias, diferenciais, contrato, botão certo ("CANDIDATAR-ME", ignorando os das vagas similares);
+- candidatura em um clique: o botão da plataforma vira o campo `submit`, a confirmação é lida pelo texto da plataforma, "já se candidatou" vira candidatura anterior, e o convite Premium é fechado depois da confirmação.
+
+Navegador da IA (`browser-free-guard.mjs`):
+
+- `changed` em toda ação (a página mudou?) por impressão digital da árvore de acessibilidade;
+- detector de loop: a mesma ação repetida sem a página mudar é barrada na terceira vez;
+- diagnóstico de console e rede (4xx/5xx, sem query string) quando a ação não muda a tela ou falha;
+- `fluxo_browser_find(platform, text)`: observar já filtrado, para gastar menos contexto;
+- assentamento de rede real após cada ação: as requisições fetch/XHR disparadas terminam antes de a tela ser lida (`networkidle` resolvia na hora em SPA).
+
 ## 1.2.0 — 2026-09-05 — candidata com jornada controlada certificada e interface repaginada
 
 Evidência D/I/B nesta base: 293 testes do app, 6 do desktop e 19 de navegador real. Nenhuma evidência R de plataforma real; nenhum envio real autorizado.

@@ -130,7 +130,8 @@ export function createAgentAdapter({ transport, transportFactory, onNotification
       return { success: true, contentItems: [{ type: 'inputText', text: JSON.stringify(texto) }, ...(imagem ? [{ type: 'inputImage', imageUrl: imagem }] : [])] };
     } catch (error) {
       try { onToolCall({ phase: 'completed', ...chamada, ok: false, error: { code: error.code ?? 'tool_failed', message: error.message } }); } catch {}
-      return { success: false, contentItems: [{ type: 'inputText', text: JSON.stringify({ code: error.code ?? 'tool_failed', message: error.message }) }] };
+        // `details` leva ao modelo o que explica a falha (ex.: diagnóstico de console/rede).
+        return { success: false, contentItems: [{ type: 'inputText', text: JSON.stringify({ code: error.code ?? 'tool_failed', message: error.message, ...(error.details ? { details: error.details } : {}) }) }] };
     }
   }
 
