@@ -139,6 +139,7 @@ export function createPlaywrightDriver({ rootDir, headless = false, browserType,
     observe: (platform, opcoes) => livre.observe(platform, opcoes),
     readText: (platform, opcoes) => livre.read(platform, opcoes),
     act: (platform, acao) => livre.act(platform, acao),
+    diagnostics: (platform) => livre.diagnostics(platform),
     async goto(url) {
       if (!/^https?:\/\//i.test(String(url))) throw error('invalid_browser_url', 'A navegação exige uma URL HTTP ou HTTPS.');
       const plataforma = platformOfUrl(url);

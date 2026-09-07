@@ -129,29 +129,39 @@ test('toda ferramenta registrada é exercitada em uma jornada real, inclusive a 
     await assert.rejects(chamar('fluxo_followup', { reference: 'nao-existe' }, run.id), { code: 'application_not_found' });
 
     // Navegação livre: observar, ler, agir; ação sensível só com confirmação da pessoa.
-    const visto = await chamar('fluxo_browser_observe', { platform: 'INFOJOBS', query: 'aceitar' }, run.id);
+    // Contrato do Playwright MCP: browser_snapshot, browser_click(element, target)…
+    const visto = await chamar('browser_snapshot', { platform: 'INFOJOBS', query: 'aceitar' }, run.id);
     assert.deepEqual(visto.elements.map((el) => el.ref), ['n2']);
-    // find é o observe já filtrado pelo texto procurado: mesma máquina, menos contexto.
-    assert.deepEqual((await chamar('fluxo_browser_find', { platform: 'INFOJOBS', text: 'aceitar' }, run.id)).elements.map((el) => el.ref), ['n2']);
-    assert.match((await chamar('fluxo_browser_read', { platform: 'INFOJOBS' }, run.id)).text, /Pessoa Alfa B\./);
-    await chamar('fluxo_browser_navigate', { platform: 'INFOJOBS', url: 'https://quadro.test/convites?pagina=2' }, run.id);
-    await assert.rejects(chamar('fluxo_browser_navigate', { platform: 'INFOJOBS', url: 'http://127.0.0.1:4173/aba/x' }, run.id), { code: 'invalid_browser_url' });
-    await chamar('fluxo_browser_type', { platform: 'INFOJOBS', ref: 'n3', text: 'COBOL', submit: true }, run.id);
+    // find é o snapshot já filtrado pelo texto procurado: mesma máquina, menos contexto.
+    assert.deepEqual((await chamar('browser_find', { platform: 'INFOJOBS', text: 'aceitar' }, run.id)).elements.map((el) => el.ref), ['n2']);
+    assert.match((await chamar('browser_read_text', { platform: 'INFOJOBS' }, run.id)).text, /Pessoa Alfa B\./);
+    await chamar('browser_navigate', { platform: 'INFOJOBS', url: 'https://quadro.test/convites?pagina=2' }, run.id);
+    await assert.rejects(chamar('browser_navigate', { platform: 'INFOJOBS', url: 'http://127.0.0.1:4173/aba/x' }, run.id), { code: 'invalid_browser_url' });
+    // Sem platform, a ação vai para a aba em foco (a última em que a IA agiu).
+    await chamar('browser_type', { element: 'campo Pesquisar', target: 'n3', text: 'COBOL', submit: true }, run.id);
     assert.equal(quadro.livre.digitado, 'COBOL');
-    await chamar('fluxo_browser_select', { platform: 'INFOJOBS', ref: 'n4', value: 'Antigos' }, run.id);
-    await chamar('fluxo_browser_press', { platform: 'INFOJOBS', key: 'PageDown' }, run.id);
-    await chamar('fluxo_browser_scroll', { platform: 'INFOJOBS', direction: 'down' }, run.id);
-    await chamar('fluxo_browser_back', { platform: 'INFOJOBS' }, run.id);
-    await chamar('fluxo_browser_hover', { platform: 'INFOJOBS', role: 'link', name: 'Pessoa Alfa' }, run.id);
-    await chamar('fluxo_browser_wait', { platform: 'INFOJOBS', text: 'Convites' }, run.id);
-    const foto = await chamar('fluxo_browser_screenshot', { platform: 'INFOJOBS' }, run.id);
+    assert.equal(quadro.acoes.at(-1).ref, 'n3', 'target vira a ref do driver');
+    await chamar('browser_select_option', { platform: 'INFOJOBS', target: 'n4', values: ['Antigos'] }, run.id);
+    assert.equal(quadro.acoes.at(-1).value, 'Antigos');
+    await chamar('browser_press_key', { platform: 'INFOJOBS', key: 'PageDown' }, run.id);
+    await chamar('browser_scroll', { platform: 'INFOJOBS', direction: 'down' }, run.id);
+    await chamar('browser_navigate_back', { platform: 'INFOJOBS' }, run.id);
+    await chamar('browser_hover', { platform: 'INFOJOBS', role: 'link', name: 'Pessoa Alfa' }, run.id);
+    await chamar('browser_wait_for', { platform: 'INFOJOBS', text: 'Convites' }, run.id);
+    await chamar('browser_wait_for', { platform: 'INFOJOBS', time: 0.2 }, run.id);
+    assert.equal(quadro.acoes.at(-1).seconds, 0.2, 'time (MCP) vira seconds do driver');
+    const foto = await chamar('browser_take_screenshot', { platform: 'INFOJOBS' }, run.id);
     assert.match(foto.imagem, /^data:image\/png;base64,/);
-    assert.deepEqual(quadro.acoes.at(-1), { type: 'screenshot', ref: undefined, role: undefined, name: undefined });
-    const aceitou = await chamar('fluxo_browser_click', { platform: 'INFOJOBS', ref: 'n2', confirmed: true }, run.id);
+    assert.deepEqual(quadro.acoes.at(-1), { type: 'screenshot', ref: undefined, role: undefined, name: undefined, element: undefined });
+    assert.deepEqual(await chamar('browser_console_messages', { platform: 'INFOJOBS' }, run.id), { platform: 'INFOJOBS', kind: 'console', items: [], note: 'Nenhum erro de console desde que a aba abriu.' });
+    assert.deepEqual((await chamar('browser_network_requests', { platform: 'INFOJOBS' }, run.id)).items, ['POST https://quadro.test/api/aceitar → 403']);
+    const aceitou = await chamar('browser_click', { platform: 'INFOJOBS', element: 'botão Aceitar', target: 'n2', confirmed: true }, run.id);
     assert.match(aceitou.text, /Convite aceito/);
     quadro.desafio = 'captcha';
-    await assert.rejects(chamar('fluxo_browser_click', { platform: 'INFOJOBS', ref: 'n1' }, run.id), { code: 'manual_intervention_required' });
+    await assert.rejects(chamar('browser_click', { platform: 'INFOJOBS', ref: 'n1' }, run.id), { code: 'manual_intervention_required' });
     quadro.desafio = null;
+    quadro.foco = '';
+    await assert.rejects(chamar('browser_snapshot', {}, run.id), { code: 'platform_required' });
 
     // Configuração do app pela conversa: campanha, agenda, Codex, exportação.
     const campanha = await chamar('fluxo_campaign', {}, run.id);
@@ -216,6 +226,8 @@ function criarQuadro(raiz) {
       },
       async tabs() { return quadro.abas; },
       async loginState(platform) { return { platform, open: true, loginPending: false, challenge: quadro.desafio ?? null }; },
+      activePlatform() { return quadro.foco ?? 'INFOJOBS'; },
+      async diagnostics() { return { console: [], network: ['POST https://quadro.test/api/aceitar → 403'] }; },
       // Navegação livre em memória: uma página de convites com botões de aceitar.
       async observe(platform, { query = '' } = {}) {
         const elementos = quadro.livre.elementos.filter((el) => !query || `${el.name} ${el.role}`.toLowerCase().includes(String(query).toLowerCase()));

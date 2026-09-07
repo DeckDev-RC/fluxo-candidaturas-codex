@@ -54,6 +54,13 @@ export function createBrowserAdapter({ driver, evidenceRoot = '' }) {
       assertTrustedPage({ text: resultado.snapshot ?? resultado.text });
       return resultado;
     },
+    // Console e rede da aba (só erros e falhas), para a IA achar a causa de "nada aconteceu".
+    async diagnostics(platform, kind = 'console') {
+      if (!driver.diagnostics) throw domainError('browser_platform_unsupported', 'Este navegador não permite navegação livre.');
+      const tudo = await driver.diagnostics(platform);
+      const itens = kind === 'network' ? tudo?.network ?? [] : tudo?.console ?? [];
+      return { platform, kind, items: itens, ...(itens.length ? {} : { note: kind === 'network' ? 'Nenhuma requisição falhou nem respondeu 4xx/5xx desde que a aba abriu.' : 'Nenhum erro de console desde que a aba abriu.' }) };
+    },
     async loginState(platform) { return driver.loginState ? driver.loginState(platform) : { open: false }; },
     activePlatform() { return driver.activePlatform ? driver.activePlatform() : ''; },
     // Abre a página da vaga e lê descrição e requisitos; desafio (CAPTCHA/login) para aqui.

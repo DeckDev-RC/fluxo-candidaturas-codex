@@ -169,6 +169,11 @@ export function createDomainTools({ rootDir, readState, discoveryService, fitSer
           if (!input[key] || typeof input[key] !== 'object' || Array.isArray(input[key])) throw fail('invalid_tool_arguments');
           continue;
         }
+        if (schema.type === 'array') {
+          const itemType = schema.items?.type ?? 'string';
+          if (!Array.isArray(input[key]) || input[key].some((item) => typeof item !== itemType || item === null)) throw fail('invalid_tool_arguments');
+          continue;
+        }
         if (schema.optional && input[key] === undefined) continue;
         if (typeof input[key] !== schema.type || input[key] === null) throw fail('invalid_tool_arguments');
       }
@@ -192,7 +197,7 @@ export function createDomainTools({ rootDir, readState, discoveryService, fitSer
 }
 // O marcador interno de opcional não vaza para o esquema anunciado ao runtime.
 function publicSchema(properties) {
-  return Object.fromEntries(Object.entries(properties).map(([key, schema]) => [key, schema.optional ? { type: schema.type } : schema]));
+  return Object.fromEntries(Object.entries(properties).map(([key, schema]) => [key, schema.optional ? { type: schema.type, ...(schema.items ? { items: schema.items } : {}) } : schema]));
 }
 
 function fail(code) { return Object.assign(new Error('A ferramenta não pode executar esta ação com o contexto informado.'), { code }); }

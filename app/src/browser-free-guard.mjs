@@ -98,10 +98,10 @@ export function createDiagnostics({ now = () => Date.now() } = {}) {
       return false;
     },
     // O que aconteceu desde `desde` (ms), compacto para caber no resultado da ferramenta.
-    desde(page, desde) {
+    desde(page, desde, { limite = ITENS_POR_TIPO } = {}) {
       const lista = (porPagina.get(page) ?? []).filter((item) => item.at >= desde);
-      const console_ = lista.filter((item) => item.kind === 'console').slice(-ITENS_POR_TIPO).map((item) => item.text);
-      const rede = lista.filter((item) => item.kind === 'network').slice(-ITENS_POR_TIPO).map((item) => `${item.method} ${item.url} → ${item.status || item.text}`);
+      const console_ = lista.filter((item) => item.kind === 'console').slice(-limite).map((item) => item.text);
+      const rede = lista.filter((item) => item.kind === 'network').slice(-limite).map((item) => `${item.method} ${item.url} → ${item.status || item.text}`);
       if (!console_.length && !rede.length) return null;
       return { ...(console_.length ? { console: console_ } : {}), ...(rede.length ? { network: rede } : {}) };
     }

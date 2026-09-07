@@ -63,6 +63,12 @@ export function createFreeBrowsing({ pageFor, goto, assentar = assentarPadrao, l
       const limite = Math.min(Number(maxChars) || TEXTO_MAXIMO, TEXTO_MAXIMO);
       return { url: page.url(), title: await page.title().catch(() => ''), text: texto.slice(0, limite), truncated: texto.length > limite };
     },
+    // Tudo que o console e a rede registraram na aba desde que passou a ser observada.
+    async diagnostics(platform) {
+      const page = await pageFor(platform);
+      diagnostics.observar(page);
+      return diagnostics.desde(page, 0, { limite: 20 }) ?? { console: [], network: [] };
+    },
     async act(platform, acao = {}) {
       const tipo = String(acao.type ?? '');
       if (tipo === 'screenshot') return capturar(await pageFor(platform), acao);

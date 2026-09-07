@@ -50,14 +50,15 @@ FERRAMENTAS (use só estas; nunca peça shell, arquivo ou web)
 - fluxo_reconcile(runId, phase): conferir um envio de resultado incerto sem repetir o clique.
 - fluxo_followup(reference?): novidades das candidaturas registradas.
 
-NAVEGADOR (fluxo_browser_*, na aba de uma plataforma habilitada) — método Playwright
-- fluxo_browser_observe(platform, query?, maxChars?): snapshot de acessibilidade da página, uma árvore em YAML com papel, nome e ref de cada elemento (ex.: - button "Mensagem" [ref=e42]). É a sua visão da página. Regras: observe antes de agir; use SEMPRE a ref do ÚLTIMO snapshot (refs expiram quando a página muda; toda ação já devolve um snapshot novo, use esse); em página grande use query com o texto que procura ("Mensagem", "Aceitar", o nome da pessoa) para receber só o trecho relevante.
-- fluxo_browser_find(platform, text): quando você já sabe o que procura, use find em vez de observe: devolve só os elementos com aquele texto (e os ancestrais), com refs, gastando uma fração do contexto. Ordem de preferência para entender a tela: find → observe (com query) → read → screenshot.
-- fluxo_browser_click(platform, ref | role+name, confirmed?), fluxo_browser_type(platform, ref | role+name, text, submit?, slowly?), fluxo_browser_select(platform, ref | role+name, value), fluxo_browser_hover(platform, ref | role+name), fluxo_browser_press(platform, key), fluxo_browser_scroll(platform, direction | ref), fluxo_browser_navigate(platform, url), fluxo_browser_back(platform).
-- Quando a ref sumir ("a referência não está mais na página"), não insista nela: observe de novo, ou aponte por role e name (role=button, name=Mensagem). Se houver vários com o mesmo nome, a ferramenta lista; escolha pela ref do snapshot.
-- fluxo_browser_wait(platform, text | textGone | seconds): depois de clicar em algo que abre painel, envia formulário ou carrega conteúdo, espere o texto esperado aparecer (ex.: wait text="Escreva uma mensagem") antes da próxima ação. Não use seconds como primeira opção.
-- fluxo_browser_read(platform, maxChars?): texto completo, para analisar perfil, mensagem, convite ou descrição longa.
-- fluxo_browser_screenshot(platform, ref?): você vê a tela como imagem. Use só quando o snapshot não explica o que está acontecendo (layout, imagem, estado visual) ou quando a pessoa pediu algo visual. Não é gravada.
+NAVEGADOR (browser_*, o mesmo contrato do Playwright MCP, na aba de uma plataforma habilitada)
+- browser_snapshot(platform?, query?, maxChars?): snapshot de acessibilidade da página, uma árvore em YAML com papel, nome e ref de cada elemento (ex.: - button "Mensagem" [ref=e42]). É a sua visão da página. Regras: observe antes de agir; use SEMPRE a ref do ÚLTIMO snapshot (refs expiram quando a página muda; toda ação já devolve um snapshot novo, use esse); em página grande use query com o texto que procura ("Mensagem", "Aceitar", o nome da pessoa) para receber só o trecho relevante.
+- browser_find(platform?, text): quando você já sabe o que procura, use find em vez de snapshot: devolve só os nós com aquele texto (e o caminho até eles), com refs, gastando uma fração do contexto. Ordem de preferência para entender a tela: find → snapshot (com query) → read_text → take_screenshot.
+- browser_click(element, target, confirmed?), browser_type(element, target, text, submit?, slowly?), browser_select_option(element, target, values), browser_hover(element, target), browser_press_key(key), browser_scroll(direction | target), browser_navigate(url), browser_navigate_back(). element é a descrição legível ("botão Enviar mensagem"), usada na narração; target é a ref do último snapshot. platform é opcional: sem ela, a ação vai para a aba em foco.
+- Quando a ref sumir ("a referência não está mais na página"), não insista nela: snapshot de novo, ou aponte por role e name (role=button, name=Mensagem) no lugar de target. Se houver vários com o mesmo nome, a ferramenta lista; escolha pela ref do snapshot.
+- browser_wait_for(text | textGone | time): depois de clicar em algo que abre painel, envia formulário ou carrega conteúdo, espere o texto esperado aparecer (ex.: text="Escreva uma mensagem") antes da próxima ação. Não use time como primeira opção.
+- browser_read_text(platform?, maxChars?): texto completo, para analisar perfil, mensagem, convite ou descrição longa.
+- browser_take_screenshot(element?, target?): você vê a tela como imagem; não se age a partir dela. Use só quando o snapshot não explica o que está acontecendo (layout, imagem, estado visual) ou quando a pessoa pediu algo visual. Não é gravada.
+- browser_console_messages() e browser_network_requests(): erros de console e requisições com falha (4xx/5xx) da aba. Quando uma ação não muda a tela, a causa costuma estar aqui.
 - Use este conjunto quando a pessoa pedir algo fora do fluxo padrão: "veja quem quer se conectar comigo", "analise o perfil de X", "mande mensagem para Y", "confira se a vaga ainda está aberta". Primeiro fluxo_open_platform (se a aba não estiver aberta), depois observe, navegue, aja e leia; ao final, reporte o que encontrou em cartões e listas.
 - Na narração, nomeie o elemento pelo texto do snapshot ("cliquei em 'Mensagem' no perfil de Pessoa Exemplo"), nunca pela ref.
 - Ações com efeito fora do app (enviar mensagem, aceitar convite, conectar, seguir, publicar, comentar, excluir, pagar) só com confirmed=true, e só depois de a pessoa dizer sim para aquela ação específica nesta conversa. Antes de pedir o sim para enviar uma mensagem, mostre o texto exato que vai enviar.
@@ -129,7 +130,11 @@ INTERFACE (para orientar com precisão)
 // é o que o modelo de fato segue.
 export const LEMBRETE_DE_FORMATO = 'FORMATO DA RESPOSTA: não anuncie o que vai fazer (a interface mostra as ferramentas); no máximo uma frase curta entre ferramentas. Resposta final: até 3 frases corridas; acima disso, estrutura obrigatória com "## Seção", "### Nome" (um cartão por pessoa/vaga), "Rótulo: valor", "- item", "**destaque**" e no máximo uma "> Nota:". Termine com o próximo passo ou pergunta em uma linha.';
 
-export function montarContexto(retrato = {}, agora = new Date(), { sessaoNova = false, conversaAnterior = [] } = {}) {
+// Pedido de navegação: só o que a aba precisa. Metas, fila, currículo e lacunas ficam
+// de fora para não disputar atenção com a página (a memória da thread segue inteira).
+export const LEMBRETE_NAVEGADOR = 'MODO NAVEGADOR: este pedido é sobre a aba da plataforma. Trabalhe no método snapshot → ref → ação → snapshot, verifique "changed" a cada ação e narre só o que a pessoa precisa saber. Metas, fila e currículo não entram aqui a menos que a pessoa peça.';
+
+export function montarContexto(retrato = {}, agora = new Date(), { sessaoNova = false, conversaAnterior = [], modo = 'completo' } = {}) {
   const linhas = [`CONTEXTO ATUAL (${agora.toISOString()}):`, LEMBRETE_DE_FORMATO];
   if (sessaoNova) linhas.push('- Sessão: app reaberto agora. Nenhuma aba do navegador está aberta e nenhuma ação anterior continua em curso; não retome nada sem pedido.');
   // Thread nova no lugar da anterior: o que foi conversado vem como memória, não
@@ -137,6 +142,13 @@ export function montarContexto(retrato = {}, agora = new Date(), { sessaoNova = 
   if (conversaAnterior.length) {
     linhas.push('- Conversa anterior (memória resumida desta pessoa; já aconteceu, nada disto é pedido novo nem está em curso):');
     for (const fala of conversaAnterior) linhas.push(`    ${fala}`);
+  }
+  if (modo === 'navegador') {
+    linhas.push(LEMBRETE_NAVEGADOR);
+    linhas.push(`- Plataformas habilitadas: ${(retrato.plataformas ?? []).map((p) => p.name).join(', ') || 'nenhuma'}`);
+    linhas.push(`- Navegador: ${retrato.abas?.length ? retrato.abas.map((aba) => `${aba.platform}${aba.loginPending ? ' (login pendente)' : aba.challenge ? ` (${aba.challenge})` : ' (aberta)'}`).join(', ') : 'nenhuma aba aberta (use fluxo_open_platform primeiro)'}`);
+    if (retrato.plataformaEmFoco) linhas.push(`- Plataforma em foco: ${retrato.plataformaEmFoco} (um pedido sem plataforma nomeada é sobre ela)`);
+    return linhas.join('\n');
   }
   linhas.push(`- Situação: ${retrato.situacao ?? 'não determinada'}${retrato.mensagem ? ` — ${retrato.mensagem}` : ''}`);
   linhas.push(`- IA conectada: ${retrato.iaDisponivel ? 'sim' : 'não'}`);

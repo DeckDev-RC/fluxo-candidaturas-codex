@@ -1,5 +1,14 @@
 # Histórico de versões
 
+## 1.4.0 — 2026-09-07 — navegador no contrato do Playwright MCP, esforço alto e contexto enxuto em navegação
+
+Evidência nesta base: 356 testes do app, 14 do desktop e 25 de navegador real. O que faz Codex e Claude Code parecerem tão bons no navegador (ferramentas que o modelo reconhece do treino, raciocínio alto e contexto só da tarefa) entrou no Fluxo sem abrir mão de sessão local, sem shell e com portões.
+
+- Ferramentas de navegador com os nomes e parâmetros do Playwright MCP: `browser_snapshot`, `browser_find`, `browser_click(element, target)`, `browser_type`, `browser_select_option(values)`, `browser_hover`, `browser_press_key`, `browser_navigate`, `browser_navigate_back`, `browser_wait_for(text | textGone | time)`, `browser_take_screenshot`, `browser_console_messages`, `browser_network_requests`, mais `browser_read_text` e `browser_scroll`. `platform` passou a ser opcional (aba em foco); `role`+`name` e `confirmed` continuam como extensões.
+- Turno de navegação sobe o esforço de raciocínio até `high` quando a configuração está abaixo e o modelo aceita; pergunta geral volta ao configurado.
+- Turno de navegação recebe contexto enxuto (abas, foco, plataformas) em vez de metas, fila, currículo e lacunas; "sim"/"manda" curto depois de um turno no navegador continua nesse modo.
+- Esquema de ferramentas aceita listas (`values`); erros de ferramenta levam `details` ao modelo.
+
 ## 1.3.0 — 2026-09-07 — InfoJobs mapeada em conta real e guardas mecânicas do navegador
 
 Evidência nesta base: 355 testes do app, 14 do desktop e 25 de navegador real (Chromium). Primeira evidência R de plataforma: sondagem da InfoJobs autenticada pela aba embutida e uma candidatura real confirmada ("Você se candidatou à vaga Desenvolvedor(A) React", Empresa Sintética, 90000001), autorizada pela pessoa e feita pela sonda de mapeamento; evidência em `evidencias/infojobs-90000001-confirmacao-2026-09-07.png` na pasta de dados. O fluxo de envio do próprio app foi validado na réplica fiel da página; a validação dele em conta real fica para a próxima candidatura.
