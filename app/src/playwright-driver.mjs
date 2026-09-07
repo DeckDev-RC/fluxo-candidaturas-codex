@@ -4,19 +4,22 @@ import { createHash } from 'node:crypto';
 import { platformOfUrl } from './platform-search.mjs';
 import { CARTOES_DE_VAGA, EMPRESA_DESCONHECIDA, lerCartoesDeVaga } from './platform-cards.mjs';
 import { createFreeBrowsing } from './browser-free.mjs';
+import { CATALOGO_VAGA, lerPaginaDeVaga } from './platform-job.mjs';
 
 // O leitor de cartões e o detector de desafios entram na página como texto.
 // eslint-disable-next-line no-new-func
-const OBSERVAR_PAGINA = new Function('args', `const [catalogo, empresaDesconhecida] = args; const lerCartoesDeVaga = ${lerCartoesDeVaga.toString()}; const detectarDesafio = ${detectarDesafio.toString()}; return (${observePage.toString()})(catalogo, empresaDesconhecida, lerCartoesDeVaga, detectarDesafio);`);
+const OBSERVAR_PAGINA = new Function('args', `const [catalogo, empresaDesconhecida, catalogoVaga] = args; const lerCartoesDeVaga = ${lerCartoesDeVaga.toString()}; const detectarDesafio = ${detectarDesafio.toString()}; return (${observePage.toString()})(catalogo, empresaDesconhecida, lerCartoesDeVaga, detectarDesafio, catalogoVaga);`);
 // eslint-disable-next-line no-new-func
 const OBSERVAR_LOGIN = new Function(`const detectarDesafio = ${detectarDesafio.toString()}; return (${observeLogin.toString()})(detectarDesafio);`);
 // eslint-disable-next-line no-new-func
 const OBSERVAR_VAGA = new Function(`return (${observeJobPage.toString()})();`);
+// eslint-disable-next-line no-new-func
+const LER_VAGA_DA_PLATAFORMA = new Function('catalogo', `return (${lerPaginaDeVaga.toString()})(catalogo);`);
 // Páginas de busca renderizam a lista depois do HTML: esperar a rede assentar
 // evita fotografar a página antes das vagas aparecerem.
 const ESPERA_RENDERIZACAO_MS = 8_000;
 async function assentar(page) { await page.waitForLoadState('networkidle', { timeout: ESPERA_RENDERIZACAO_MS }).catch(() => {}); }
-const ARGUMENTOS_DA_PAGINA = [CARTOES_DE_VAGA, EMPRESA_DESCONHECIDA];
+const ARGUMENTOS_DA_PAGINA = [CARTOES_DE_VAGA, EMPRESA_DESCONHECIDA, CATALOGO_VAGA];
 
 // The driver owns the browser process; importing it or reading local state never launches Chromium.
 // Uma aba por plataforma: a URL decide em qual aba a navegação acontece, e a
@@ -107,9 +110,16 @@ export function createPlaywrightDriver({ rootDir, headless = false, browserType,
 
   async function locator(ref) {
     const current = await getPage();
-    const match = ref === 'submit'
-      ? current.locator('button[type="submit"], input[type="submit"]')
-      : current.locator('[data-fluxo-ref]').filter({ visible: true }).and(current.locator(`[data-fluxo-ref=${JSON.stringify(String(ref))}]`));
+    if (ref === 'submit') {
+      // Plataforma com botão de candidatura próprio (InfoJobs: link "CANDIDATAR-ME",
+      // marcado pelo observador como ref "submit") vem antes do submit genérico.
+      const proprio = current.locator('[data-fluxo-ref="submit"]').filter({ visible: true });
+      if (await proprio.count() === 1) return proprio;
+      const generico = current.locator('button[type="submit"], input[type="submit"]');
+      if (await generico.count() !== 1) throw error('browser_reference_ambiguous', 'Capture novamente a página e selecione uma referência única.');
+      return generico;
+    }
+    const match = current.locator('[data-fluxo-ref]').filter({ visible: true }).and(current.locator(`[data-fluxo-ref=${JSON.stringify(String(ref))}]`));
     if (await match.count() !== 1) throw error('browser_reference_ambiguous', 'Capture novamente a página e selecione uma referência única.');
     return match;
   }
@@ -165,11 +175,34 @@ export function createPlaywrightDriver({ rootDir, headless = false, browserType,
     },
     // Leitura da página de uma vaga: descrição e requisitos, para medir aderência de
     // verdade antes de preparar. Só texto renderizado; nada é inventado.
-    async readJobPage() { const current = await getPage(); return current.evaluate(OBSERVAR_VAGA); },
+    // Plataforma catalogada usa o leitor próprio (mapeado em conta real); as demais, o genérico.
+    async readJobPage() {
+      const current = await getPage();
+      const especifico = await current.evaluate(LER_VAGA_DA_PLATAFORMA, CATALOGO_VAGA).catch(() => null);
+      if (especifico?.title && (especifico.requirements?.length || especifico.description)) return especifico;
+      return current.evaluate(OBSERVAR_VAGA);
+    },
     async snapshot() { const current = await getPage(); const observed = await current.evaluate(OBSERVAR_PAGINA, ARGUMENTOS_DA_PAGINA); const formHash = createHash('sha256').update(JSON.stringify(observed.formValues)).digest('hex'); return { ...observed, formHash, observedAt: new Date().toISOString() }; },
     async state() { return this.snapshot(); },
     async fill(ref, value) { const field = await locator(ref); if (await field.getAttribute('type') === 'file') throw error('browser_upload_required', 'Use a operação explícita de anexo.'); await field.fill(String(value)); },
     async click(ref) { await (await locator(ref)).click(); },
+    // Depois do clique de envio: espera a plataforma mostrar a confirmação (ou desistir em
+    // poucos segundos) e, confirmada, fecha o que ela abriu por cima (convite Premium).
+    async awaitConfirmation() {
+      const current = await getPage();
+      const entrada = await catalogoDaPagina(current);
+      if (!entrada?.confirmationText) { await assentar(current); return; }
+      await current.getByText(new RegExp(entrada.confirmationText, 'i')).first().waitFor({ state: 'visible', timeout: 10_000 }).catch(() => null);
+    },
+    async dismissOverlay() {
+      const current = await getPage();
+      const entrada = await catalogoDaPagina(current);
+      if (!entrada?.dismiss) return false;
+      const fechar = current.locator(entrada.dismiss).filter({ visible: true }).first();
+      if (!(await fechar.count())) return false;
+      await fechar.click({ timeout: 3_000 }).catch(() => null);
+      return true;
+    },
     async upload(ref, path) {
       const absolute = resolve(rootDir, path); const rel = relative(join(rootDir, 'curriculo'), absolute);
       if (rel.startsWith('..') || resolve(absolute) === resolve(rootDir)) throw error('invalid_resume_path', 'Anexe um arquivo da pasta curriculo.');
@@ -204,6 +237,15 @@ export function createPlaywrightDriver({ rootDir, headless = false, browserType,
 }
 
 function error(code, message) { return Object.assign(new Error(message), { code }); }
+
+async function catalogoDaPagina(page) {
+  let host = '';
+  try { host = new URL(page.url()).hostname; } catch { return null; }
+  const porHost = Object.values(CATALOGO_VAGA).find((item) => new RegExp(item.host, 'i').test(host));
+  if (porHost) return porHost;
+  const declarado = await page.evaluate(() => String(document.documentElement.dataset.fluxoPlataforma ?? '').toUpperCase()).catch(() => '');
+  return CATALOGO_VAGA[declarado] ?? null;
+}
 
 async function semEmulacao(page) {
   try { await page.emulateMedia({ colorScheme: null, reducedMotion: null, forcedColors: null }); } catch { /* página fechada no meio */ }
@@ -271,10 +313,22 @@ function observeLogin(detectar = () => ({ challenge: null, consentPending: false
 
 // Runs inside the observed page. Only rendered facts and explicit structured job metadata are returned.
 // `lerCartoes` e `detectar` chegam como argumentos porque a função é serializada para a página.
-function observePage(catalogo = {}, empresaDesconhecida = '', lerCartoes = () => [], detectar = () => ({ challenge: null })) {
+function observePage(catalogo = {}, empresaDesconhecida = '', lerCartoes = () => [], detectar = () => ({ challenge: null }), catalogoVaga = {}) {
   const text = document.body?.innerText ?? '';
   const { challenge } = detectar();
   const fields = []; const fieldDetails = []; const formValues = {};
+  // Plataforma catalogada: o botão de candidatura dela (na InfoJobs é um link
+  // "CANDIDATAR-ME", não um <button type=submit>) entra como o campo "submit" e a
+  // confirmação é lida pelo texto que a plataforma mostra ("Você se candidatou…").
+  // Páginas de teste declaram a plataforma em <html data-fluxo-plataforma="INFOJOBS">.
+  const nomeDeclarado = String(document.documentElement.dataset.fluxoPlataforma ?? '').toUpperCase();
+  const plataforma = (nomeDeclarado && catalogoVaga?.[nomeDeclarado]) || Object.values(catalogoVaga ?? {}).find((item) => new RegExp(item.host, 'i').test(location.hostname)) || null;
+  const visivel = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+  const botaoDaPlataforma = plataforma?.apply ? [...document.querySelectorAll(plataforma.apply)].find((el) => visivel(el) && !(plataforma.ignore && el.closest(plataforma.ignore))) ?? null : null;
+  if (botaoDaPlataforma) {
+    botaoDaPlataforma.setAttribute('data-fluxo-ref', 'submit');
+    fields.push('submit'); fieldDetails.push({ ref: 'submit', name: 'submit', label: (botaoDaPlataforma.innerText || 'Candidatar').trim(), type: 'submit' });
+  }
   for (const [index, element] of [...document.querySelectorAll('input:not([type="hidden"]),textarea,select,button')].entries()) {
     const ref = element.getAttribute('data-fluxo-ref') || `field-${index}`;
     element.setAttribute('data-fluxo-ref', ref);
@@ -297,8 +351,14 @@ function observePage(catalogo = {}, empresaDesconhecida = '', lerCartoes = () =>
   // Sem JSON-LD, os cartões da plataforma são a fonte das vagas.
   if (!jobs.length) { try { jobs.push(...lerCartoes(catalogo, empresaDesconhecida)); } catch { /* página sem cartões reconhecidos segue como não suportada */ } }
   const confirmation = document.querySelector('[data-confirmation], [role="status"], .application-confirmation');
+  // Confirmação da plataforma: um elemento visível cujo texto casa com a frase que ela usa.
+  const confirmacaoDaPlataforma = plataforma?.confirmation && plataforma?.confirmationText
+    ? [...document.querySelectorAll(plataforma.confirmation)].find((el) => visivel(el) && new RegExp(plataforma.confirmationText, 'i').test(el.innerText || '')) ?? null
+    : null;
+  const previousApplication = plataforma?.previousText ? new RegExp(plataforma.previousText, 'i').test(text) : false;
   const jobId = confirmation?.getAttribute('data-job-id') || document.body?.getAttribute('data-job-id') || '';
   const jobUrl = confirmation?.getAttribute('data-job-url') || document.body?.getAttribute('data-job-url') || '';
   const status = document.querySelector('[data-application-status]');
-  return { url: location.href, text, challenge, fields, fieldDetails, formValues, links, ...(jobs.length ? { jobs } : {}), jobId, jobUrl, confirmationText: confirmation?.innerText || '', emptyResults: Boolean(document.querySelector('[data-empty-results]')), applicationStatus: status?.getAttribute('data-application-status') || '', applicationStatusText: status?.innerText || '' };
+  return { url: location.href, text, challenge, fields, fieldDetails, formValues, links, ...(jobs.length ? { jobs } : {}), jobId, jobUrl, confirmationText: confirmation?.innerText || confirmacaoDaPlataforma?.innerText?.trim() || '', previousApplication, emptyResults: Boolean(document.querySelector('[data-empty-results]')), applicationStatus: status?.getAttribute('data-application-status') || '', applicationStatusText: status?.innerText || '' };
 }
+

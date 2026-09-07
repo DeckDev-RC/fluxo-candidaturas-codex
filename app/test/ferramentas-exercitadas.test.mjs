@@ -131,6 +131,8 @@ test('toda ferramenta registrada é exercitada em uma jornada real, inclusive a 
     // Navegação livre: observar, ler, agir; ação sensível só com confirmação da pessoa.
     const visto = await chamar('fluxo_browser_observe', { platform: 'INFOJOBS', query: 'aceitar' }, run.id);
     assert.deepEqual(visto.elements.map((el) => el.ref), ['n2']);
+    // find é o observe já filtrado pelo texto procurado: mesma máquina, menos contexto.
+    assert.deepEqual((await chamar('fluxo_browser_find', { platform: 'INFOJOBS', text: 'aceitar' }, run.id)).elements.map((el) => el.ref), ['n2']);
     assert.match((await chamar('fluxo_browser_read', { platform: 'INFOJOBS' }, run.id)).text, /Pessoa Alfa B\./);
     await chamar('fluxo_browser_navigate', { platform: 'INFOJOBS', url: 'https://quadro.test/convites?pagina=2' }, run.id);
     await assert.rejects(chamar('fluxo_browser_navigate', { platform: 'INFOJOBS', url: 'http://127.0.0.1:4173/aba/x' }, run.id), { code: 'invalid_browser_url' });

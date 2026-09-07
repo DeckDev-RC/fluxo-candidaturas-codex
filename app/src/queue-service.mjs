@@ -109,9 +109,12 @@ export function createQueueService({ rootDir, persistence: injectedPersistence, 
       const requirements = asArray(details.requirements).map(String).map((texto) => texto.trim()).filter(Boolean);
       if (requirements.length) item.requirements = requirements;
       if (asArray(details.eliminators).length) item.eliminators = asArray(details.eliminators).map(String);
-      for (const campo of ['description', 'workMode', 'location', 'salary', 'deadline']) {
+      if (asArray(details.niceToHave).length) item.niceToHave = asArray(details.niceToHave).map(String);
+      for (const campo of ['description', 'workMode', 'location', 'salary', 'deadline', 'contract']) {
         if (String(details[campo] ?? '').trim()) item[campo] = String(details[campo]).trim().slice(0, campo === 'description' ? 4000 : 200);
       }
+      // A lista pode não trazer a empresa (confidencial ou sem link); a página traz.
+      if (String(details.company ?? '').trim() && (!item.company || /não informada/i.test(item.company))) item.company = String(details.company).trim().slice(0, 200);
       item.detailsObservedAt = now().toISOString();
       item.updatedAt = item.detailsObservedAt;
       await saveQueue(queuePath, queue, persistence);

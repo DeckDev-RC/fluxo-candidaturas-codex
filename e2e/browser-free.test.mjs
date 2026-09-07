@@ -49,11 +49,21 @@ const PAGINAS = {
       document.getElementById('rerender').onclick = () => { const t = document.getElementById('topo'); t.replaceWith(t.cloneNode(true)); };
       // O botão Enviar só habilita quando o editor recebe eventos de teclado (não basta setar texto).
       document.addEventListener('keyup', (e) => { if (e.target.id === 'editor') document.getElementById('enviar').disabled = !e.target.innerText.trim(); });
-    </script></main>`
+    </script></main>`,
+  // Login "quebrado": o clique não muda a página, a API responde 403 e o console
+  // registra o erro. É o caso em que a IA repetiria o clique para sempre.
+  '/login': `<main><h1>Entrar</h1>
+    <button type="button" id="entrar" onclick="fetch('/api/login?token=segredo', { method: 'POST' }).then(r => { if (!r.ok) console.error('AuthError: sessão inválida (' + r.status + ')'); })">Entrar</button>
+    <button type="button" id="ajuda" onclick="document.getElementById('dica').hidden=false">Ajuda</button>
+    <p id="dica" hidden>Redefina a senha pelo e-mail.</p></main>`
 };
 
 test('navegador da IA: snapshot com refs, ações por ref e por role+name, espera, portões e captura', { timeout: 90_000 }, async (t) => {
-  const servidor = createServer((request, response) => { const caminho = request.url.split('?')[0]; response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); response.end(`<!doctype html><title>Teste livre</title>${PAGINAS[caminho] ?? '<h1>Nada</h1>'}`); });
+  const servidor = createServer((request, response) => {
+    const caminho = request.url.split('?')[0];
+    if (caminho === '/api/login') { response.writeHead(403, { 'content-type': 'application/json' }); response.end('{"error":"forbidden"}'); return; }
+    response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); response.end(`<!doctype html><title>Teste livre</title>${PAGINAS[caminho] ?? '<h1>Nada</h1>'}`);
+  });
   await new Promise((resolve) => servidor.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${servidor.address().port}`;
   const driver = createPlaywrightDriver({ rootDir: await mkdtemp(join(tmpdir(), 'fluxo-livre-')), headless: true });
@@ -162,6 +172,26 @@ test('navegador da IA: snapshot com refs, ações por ref e por role+name, esper
   await driver.act('LINKEDIN', { type: 'click', role: 'button', name: 'Fechar aviso' });
   const liberado = await driver.act('LINKEDIN', { type: 'click', role: 'button', name: 'Mais' });
   assert.equal(liberado.target.name, 'Mais');
+
+  // Guardas mecânicas: "changed" diz se a página mudou; "diagnostics" traz console e rede
+  // quando não mudou; a mesma ação repetida sem mudança é barrada na terceira vez.
+  assert.equal(liberado.changed, false, '"Mais" não faz nada nesta página, e o resultado diz isso');
+  await driver.act('LINKEDIN', { type: 'navigate', url: `${base}/login` });
+  const primeiro = await driver.act('LINKEDIN', { type: 'click', role: 'button', name: 'Entrar' });
+  assert.equal(primeiro.changed, false, 'o clique não mudou nada na tela');
+  assert.ok(primeiro.diagnostics?.network?.some((linha) => /POST .*\/api\/login → 403/.test(linha)), `a rede explica a falha: ${JSON.stringify(primeiro.diagnostics)}`);
+  assert.ok(primeiro.diagnostics.network.every((linha) => !linha.includes('segredo')), 'query string nunca vai para o modelo');
+  assert.ok(primeiro.diagnostics?.console?.some((linha) => /AuthError/.test(linha)), 'o console explica a falha');
+  const segundo = await driver.act('LINKEDIN', { type: 'click', role: 'button', name: 'Entrar' });
+  assert.equal(segundo.changed, false);
+  await assert.rejects(driver.act('LINKEDIN', { type: 'click', role: 'button', name: 'Entrar' }), (erro) => erro.code === 'browser_loop_detected' && /mude|observe|estratégia|Não repita/i.test(erro.message));
+  // Outra ação continua livre, e uma ação que muda a página zera a contagem.
+  const ajuda = await driver.act('LINKEDIN', { type: 'click', role: 'button', name: 'Ajuda' });
+  assert.equal(ajuda.changed, true);
+  assert.equal(ajuda.diagnostics, undefined, 'sem erro novo, sem diagnóstico');
+  const dica = await driver.observe('LINKEDIN', { query: 'Redefina' });
+  assert.match(dica.snapshot, /Redefina a senha/);
+  assert.ok(dica.fingerprint, 'o snapshot carrega a impressão da página');
 
   // A plataforma em que a IA agiu por último fica em foco (o "aqui" de pedidos sem plataforma).
   assert.equal(driver.activePlatform(), 'LINKEDIN');

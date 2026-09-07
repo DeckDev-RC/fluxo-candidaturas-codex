@@ -97,11 +97,11 @@ export function createDomainTools({ rootDir, readState, discoveryService, fitSer
       const item = (await readState()).queue.items.find((candidato) => candidato.id === input.itemId || candidato.key === input.itemId);
       if (!item) throw fail('queue_item_not_found');
       const leitura = await browserAdapter.readJob(item);
-      const atualizado = await queueService.updateItemDetails(item.id, { requirements: leitura.requirements, eliminators: leitura.eliminators, description: leitura.description, workMode: leitura.workMode, salary: leitura.salary });
+      const atualizado = await queueService.updateItemDetails(item.id, { requirements: leitura.requirements, eliminators: leitura.eliminators, niceToHave: leitura.niceToHave, description: leitura.description, workMode: leitura.workMode, salary: leitura.salary, location: leitura.location, contract: leitura.contract, company: leitura.company });
       const facts = (await memoryService.safeSummary()).facts ?? {};
       const fit = fitService.assess({ opportunity: atualizado, facts });
       await queueService.recordFit?.([fit]);
-      return { itemId: atualizado.id, role: atualizado.role, company: atualizado.company, requirements: atualizado.requirements ?? [], eliminators: atualizado.eliminators ?? [], workMode: atualizado.workMode ?? '', salary: atualizado.salary ?? '', description: String(atualizado.description ?? '').slice(0, 1500), fit: { score: fit.score, classification: fit.classification, matched: fit.matched, gaps: fit.gaps, explanation: fit.explanation } };
+      return { itemId: atualizado.id, role: atualizado.role, company: atualizado.company, location: atualizado.location ?? '', requirements: atualizado.requirements ?? [], eliminators: atualizado.eliminators ?? [], niceToHave: atualizado.niceToHave ?? [], workMode: atualizado.workMode ?? '', salary: atualizado.salary ?? '', contract: atualizado.contract ?? '', applyAvailable: leitura.applyAvailable ?? null, applyLabel: leitura.applyLabel ?? '', description: String(atualizado.description ?? '').slice(0, 1500), fit: { score: fit.score, classification: fit.classification, matched: fit.matched, gaps: fit.gaps, explanation: fit.explanation } };
     }],
     // A pessoa manda: vagas de uma busca antiga ou que ela não quer saem da fila
     // ativa e não voltam como novidade. Descarte é decisão dela, nunca da IA sozinha.
