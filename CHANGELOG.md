@@ -1,5 +1,9 @@
 # Histórico de versões
 
+## 1.4.1 — 2026-09-07 — classificador de pedido calibrado nos turnos reais
+
+Os 61 turnos gravados até aqui foram rotulados pelas ferramentas que a IA usou em seguida e o classificador foi ajustado sobre eles: campanha lida como navegação (que perdia metas e fila) caiu de 14 para 0; navegação reconhecida subiu de 23 para 30 de 34; os 4 restantes caem no lado seguro (contexto inteiro). Mudanças: continuação só depois de turno só de navegador; "vaga", "procure", "busque", "aplique", "app", "configurar" e "histórico" são campanha; saudação e aviso de login feito voltam ao contexto inteiro. Método e números em `docs/CHECKLIST-NAVEGADOR-PLAYWRIGHT.md`.
+
 ## 1.4.0 — 2026-09-07 — navegador no contrato do Playwright MCP, esforço alto e contexto enxuto em navegação
 
 Evidência nesta base: 356 testes do app, 14 do desktop e 25 de navegador real. O que faz Codex e Claude Code parecerem tão bons no navegador (ferramentas que o modelo reconhece do treino, raciocínio alto e contexto só da tarefa) entrou no Fluxo sem abrir mão de sessão local, sem shell e com portões.

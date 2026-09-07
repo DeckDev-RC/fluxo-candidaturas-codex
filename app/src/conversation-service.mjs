@@ -9,7 +9,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { INSTRUCOES_DA_CONVERSA, montarContexto } from './conversation-prompt.mjs';
-import { classificarPedido, esforcoParaNavegador } from './conversation-intent.mjs';
+import { classificarPedido, esforcoParaNavegador, turnoFoiDeNavegador } from './conversation-intent.mjs';
 import { resumirFerramenta } from './conversation-narration.mjs';
 
 const ARQUIVO = 'estado/conversa.json';
@@ -97,8 +97,9 @@ export function createConversationService({ agentAdapter, snapshot = async () =>
         if (resumo.espera) { emitir('waiting_user', resumo.espera); observarEspera(resumo.espera); }
         if (chamada.ok && ['fluxo_open_platform', 'fluxo_browser_status'].includes(chamada.tool)) publicarAbas(chamada.result);
       }
-      // Um "sim" ou "manda" logo depois de um turno no navegador continua esse trabalho.
-      if (/^browser_/.test(String(chamada.tool))) ultimoTurnoNavegou = true;
+      // Um "sim" ou "manda" logo depois de um turno só de navegador continua esse trabalho;
+      // se o turno também tocou a campanha (busca, fila), a continuação é campanha.
+      if (turnoAtivo) { turnoAtivo.ferramentas ??= new Set(); turnoAtivo.ferramentas.add(String(chamada.tool)); ultimoTurnoNavegou = turnoFoiDeNavegador(turnoAtivo.ferramentas); }
       registrar('conversation.tool', { tool: chamada.tool, phase: chamada.phase, ok: chamada.ok ?? null, summary: chamada.phase === 'started' ? resumo.inicio : resumo.fim });
       return true;
     },
