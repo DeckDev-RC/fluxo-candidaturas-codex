@@ -33,7 +33,7 @@ jobs:
             Set-Content "apps/desktop/dist/desktop/sbom.cdx.json"
 
       - name: Atestar instalador
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: apps/desktop/dist/desktop/Fluxo-*-Windows-x64.exe
 
