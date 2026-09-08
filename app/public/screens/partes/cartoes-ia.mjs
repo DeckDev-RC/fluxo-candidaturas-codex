@@ -9,7 +9,7 @@ import { describeError, send } from '../../core/api.mjs';
 import { nivelAderencia } from '../../core/aderencia.mjs';
 import { plural } from '../../core/rotulos.mjs';
 import { ask, say } from '../../core/conversa.mjs';
-import { agentDriving, sendTurn } from '../../core/conversa-ia.mjs';
+import { agentOperating, sendTurn } from '../../core/conversa-ia.mjs';
 import { loadState, setConversation, store } from '../../core/store.mjs';
 import { notice } from '../../ui/messages.mjs';
 
@@ -42,7 +42,7 @@ export function fecharCartaoDaIa() { setConversation({ cartao: null }); }
 // O resultado do cartão só vira turno quando a IA está conduzindo; sem IA, o
 // que a pessoa fez já está gravado e a conversa segue pelas regras locais.
 async function avisarIa(texto, opcoes = {}) {
-  if (!agentDriving()) return null;
+  if (!agentOperating()) return null;
   try { return await sendTurn(texto, opcoes); } catch { return null; }
 }
 

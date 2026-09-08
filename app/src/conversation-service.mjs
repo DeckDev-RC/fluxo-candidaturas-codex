@@ -36,7 +36,7 @@ export function assinaturaDasFerramentas(definitions = [], instrucoes = INSTRUCO
   return createHash('sha1').update(JSON.stringify(base)).update(String(instrucoes ?? '')).digest('hex').slice(0, 16);
 }
 
-export function createConversationService({ agentAdapter, snapshot = async () => ({}), rootDir = '', runService = null, tabs = null, loginState = null, codexSettings = null, toolsSignature = '', now = () => new Date(), timeoutMs = PRAZO_TURNO_MS, watchIntervalMs = OBSERVACAO_INTERVALO_MS } = {}) {
+export function createConversationService({ agentAdapter, snapshot = async () => ({}), rootDir = '', runService = null, tabs = null, loginState = null, codexSettings = null, toolsSignature = '', canAutoContinue = () => true, now = () => new Date(), timeoutMs = PRAZO_TURNO_MS, watchIntervalMs = OBSERVACAO_INTERVALO_MS } = {}) {
   if (!agentAdapter?.request) throw new TypeError('A conversa requer o adaptador do agente.');
   let threadId = '';
   // Thread que este processo do app-server já conhece (retomada ou criada aqui).
@@ -254,6 +254,7 @@ export function createConversationService({ agentAdapter, snapshot = async () =>
       let estado;
       try { estado = await loginState(plataforma); } catch { return; }
       if (!estado?.open || estado.loginPending || estado.challenge || estado.consentPending) return;
+      if (!canAutoContinue()) return;
       pararObservacao();
       emitir('waiting_resolved', { kind: espera.kind, platform: plataforma, url: estado.url ?? '' });
       if (turnoAtivo) return;

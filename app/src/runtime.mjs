@@ -42,6 +42,10 @@ import { createFixtureAgents, createFixtureDiscoveryAdapters } from './fixture-a
 import { createProductionAgents } from './production-agents.mjs';
 import { createAutopilotService } from './autopilot-service.mjs';
 import { createCodexAuthService } from './codex-auth-service.mjs';
+import { createSkynetAuthService } from './skynet-auth-service.mjs';
+import { createChatOnlyConversationService } from './chat-only-conversation-service.mjs';
+import { createConversationProviderService } from './conversation-provider-service.mjs';
+import { createHybridConversationService } from './hybrid-conversation-service.mjs';
 import { assinaturaDasFerramentas, createConversationService } from './conversation-service.mjs';
 import { retratoParaConversa } from './conversation-snapshot.mjs';
 import { createCodexHarnessService } from './codex-harness-service.mjs';
@@ -60,11 +64,13 @@ import { createCampaignService } from './campaign-service.mjs';
 import { createConsistencyService } from './consistency-service.mjs';
 import { createFormController } from './form-controller.mjs';
 
-export async function createLocalRuntime({ rootDir, browserDriver, headless, browserHost = null, schedulerTickMs = 60_000 } = {}) {
+export async function createLocalRuntime({ rootDir, browserDriver, headless, browserHost = null, skynetHost = null, schedulerTickMs = 60_000 } = {}) {
   await mkdir(join(rootDir, 'estado'), { recursive: true });
   const persistence = createPersistenceAuthority({ rootDir });
   if (!['campanha/config.json', 'fila/vagas.json', 'candidaturas/candidaturas.json'].some(path => existsSync(join(rootDir, path)))) await persistence.initializeNew();
   const runtimeConfig = await readRuntimeConfig(rootDir);
+  const providerService = createConversationProviderService({ rootDir, fallback: runtimeConfig.conversationProvider });
+  await providerService.load();
   const dbPath = join(rootDir, 'estado', 'harness.sqlite');
   const queueService = createQueueService({ rootDir, checkpointAfterEachAction: runtimeConfig.checkpointAfterEachAction, maxConsecutiveFailures: runtimeConfig.maxConsecutiveFailures, mutationLock: false });
   const runService = createRunService({ dbPath, maxApplicationsPerRun: runtimeConfig.maxApplicationsPerRun });
@@ -154,15 +160,16 @@ export async function createLocalRuntime({ rootDir, browserDriver, headless, bro
     onNotification: (message, runId) => {
       try {
         if (authService?.handleNotification(message)) return;
-        if (conversationService?.handleNotification(message)) return;
+        if (conversationService?.handleNotification?.(message)) return;
         eventosDeExecucao(message, runId);
       } catch (error) { registrarFalhaSilenciosa('notificação do agente', error); }
     },
-    onToolCall: (chamada) => { try { conversationService?.handleToolCall(chamada); } catch (error) { registrarFalhaSilenciosa('narração de ferramenta', error); } }
+    onToolCall: (chamada) => { try { conversationService?.handleToolCall?.(chamada); } catch (error) { registrarFalhaSilenciosa('narração de ferramenta', error); } }
   });
   const codexHarnessService = createCodexHarnessService({ request: (method, params) => agentAdapter.request(method, params) });
   authService = createCodexAuthService({ agentAdapter });
-  const runtimeHealth = createRuntimeHealth({ authService, codex });
+  const skynetAuthService = createSkynetAuthService({ host: skynetHost });
+  const runtimeHealth = createRuntimeHealth({ authService, skynetAuthService, providerService, conversationProvider: runtimeConfig.conversationProvider, codex });
   const autopilotService = createAutopilotService({ runService, agentAdapter, orchestrator: fixtureOrchestrator, productionOrchestrator: orchestrator });
   exceptionService.setOrchestrator?.(orchestrator);
   for (const run of runService.listRuns()) agentAdapter.bindRun(run.id, run.agentThreadId, run.currentTurnId);
@@ -181,15 +188,32 @@ export async function createLocalRuntime({ rootDir, browserDriver, headless, bro
     readRuns: async () => runService.listRuns(),
     listEvents: (runId) => runService.listEvents(runId).map((event) => ({ type: event.type, ...safeParse(event.payloadJson) }))
   });
-  conversationService = createConversationService({
+  const conversationSnapshot = () => retratoParaConversa({ rootDir, persistence, memoryService, approvalService, runService, runtimeHealth, browserAdapter });
+  const textualConversation = createChatOnlyConversationService({
+    rootDir,
+    snapshot: conversationSnapshot,
+    client: {
+      chat: (input) => requireSkynetHost(skynetHost).chat(input),
+      interrupt: (operationId) => skynetHost?.interrupt?.(operationId)
+    }
+  });
+  const operationalConversation = createConversationService({
     agentAdapter,
     rootDir,
     runService,
     tabs: () => browserAdapter.tabs(),
     loginState: (platform) => browserAdapter.loginState(platform),
     codexSettings: codexSettingsService,
+    canAutoContinue: () => conversationService?.status?.().busy !== true,
     toolsSignature: assinaturaDasFerramentas(domainTools.definitions),
-    snapshot: () => retratoParaConversa({ rootDir, persistence, memoryService, approvalService, runService, runtimeHealth, browserAdapter })
+    snapshot: conversationSnapshot
+  });
+  conversationService = createHybridConversationService({
+    textual: textualConversation,
+    operational: operationalConversation,
+    providerService,
+    skynetAuthService,
+    codexAuthService: authService
   });
   // A preparação é do próprio app e roda na partida: installation.ready reflete o
   // que importa para a IA operar (navegador e plataformas), sem clique da pessoa.
@@ -198,6 +222,7 @@ export async function createLocalRuntime({ rootDir, browserDriver, headless, bro
 
   return {
     conversationService,
+    providerService,
     readinessService,
     runtimeConfig,
     persistence,
@@ -211,15 +236,17 @@ export async function createLocalRuntime({ rootDir, browserDriver, headless, bro
     domainTools,
     applicationFlow,
     resumeService, evidenceService, messageService, assessmentService, legacyImportService, pendingService, checkpointService, metricsService,
-    memoryService, intakeService, discoveryService, fitService, exceptionService, followUpMonitor, auditService, authService, codexHarnessService, codexSettingsService, orchestrator, autopilotService,
+    memoryService, intakeService, discoveryService, fitService, exceptionService, followUpMonitor, auditService, authService, skynetAuthService, codexHarnessService, codexSettingsService, orchestrator, autopilotService,
     resumeImportService, schedulerService, schedulerRunner, notificationService, sessionStore, runtimeHealth, campaignBudget, campaignService, consistencyService,
     // Encerramento idempotente e com prazo por recurso: um agente ou navegador
     // que não responde não pode impedir o banco de fechar limpo.
     close() {
       if (!fechamento) fechamento = (async () => {
         schedulerRunner.stop();
+        await comPrazo(() => conversationService.interrupt?.(), 3_000);
         await Promise.allSettled([
           comPrazo(() => agentAdapter.close(), 3_000),
+          comPrazo(() => conversationService.close?.(), 1_000),
           comPrazo(() => driver.close?.(), 3_000)
         ]);
         for (const recurso of [queueService, applicationService, pendingService, metricsService, persistence, stateStore, approvalService, runService]) {
@@ -229,6 +256,11 @@ export async function createLocalRuntime({ rootDir, browserDriver, headless, bro
       return fechamento;
     }
   };
+}
+
+function requireSkynetHost(host) {
+  if (host?.chat) return host;
+  throw Object.assign(new Error('O SkynetChat está disponível apenas no aplicativo desktop.'), { code: 'skynet_unavailable' });
 }
 
 async function comPrazo(operacao, ms) {

@@ -4,39 +4,91 @@ export const CODEX_MISSING_GUIDANCE = 'Instale o Codex CLI (npm install -g @open
 
 // `codex` é opcional: quando informado, resolve o executável e permite explicar
 // a indisponibilidade mais comum — o Codex não está instalado ou não foi encontrado.
-export function createRuntimeHealth({ authService, codex = null, now = () => new Date() } = {}) {
+export function createRuntimeHealth({ authService, skynetAuthService = null, providerService = null, conversationProvider = 'codex', codex = null, now = () => new Date() } = {}) {
+  const activeProvider = () => providerService?.get?.() ?? (conversationProvider === 'skynet' ? 'skynet' : 'codex');
   return {
-    // Cada mudança de conta vira um retrato novo da saúde, entregue a quem assinou.
+    // Login, logout ou escolha de provedor atualizam o mesmo retrato composto.
     onChange(listener) {
-      if (!authService?.onChange) return () => {};
-      return authService.onChange(async () => { listener(await this.snapshot()); });
+      const notify = async () => { listener(await this.snapshot()); };
+      const unsubscribes = [
+        authService?.onChange?.(notify),
+        skynetAuthService?.onChange?.(notify),
+        providerService?.onChange?.(notify)
+      ].filter((value) => typeof value === 'function');
+      return () => { for (const unsubscribe of unsubscribes) unsubscribe(); };
     },
 
     async snapshot() {
-      const executable = codex ? codex() : null;
-      if (executable && !executable.found) {
-        return {
-          state: 'unavailable',
-          available: false,
-          offlineRead: true,
-          reason: 'codex_not_found',
-          message: `Automação indisponível — ${executable.reason} ${CODEX_MISSING_GUIDANCE}`,
-          codex: { found: false, path: '', source: executable.source ?? '' }
-        };
-      }
-      try {
-        const status = await authService?.status?.();
-        return { ...normalize(status, now()), ...(executable ? { codex: { found: true, path: executable.path, source: executable.source } } : {}) };
-      } catch (error) {
-        return {
-          state: 'unavailable',
-          available: false,
-          offlineRead: true,
-          message: 'O runtime de IA está indisponível. A leitura local continua disponível.',
-          error: String(error?.message ?? error)
-        };
-      }
+      const provider = activeProvider();
+      const [codexState, skynetState] = await Promise.all([
+        codexSnapshot(authService, codex, now),
+        skynetSnapshot(skynetAuthService, now)
+      ]);
+      return compose(provider, codexState, skynetState);
     }
+  };
+}
+
+async function codexSnapshot(authService, codex, now) {
+  const executable = codex ? codex() : null;
+  if (executable && !executable.found) {
+    return {
+      state: 'unavailable',
+      available: false,
+      offlineRead: true,
+      reason: 'codex_not_found',
+      message: `Automação indisponível — ${executable.reason} ${CODEX_MISSING_GUIDANCE}`,
+      executable: { found: false, path: '', source: executable.source ?? '' }
+    };
+  }
+  try {
+    const status = await authService?.status?.();
+    return {
+      ...normalize(status, now()),
+      ...(executable ? { executable: { found: true, path: executable.path, source: executable.source } } : {})
+    };
+  } catch (error) {
+    return { state: 'unavailable', available: false, offlineRead: true, message: 'O runtime Codex está indisponível.', error: String(error?.message ?? error) };
+  }
+}
+
+async function skynetSnapshot(authService, now) {
+  if (!authService?.status) {
+    return { state: 'unavailable', available: false, offlineRead: true, message: 'O SkynetChat está disponível apenas no aplicativo desktop.' };
+  }
+  try {
+    const status = await authService.status();
+    const value = normalize(status, now());
+    return { ...value, message: String(status?.message ?? value.message) };
+  } catch {
+    return { state: 'unavailable', available: false, offlineRead: true, message: 'Não foi possível verificar a sessão do SkynetChat.' };
+  }
+}
+
+function compose(provider, codex, skynet) {
+  const active = provider === 'skynet' ? skynet : codex;
+  const chat = active.available === true;
+  const tools = codex.available === true;
+  const available = provider === 'skynet' ? chat || tools : chat;
+  const mode = available ? (provider === 'skynet' ? 'skynet-hybrid' : 'codex-app-server') : 'offline-read';
+  const message = provider === 'skynet'
+    ? chat
+      ? (tools ? 'SkynetChat conectado para conversa e Codex conectado para operações.' : 'SkynetChat conectado; entre no ChatGPT/Codex para operar plataformas.')
+      : tools ? 'Codex conectado para operações; entre no SkynetChat para conversa textual.' : skynet.message
+    : codex.message;
+  return {
+    ...active,
+    state: available ? 'signed_in' : active.state,
+    available,
+    offlineRead: true,
+    provider,
+    conversationProvider: provider,
+    mode,
+    message,
+    capabilities: { chat, tools, autopilot: tools },
+    providers: { codex, skynet },
+    // Compatibilidade com o painel Codex existente.
+    ...(codex.executable ? { codex: codex.executable } : {})
   };
 }
 

@@ -4,7 +4,7 @@
 
 import { describeError } from '../../core/api.mjs';
 import { importarCurriculo } from '../../core/actions.mjs';
-import { agentDriving, sendTurn } from '../../core/conversa-ia.mjs';
+import { agentOperating, sendTurn } from '../../core/conversa-ia.mjs';
 import { ask, say, settleSteps } from '../../core/conversa.mjs';
 import { currentRoute, go } from '../../core/router.mjs';
 
@@ -47,7 +47,7 @@ async function receberArquivo(file) {
     // O aviso da importação já entrou na conversa; o passo "Recebendo…" só fecha.
     settleSteps();
     if (!lido) say(`A leitura do texto de ${resultado.filename} não terminou; posso tentar de novo ou você envia em outro formato.`, { tom: 'atencao' });
-    if (agentDriving()) {
+    if (agentOperating()) {
       await sendTurn(`A pessoa anexou o currículo "${resultado.filename}" pela conversa e ele já foi importado (${lido ? 'texto extraído' : 'texto não extraído'}). Leia-o com fluxo_read_resume e confirme os dados com o cartão (AÇÃO: confirmar=…). Não peça o arquivo de novo.`, { system: true }).catch(() => null);
     }
   } catch (error) {

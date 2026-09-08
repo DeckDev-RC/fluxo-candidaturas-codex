@@ -28,6 +28,10 @@ export async function saveCodexSettings(settings) {
   return salvo;
 }
 
+export function loginCodex() {
+  return send('/api/v1/auth/openai/login', {});
+}
+
 export async function logoutCodex() {
   const resultado = await send('/api/v1/auth/openai/logout', {});
   store.codex = { ...(store.codex ?? {}), status: 'unavailable', account: null, usage: null, rateLimits: null };

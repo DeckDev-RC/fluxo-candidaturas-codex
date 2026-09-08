@@ -1,6 +1,9 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { PLATFORM_NAMES } from './platform-adapters.mjs';
+import providerConfig from './conversation-provider.cjs';
+
+const { parseConversationProvider } = providerConfig;
 
 const DEFAULTS = {
   requireFinalConfirmation: true,
@@ -20,6 +23,7 @@ const DEFAULTS = {
   localModel: '',
   cloudEnabled: false,
   cloudModel: '',
+  conversationProvider: 'skynet',
   authMode: 'chatgpt',
   codexCommand: ''
 };
@@ -68,6 +72,10 @@ export async function readRuntimeConfig(rootDir) {
     if (type === 'boolean' && /^(true|false)$/i.test(raw)) values[property] = raw.toLowerCase() === 'true';
     if (type === 'integer' && /^\d+$/.test(raw)) values[property] = Number(raw);
     if (type === 'string' && raw) values[property] = raw;
+  }
+  values.conversationProvider = parseConversationProvider(content, DEFAULTS.conversationProvider);
+  if (!['codex', 'skynet'].includes(values.conversationProvider)) {
+    throw new Error('CONVERSATION_PROVIDER deve ser codex ou skynet.');
   }
   return values;
 }

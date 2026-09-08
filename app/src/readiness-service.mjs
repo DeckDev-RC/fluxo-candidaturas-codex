@@ -43,7 +43,13 @@ export function createReadinessService({ rootDir, memoryService = null, campaign
       const confirmados = ['name', 'email', 'phone', 'targetRoles'].filter((chave) => fatos[chave]?.confirmed === true);
       checks.push(check('Perfil confirmado', 'warning', confirmados.length === 4, confirmados.length === 4 ? 'Nome, e-mail, telefone e objetivo confirmados.' : 'A IA lê o currículo e confirma com você o que faltar antes da primeira candidatura.'));
       checks.push(check('Currículo', 'warning', Boolean(memoria.selectedResume?.path), memoria.selectedResume?.path ? `Em uso: ${String(memoria.selectedResume.path).split('/').at(-1)}` : 'Importe pelo cartão de primeiro uso; a IA lê o documento e confirma os dados com você.'));
-      if (saude) checks.push(check('Automação de IA', 'warning', saude.available === true, saude.available === true ? 'ChatGPT conectado.' : 'Conecte o ChatGPT em Configurações para a IA conduzir a busca.'));
+      if (saude) {
+        const automation = saude.available === true && saude.capabilities?.tools !== false;
+        const detail = saude.available === true && saude.capabilities?.tools === false
+          ? 'SkynetChat conectado para conversa textual; ChatGPT/Codex ainda é necessário para operar plataformas.'
+          : automation ? 'ChatGPT conectado.' : 'Conecte o ChatGPT em Configurações para a IA conduzir a busca.';
+        checks.push(check('Automação de IA', 'warning', automation, detail));
+      }
 
       for (const plataforma of plataformas) {
         const aba = (abas ?? []).find((item) => String(item.platform).toUpperCase() === String(plataforma.name).toUpperCase());
