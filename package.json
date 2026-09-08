@@ -21,6 +21,7 @@
     "test:app": "npm --workspace @deckdev-rc/fluxo-desktop test",
     "test:powershell": "npm --workspace @deckdev-rc/fluxo-powershell test",
     "test:desktop": "npm --workspace @deckdev-rc/fluxo-desktop run test:desktop",
+    "test:desktop:e2e": "npm --workspace @deckdev-rc/fluxo-desktop run test:desktop:e2e",
     "test:e2e": "npm --workspace @deckdev-rc/fluxo-desktop run test:e2e",
     "test:coverage": "npm --workspace @deckdev-rc/fluxo-desktop run test:coverage",
     "browser:install": "npm --workspace @deckdev-rc/fluxo-desktop run browser:install",

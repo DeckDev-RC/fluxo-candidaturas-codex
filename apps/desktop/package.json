@@ -24,6 +24,7 @@
     "start:web": "npm --prefix app start",
     "test": "npm --prefix app test && node --test desktop/test/*.test.mjs",
     "test:e2e": "node --disable-warning=ExperimentalWarning --test e2e/*.test.mjs",
+    "test:desktop:e2e": "node --disable-warning=ExperimentalWarning --test e2e/desktop-navegador-embutido.test.mjs",
     "test:coverage": "node --disable-warning=ExperimentalWarning --test --experimental-test-coverage --test-coverage-include=app/src/**/*.mjs --test-coverage-lines=94 --test-coverage-branches=77 --test-coverage-functions=88 app/test/*.test.mjs e2e/*.test.mjs",
     "test:desktop": "node desktop/smoke.mjs",
     "migrate": "node app/scripts/migrate-persistence.mjs",
