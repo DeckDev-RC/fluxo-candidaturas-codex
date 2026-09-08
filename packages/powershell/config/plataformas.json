@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "platforms": [
+    { "name": "GUPY", "urlEnv": "GUPY_URL", "goalEnv": "GUPY_GOAL", "auth": "password", "playbook": "docs/PLATAFORMAS.md#gupy" },
+    { "name": "INFOJOBS", "urlEnv": "INFOJOBS_URL", "goalEnv": "INFOJOBS_GOAL", "auth": "password", "playbook": "docs/PLATAFORMAS.md#infojobs" },
+    { "name": "PANDAPE", "urlEnv": "PANDAPE_URL", "goalEnv": "PANDAPE_GOAL", "auth": "link-convite", "playbook": "docs/PLATAFORMAS.md#pandapé" },
+    { "name": "LINKEDIN", "urlEnv": "LINKEDIN_URL", "goalEnv": "LINKEDIN_GOAL", "auth": "manual", "playbook": "docs/PLATAFORMAS.md#linkedin" },
+    { "name": "CATHO", "urlEnv": "CATHO_URL", "goalEnv": "CATHO_GOAL", "auth": "password", "playbook": "docs/PLATAFORMAS.md#catho" },
+    { "name": "VAGASCOM", "urlEnv": "VAGASCOM_URL", "goalEnv": "VAGASCOM_GOAL", "auth": "password", "playbook": "docs/PLATAFORMAS.md#vagascom" },
+    { "name": "SOLIDES", "urlEnv": "SOLIDES_URL", "goalEnv": "SOLIDES_GOAL", "auth": "password", "playbook": "docs/PLATAFORMAS.md#sólides" }
+  ],
+  "submittedStatuses": ["enviada", "triagem", "teste pendente", "teste concluído", "entrevista", "proposta", "rejeitada", "encerrada"],
+  "terminalStatuses": ["proposta", "rejeitada", "desistência", "encerrada"]
+}

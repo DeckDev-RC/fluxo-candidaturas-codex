@@ -1,0 +1,38 @@
+name: Melhoria
+description: Proponha uma capacidade, integração ou melhoria de experiência.
+title: "[Melhoria]: "
+labels: ["enhancement", "triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problema
+      description: Qual necessidade concreta esta proposta resolve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposta
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternativas consideradas
+  - type: textarea
+    id: safety
+    attributes:
+      label: Privacidade, autorização e impacto
+      description: Explique dados transmitidos, ações externas e termos de terceiros.
+    validations:
+      required: true
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Escopo
+      options:
+        - label: Não exige contornar CAPTCHA, MFA, fiscalização ou antiautomação.
+          required: true
+        - label: Não reduz os portões de aprovação humana.
+          required: true

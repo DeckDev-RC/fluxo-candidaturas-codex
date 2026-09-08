@@ -1,0 +1,63 @@
+name: Bug
+description: Relate um comportamento reproduzível usando dados sintéticos.
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Não inclua senhas, cookies, tokens, currículos, URLs privadas ou dados reais.
+        Vulnerabilidades devem seguir SECURITY.md.
+  - type: input
+    id: version
+    attributes:
+      label: Versão
+      placeholder: v1.4.1
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Componente
+      options:
+        - Desktop Electron
+        - Conversa e provedores de IA
+        - Navegador e plataformas
+        - Persistência e campanha
+        - Pacote PowerShell
+        - Documentação
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Comportamento observado
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Passos para reproduzir
+      description: Use conta, vaga e dados sintéticos.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Comportamento esperado
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Diagnóstico sanitizado
+      description: Inclua apenas mensagens sem credenciais ou dados pessoais.
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmações
+      options:
+        - label: Verifiquei issues existentes.
+          required: true
+        - label: Removi dados pessoais e segredos.
+          required: true

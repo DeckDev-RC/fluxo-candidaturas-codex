@@ -1,153 +1,162 @@
-# Fluxo de candidaturas assistido por Codex
+# Fluxo
 
-Versão desktop candidata: **1.2 (autonomia supervisionada)**.
+[![CI](https://github.com/DeckDev-RC/fluxo-candidaturas-codex/actions/workflows/ci.yml/badge.svg)](https://github.com/DeckDev-RC/fluxo-candidaturas-codex/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/DeckDev-RC/fluxo-candidaturas-codex)](https://github.com/DeckDev-RC/fluxo-candidaturas-codex/releases/latest)
 
-**Branch oficial:** `codex/fluxo-desktop`. Desenvolva, teste e gere o instalador nesta árvore. A raiz `main` preserva o pacote PowerShell e documentos locais.
+Aplicativo Windows local-first para organizar e conduzir candidaturas de emprego
+com IA, navegador integrado, confirmação humana e rastreabilidade.
 
-Abra o instalador `dist/desktop/Fluxo-1.1.0-Windows-x64.exe` ou execute `npm ci` e `npm start` nesta raiz. [Linha de produto](docs/LINHA-DE-PRODUTO.md). [Política](docs/POLITICA-AUTONOMIA.md). [Instalação](docs/DESKTOP.md).
+O Fluxo combina **SkynetChat para conversa textual** e **ChatGPT/Codex para
+operações**. A pessoa pode manter as duas sessões conectadas e escolher qual IA
+responde. Ações externas sensíveis nunca são aprovadas pelo modelo: dependem de
+uma decisão autenticada e vinculada à ação exata.
 
-## Linha de produto P0: App Harness
+> English summary: Fluxo is an Apache-2.0, local-first Windows application for
+> supervised job applications with hybrid AI, embedded browser automation and
+> human approval gates.
 
-O App Harness é a base da linha de produto P0 do Fluxo: uma interface **local-first**, **single-user** e operada em conjunto com o agente do Codex. Ele organiza onboarding, preflight, campanha, fila, candidaturas, questionários, acompanhamento e retomada sem transformar o pacote em SaaS remoto ou em um bot externo executado sem conversa.
+![Tela de conversa do Fluxo com dados sintéticos](docs/assets/fluxo-conversa.png)
 
-O servidor do Harness escuta somente em `127.0.0.1`. Instalações novas usam SQLite; instalações legadas mantêm JSON até migração explícita com backup, e ações externas permanecem sujeitas à confirmação e aos limites definidos pelo Fluxo.
+## Por que este projeto existe
 
-## Início oficial do App Harness
+Buscar emprego mistura tarefas repetitivas, dados pessoais, formulários,
+decisões sensíveis e acompanhamento em vários sites. O Fluxo centraliza esse
+trabalho sem transformar o perfil da pessoa em um serviço SaaS:
 
-Na pasta `app/`, execute:
-
-```powershell
-npm start
-```
-
-Abra `http://127.0.0.1:4173`. Para validar a instalação antes de operar:
-
-```powershell
-npm test
-```
-
-O comando oficial de preparação de uma instalação continua sendo `.\scripts\primeiro-uso.ps1`, executado a partir da raiz do repositório.
-
-## Organização do repositório
-
-- **Código do produto:** `app/src/`, `app/public/`, `scripts/`, `templates/` e `config/`.
-- **Dados privados e operacionais locais:** `.env`, `perfil/`, `curriculo/`, `campanha/`, `fila/`, `estado/`, `candidaturas/`, `evidencias/` e `mensagens/`. Não entram em compartilhamentos.
-- **Artefatos gerados:** relatórios como `candidaturas/controle-candidaturas.md` e `candidaturas/painel.md`, além do pacote sanitizado produzido em `dist/`. Devem ser regenerados pelos comandos oficiais.
-- **Fixtures e testes:** `app/test/` e seus dados de teste locais; não usam contas reais nem enviam candidaturas reais.
-
-O pacote é reutilizável para o próprio agente do Codex trabalhar com o usuário pelo chat, usar a habilidade Playwright no navegador e conduzir onboarding, busca, fila, formulários, candidaturas, questionários e acompanhamento.
+- perfil, currículo, fila e histórico ficam na pasta local escolhida;
+- o navegador das plataformas aparece dentro do aplicativo;
+- mensagens e contexto só vão ao provedor selecionado após consentimento;
+- CAPTCHA, MFA, consentimentos e aprovação final permanecem com a pessoa;
+- cada candidatura confirmada mantém status, próxima ação e evidência.
 
 ## Capacidades
 
-- onboarding dos dados recorrentes de formulários, preferências, filtros e fatos profissionais;
-- currículo local como fonte de verdade, extração de DOCX/PDF e escolha entre variantes;
-- URLs, logins e senhas somente no `.env` privado;
-- metas totais, diárias, semanais e independentes por plataforma;
-- busca e priorização por aderência e requisitos eliminatórios;
-- fila deduplicada e checkpoint para continuar de onde parou;
-- candidatura via habilidade `$playwright`, com sessão persistente;
-- tratamento de links de questionários e testes, cronômetro e editor de código;
-- controle estruturado, painel de progresso, prazos, resultados e evidências;
-- importação de controles Markdown antigos;
-- rascunhos de mensagens para recrutadores;
-- ZIP compartilhável sem credenciais ou dados do candidato.
+- onboarding e extração local de PDF, DOCX e TXT;
+- campanha com metas independentes por plataforma;
+- busca, deduplicação, priorização e aderência;
+- fila e checkpoint para retomada;
+- navegador Electron integrado e controlado por Playwright;
+- conversa híbrida SkynetChat + Codex;
+- revisão e aprovação autenticada antes de ações externas;
+- acompanhamento de testes, entrevistas, mensagens e prazos;
+- persistência SQLite e compatibilidade com o fluxo PowerShell legado;
+- exportação sanitizada e instalador NSIS para Windows x64.
 
-## Requisitos
+![Oportunidades sintéticas no Fluxo](docs/assets/fluxo-oportunidades.png)
 
-- Codex no aplicativo do ChatGPT, IDE ou CLI, aberto na pasta `Fluxo/`;
-- Node.js/npm com `npx`;
-- habilidade `$playwright` instalada e habilitada;
-- navegador compatível e internet;
-- opcionalmente, `$playwright-interactive` para iteração visual persistente;
-- opcionalmente, `pdftotext`/Poppler para extrair PDF; DOCX é extraído pelo PowerShell.
+## Segurança por desenho
 
-## Início rápido
+O conteúdo de uma página não concede autorização. Senhas, códigos, cookies e
+tokens não entram no prompt. Enviar, aceitar, conectar, publicar, excluir ou
+pressionar Enter para submeter exige um `approvalId` criado pela interface e
+vinculado à página, alvo e conteúdo.
 
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-.\scripts\primeiro-uso.ps1
+Leia:
+
+- [Política de segurança](SECURITY.md)
+- [Privacidade e mapa de dados](PRIVACY.md)
+- [Política de autonomia](apps/desktop/docs/POLITICA-AUTONOMIA.md)
+- [Matriz de plataformas](apps/desktop/docs/MATRIZ-PLATAFORMAS.md)
+- [Suporte](SUPPORT.md)
+
+## Arquitetura
+
+```mermaid
+flowchart LR
+  Person[Pessoa] --> UI[Electron + UI local]
+  UI --> Router[Roteador híbrido]
+  Router -->|Texto| Skynet[SkynetChat isolado]
+  Router -->|Operação| Codex[Codex app-server]
+  Codex --> Tools[Ferramentas de domínio]
+  Tools --> Browser[Navegador Playwright embutido]
+  UI --> Data[(SQLite + arquivos locais)]
 ```
 
-Esse comando orienta a preparação, executa o onboarding e roda automaticamente o preflight. Pelo chat, basta abrir a pasta e pedir: `Faça minha primeira configuração`; o `AGENTS.md` determina a mesma sequência guiada.
+O servidor escuta somente em `127.0.0.1`. O popup Skynet roda em processo
+Electron separado, sem acesso ao CDP das plataformas. O Codex recebe ferramentas
+restritas e não possui shell ou escrita direta no workspace operacional.
 
-Depois, abra esta pasta como projeto e diga:
+Mais detalhes em [Arquitetura](docs/ARCHITECTURE.md).
+
+## Monorepo
 
 ```text
-Leia o AGENTS.md, valide o ambiente, retome o checkpoint se existir e use a habilidade Playwright. Trabalhe comigo pelo chat, atualize o controle após cada confirmação e continue até as metas configuradas ou um bloqueio real.
+apps/desktop/          aplicativo Electron, backend, UI e testes
+packages/powershell/   fluxo PowerShell legado
+docs/                  arquitetura e demonstração públicas
+.github/               CI, templates e automação da comunidade
 ```
 
-## Operação
+## Instalação
+
+Baixe a [release mais recente](https://github.com/DeckDev-RC/fluxo-candidaturas-codex/releases/latest).
+
+A release `v1.4.1` permanece disponível como artefato legado anterior à
+preparação open source. O instalador atual não possui assinatura Authenticode;
+confira o SHA-256 publicado antes de executá-lo.
+
+Requisitos principais:
+
+- Windows 10/11 x64;
+- internet para provedores e plataformas;
+- conta SkynetChat para conversa textual;
+- Codex CLI e conta ChatGPT para operações automáticas.
+
+## Desenvolvimento
 
 ```powershell
-# Criar ou substituir metas
-.\scripts\inicializar-campanha.ps1
-
-# Importar histórico já existente
-.\scripts\importar-controles-legados.ps1 -Directory ..
-
-# Inserir e selecionar vagas
-.\scripts\adicionar-vaga.ps1 -Platform GUPY -Company Empresa -Role 'Pessoa Desenvolvedora' -IdentifierOrUrl 123 -Priority A -FitScore 85
-.\scripts\proxima-acao.ps1 -Claim
-.\scripts\retomar-fluxo.ps1
-
-# Registrar uma confirmação e eventos posteriores
-.\scripts\nova-candidatura.ps1 -Platform GUPY -Company Empresa -Role 'Pessoa Desenvolvedora' -IdentifierOrUrl 123 -Status enviada
-.\scripts\registrar-evento.ps1 -Reference 123 -Type status -Status triagem -NextAction 'Aguardar retorno'
-.\scripts\registrar-resultado-teste.ps1 -Reference 123 -TestName 'Teste técnico' -Score 5 -Total 5
-
-# Painel e prazos
-.\scripts\gerar-painel.ps1
-.\scripts\monitorar-pendencias.ps1
-
-# Currículo e mensagens
-.\scripts\extrair-curriculo.ps1 -Path .\curriculo\curriculo.docx
-.\scripts\selecionar-curriculo.ps1 -JobDescription 'descrição integral da vaga'
-.\scripts\gerar-mensagem-recrutador.ps1 -Company Empresa -Role Vaga -Highlights Python,React
-
-# Distribuição segura
-.\scripts\exportar-compartilhavel.ps1
-.\scripts\testar-distribuicao.ps1
+git clone https://github.com/DeckDev-RC/fluxo-candidaturas-codex.git
+cd fluxo-candidaturas-codex
+npm ci
+npm run browser:install
+npm run start:desktop
 ```
 
-## Estrutura
+Validação:
 
-```text
-Fluxo/
-├── AGENTS.md
-├── README.md
-├── .env.example
-├── app/                # App Harness local: código, UI e testes/fixtures
-├── config/plataformas.json
-├── perfil/             # perfil privado criado no onboarding
-├── curriculo/          # PDF, DOCX e textos privados
-├── campanha/           # metas privadas
-├── fila/               # vagas deduplicadas
-├── estado/             # checkpoint de retomada
-├── candidaturas/       # JSON, controle Markdown e painel
-├── evidencias/         # confirmações e resultados
-├── mensagens/          # rascunhos privados
-├── docs/               # manuais operacionais
-├── templates/          # modelos compartilháveis
-└── scripts/            # comandos locais
+```powershell
+npm test
+npm run test:e2e
+npm run test:desktop
 ```
 
-## Documentação
+O projeto possui mais de 390 verificações automatizadas entre aplicação,
+desktop e navegador, além da validação dos scripts PowerShell.
 
-- `app/README.md`: execução e endpoints do App Harness local.
-- `docs/CONTRATO-DE-EXECUCAO.md`: contrato de instalação, startup, modos e diagnóstico.
-- `docs/OPERACAO.md`: sequência de ponta a ponta.
-- `docs/PRIMEIRO-USO.md`: onboarding guiado e preflight.
-- `docs/PLAYWRIGHT.md`: uso do navegador pelo agente.
-- `docs/PLATAFORMAS.md`: Gupy, InfoJobs, PandaPé, LinkedIn, Catho, Vagas.com e Sólides.
-- `docs/QUESTIONARIOS-E-TESTES.md`: links, cronômetro, autoria e editor de código.
-- `docs/METAS-FILA-RETOMADA.md`: campanha contínua, fila, erros e checkpoint.
-- `docs/CURRICULOS.md`: extração e variantes.
-- `docs/DADOS-E-COMANDOS.md`: arquivos estruturados e scripts.
-- `docs/MENSAGENS-E-ACOMPANHAMENTO.md`: contato com recrutadores.
-- `docs/MONITORAMENTO.md`: revisão recorrente e notificações.
-- `docs/DISTRIBUICAO.md`: geração, teste e verificação do pacote final.
-- `docs/SEGURANCA.md`: credenciais, privacidade e limites.
+## Demo sem contas reais
 
-## Compartilhamento
+```powershell
+npm run start:web
+```
 
-Não compartilhe `.env`, `perfil/candidato.md`, currículo real, fila, campanha, checkpoint, evidências, mensagens nem histórico. `scripts/exportar-compartilhavel.ps1` monta em `dist/` um ZIP sanitizado com apenas instruções, modelos, configuração pública e scripts.
+Abra `http://127.0.0.1:4173/?demo=1`. Todos os dados desse modo são sintéticos e
+nenhuma ação externa é executada.
+
+![Seleção de IA e privacidade no modo demo](docs/assets/fluxo-configuracoes.png)
+
+## Limitações conhecidas
+
+- As plataformas são integrações assistidas; capacidade real varia por site e
+  deve ser lida na matriz.
+- Alterações de interface de terceiros podem exigir atualização dos adaptadores.
+- O projeto não contorna CAPTCHA, MFA, antiautomação ou regras de avaliações.
+- O SkynetChat não oferece tool-calling; operações são roteadas ao Codex.
+- Serviços externos possuem termos, retenção, disponibilidade e cobrança próprios.
+
+## Contribuindo
+
+Issues e pull requests são bem-vindos. Leia [CONTRIBUTING.md](CONTRIBUTING.md),
+assine os commits conforme o [DCO](DCO) e siga o
+[Código de Conduta](CODE_OF_CONDUCT.md).
+
+Veja o [roadmap](ROADMAP.md) e procure issues `good first issue`.
+
+## Licença e marcas
+
+Código licenciado sob [Apache License 2.0](LICENSE). Consulte [NOTICE](NOTICE) e
+[Integrações e terceiros](THIRD_PARTY.md) para atribuições e limites.
+
+OpenAI, ChatGPT, Codex, SkynetChat e as plataformas citadas são marcas de seus
+respectivos titulares. Este projeto é independente e não é afiliado, patrocinado
+ou endossado por essas empresas.

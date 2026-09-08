@@ -1,0 +1,16 @@
+{
+  "name": "@deckdev-rc/fluxo-powershell",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pacote PowerShell legado do Fluxo",
+  "license": "Apache-2.0",
+  "author": "DeckDev-RC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DeckDev-RC/fluxo-candidaturas-codex.git",
+    "directory": "packages/powershell"
+  },
+  "scripts": {
+    "test": "pwsh -NoProfile -File ./scripts/test-syntax.ps1"
+  }
+}

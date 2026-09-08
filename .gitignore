@@ -1,31 +1,48 @@
+# Dependências e caches
+node_modules/
+**/node_modules/
+.npm/
+.cache/
+coverage/
+**/coverage/
+
+# Builds e relatórios
+dist/
+**/dist/
+output/
+**/output/
+.playwright/
+.playwright-cli/
+playwright-report/
+test-results/
+
+# Configuração e credenciais locais
 .env
 .env.*
 !.env.example
+**/.env
+**/.env.*
+!**/.env.example
+.npmrc
+*.pem
+*.key
+*.p12
+*.pfx
+*.cer
+*.crt
 
-perfil/*
-!perfil/README.md
-curriculo/*
-!curriculo/README.md
-candidaturas/*
-!candidaturas/README.md
-campanha/*
-!campanha/README.md
-fila/*
-!fila/README.md
-estado/*
-!estado/README.md
-evidencias/*
-!evidencias/README.md
-mensagens/*
-!mensagens/README.md
-
-output/
-backups/
-dist/
-.worktrees/
-.playwright-cli/
+# Dados de execução
 *.log
 *.tmp
+*.bak
+*.sqlite
+*.sqlite3
+*.db
+**/browser-profile/
+**/skynet-isolated/
 
-node_modules/
-
+# Sistema e editores
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
