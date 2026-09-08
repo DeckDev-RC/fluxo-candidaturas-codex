@@ -14,7 +14,10 @@ import { createRequire } from 'node:module';
 // o quadro local, a interface lista a aba e a área reservada tem tamanho real.
 const electronPath = createRequire(import.meta.url)('electron');
 
-test('navegador embutido: a plataforma abre numa aba dentro da janela do Fluxo', { timeout: 150_000 }, async (t) => {
+test('navegador embutido: a plataforma abre numa aba dentro da janela do Fluxo', {
+  timeout: 150_000,
+  skip: process.platform !== 'win32' && 'integração Electron oficial é validada no job Windows'
+}, async (t) => {
   const quadro = createServer((request, response) => {
     response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
     response.end(`<!doctype html><title>Quadro local</title><h1>Quadro local</h1><p>${request.url}</p>`);
