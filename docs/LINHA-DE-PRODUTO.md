@@ -22,4 +22,4 @@ A raiz `main` pode conter documentos e alterações locais do usuário. Integra�
 
 ## Versão candidata
 
-O artefato a liberar é o build gerado a partir de `codex/fluxo-desktop`, com o mesmo commit, checksum e relatório. Assinatura digital é obrigatória para distribuição pública; piloto privado sem assinatura deve ser rotulado como **piloto privado não assinado**.
+O artefato a liberar é o build gerado a partir de `codex/fluxo-desktop`, com o mesmo commit, checksum e relatório. Assinatura digital não é obrigatória para distribuição pública.
