@@ -23,7 +23,7 @@ test('F1-03 — divergência entre currículos é registrada em vez de descartad
   const preview = await intake.preview({
     documents: [
       { path: 'curriculo/antigo.txt', text: 'Nome: Pessoa Exemplo\nE-mail: ana@example.test\nTelefone: 11900000000\nLocalização: São Paulo\nCargos-alvo: Backend' },
-      { path: 'curriculo/novo.txt', text: 'Nome: Pessoa Exemplo\nE-mail: ana@example.test\nTelefone: 11900000000\nLocalização: São Paulo\nCargos-alvo: Backend' }
+      { path: 'curriculo/novo.txt', text: 'Nome: Pessoa Exemplo Silva\nE-mail: ana@example.test\nTelefone: 11900000000\nLocalização: São Paulo\nCargos-alvo: Backend' }
     ]
   });
 
