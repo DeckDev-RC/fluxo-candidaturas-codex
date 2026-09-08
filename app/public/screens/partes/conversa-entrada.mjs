@@ -8,7 +8,7 @@
 import { el } from '../../core/dom.mjs';
 import { describeError } from '../../core/api.mjs';
 import { corrigirFato } from '../../core/actions.mjs';
-import { agentDriving, onAgentActions, sendTurn } from '../../core/conversa-ia.mjs';
+import { agentDriving, onAgentActions, resetConversation, sendTurn } from '../../core/conversa-ia.mjs';
 import { ask, clearTranscript, say } from '../../core/conversa.mjs';
 import { setTheme } from '../../core/tema.mjs';
 import { store } from '../../core/store.mjs';
@@ -52,6 +52,11 @@ async function conversarComIa(texto) {
   try {
     await sendTurn(texto);
   } catch (error) {
+    if (['codex_signed_out', 'skynet_signed_out'].includes(error.code)) {
+      say(error.message, { tom: 'atencao' });
+      go('configuracoes');
+      return;
+    }
     say(`${describeError(error)} Enquanto isso, atendo pedidos simples por aqui.`, { tom: 'atencao' });
     await interpretar(texto);
   }
@@ -80,7 +85,17 @@ function executarAcao({ tipo, valor }) {
     openDialog({
       title: 'Apagar a conversa deste computador?',
       body: [el('p', { class: 'leitura', text: 'O histórico visível some daqui; o que já foi gravado (perfil, fila, candidaturas) continua.' })],
-      actions: [{ label: 'Apagar conversa', variant: 'perigo', onClick: () => { clearTranscript(); say('Conversa apagada. Continuo daqui.', { tom: 'informacao' }); } }, { label: 'Manter', variant: 'secundario' }]
+      actions: [{ label: 'Apagar conversa', variant: 'perigo', onClick: async () => {
+        try {
+          if (!store.demo) await resetConversation();
+          clearTranscript();
+          say('Conversa apagada. Continuo daqui.', { tom: 'informacao' });
+        } catch (error) {
+          say(`Não foi possível apagar toda a conversa: ${describeError(error)}`, { tom: 'erro' });
+          return false;
+        }
+        return true;
+      } }, { label: 'Manter', variant: 'secundario' }]
     });
   }
 }

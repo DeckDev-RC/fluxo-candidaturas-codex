@@ -70,6 +70,8 @@ export function resolveServerServices(options) {
     stateStore,
     agentAdapter,
     authService,
+    skynetAuthService: options.skynetAuthService ?? null,
+    providerService: options.providerService ?? null,
     codexHarnessService,
     queueService,
     exportService: options.exportService ?? { createShareableExport: () => createShareableExport({ rootDir, mutationLock: false }) },

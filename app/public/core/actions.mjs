@@ -5,7 +5,7 @@ import { FluxoError, fileToBase64, send } from './api.mjs';
 import { loadState, setJourney, store } from './store.mjs';
 import { plural } from './rotulos.mjs';
 import { connectJourney, forgetJourney } from './stream.mjs';
-import { agentDriving, interruptConversation, nomePlataforma, resetConversation, sendTurn } from './conversa-ia.mjs';
+import { agentOperating, interruptConversation, nomePlataforma, resetConversation, sendTurn } from './conversa-ia.mjs';
 import { ask } from './conversa.mjs';
 import { notice } from '../ui/messages.mjs';
 
@@ -50,7 +50,10 @@ export async function iniciarJornada({ objetivo, curriculo, plataformas: escolhi
   const habilitadas = (store.estado?.campaign?.platforms ?? []).filter((item) => item.enabled !== false);
   const plataformas = habilitadas.map((item) => item.name);
   // Com a IA conectada, quem conduz é o agente: o cartão vira o brief da campanha.
-  if (agentDriving()) return entregarAoAgente({ objetivo, importado, habilitadas });
+  if (agentOperating()) return entregarAoAgente({ objetivo, importado, habilitadas });
+  if (store.ia.disponivel && store.ia.capacidades?.tools === false) {
+    throw new FluxoError('Conecte o ChatGPT/Codex em Configurações para iniciar a busca e operar o navegador.', 'codex_signed_out');
+  }
   const resposta = await send('/api/v1/autopilot/start', {
     intent: objetivo,
     targetRoles: objetivo,
@@ -110,7 +113,7 @@ export async function responderLacunas(respostas) {
 }
 
 export async function pausarJornada() {
-  if (agentDriving()) {
+  if (agentOperating()) {
     const resultado = store.conversa.ocupada ? await interruptConversation() : { interrupted: false };
     setJourney({ status: 'pausada', mensagem: 'Jornada pausada. Nenhuma nova ação externa será iniciada.' });
     notice('Pausei. Uma ação externa já iniciada não é desfeita; retome quando quiser.', 'atencao');
@@ -125,7 +128,7 @@ export async function pausarJornada() {
 }
 
 export async function retomarJornada() {
-  if (agentDriving()) {
+  if (agentOperating()) {
     setJourney({ status: 'trabalhando', mensagem: 'Retomando de onde parei.' });
     return sendTurn('Retome a campanha de onde parou: confira o estado atual e siga o protocolo.', { system: true });
   }
@@ -139,7 +142,7 @@ export async function retomarJornada() {
 }
 
 export async function encerrarCampanha() {
-  if (agentDriving()) {
+  if (agentOperating()) {
     const resultado = await resetConversation();
     forgetJourney();
     setJourney({ runId: '', status: 'encerrada', mensagem: 'Campanha encerrada. A próxima busca começa uma conversa nova.', plano: [], perguntas: [] });
@@ -187,7 +190,7 @@ export async function decidirAprovacao(id, decisao, motivo = '') {
   // Revisão pedida pelo agente condutor: a decisão volta para ele como evento
   // de sistema. Aprovar aqui nunca envia por conta própria; quem envia é a
   // ferramenta, com este approvalId.
-  const doAgente = !revisao && agentDriving();
+  const doAgente = !revisao && agentOperating();
   if (decisao !== 'approved') {
     revisoesPendentes.delete(id);
     if (doAgente) await sendTurn(`A pessoa rejeitou a revisão ${id}${motivo ? ` (motivo: ${motivo})` : ''}. Não envie esta candidatura; siga para a próxima vaga ou pergunte o que ajustar.`, { system: true }).catch(() => null);

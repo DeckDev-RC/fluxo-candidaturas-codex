@@ -6,7 +6,7 @@ import { badge, button, definitions, el, field, metric, panel } from '../../core
 import { dataHora, numero } from '../../core/format.mjs';
 import { plural } from '../../core/rotulos.mjs';
 import { loadAiStatus, store } from '../../core/store.mjs';
-import { describeWindow, loadCodex, logoutCodex, resetsAt, saveCodexSettings } from '../../core/codex.mjs';
+import { describeWindow, loadCodex, loginCodex, logoutCodex, resetsAt, saveCodexSettings } from '../../core/codex.mjs';
 import { notice } from '../../ui/messages.mjs';
 import { openDialog } from '../../ui/dialog.mjs';
 import { rerender } from '../../core/router.mjs';
@@ -15,7 +15,8 @@ const ESFORCOS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'u
 const ROTULO_ESFORCO = { none: 'nenhum', minimal: 'mínimo', low: 'baixo', medium: 'médio', high: 'alto', xhigh: 'muito alto', max: 'máximo', ultra: 'ultra' };
 
 export function codexPanel() {
-  if (!store.ia.disponivel) return null;
+  const health = store.ia.provedores?.codex ?? { available: false };
+  if (!health.available) return disconnectedPanel(health);
   const codex = store.codex;
   if (!codex) {
     queueMicrotask(() => { loadCodex(); });
@@ -26,7 +27,10 @@ export function codexPanel() {
     kicker: 'conta e modelo',
     title: 'Conta do ChatGPT',
     id: 'painel-codex',
-    actions: [badge(conta ? conta.planType || conta.type || 'conectada' : 'sem conta', conta ? 'sucesso' : 'atencao')],
+    actions: [
+      store.ia.provedor === 'codex' ? badge('IA ativa', 'informacao') : null,
+      badge(conta ? conta.planType || conta.type || 'conectada' : 'sem conta', conta ? 'sucesso' : 'atencao')
+    ],
     children: [
       conta
         ? definitions([['Conta', conta.email || 'e-mail não informado pelo Codex'], ['Plano', conta.planType || 'não informado']])
@@ -41,6 +45,51 @@ export function codexPanel() {
       ])
     ]
   });
+}
+
+function disconnectedPanel(health) {
+  const missing = health.reason === 'codex_not_found' || health.executable?.found === false;
+  return panel({
+    kicker: 'conta e automação',
+    title: 'ChatGPT/Codex',
+    id: 'painel-codex',
+    actions: [
+      store.ia.provedor === 'codex' ? badge('IA ativa', 'informacao') : null,
+      badge(missing ? 'Codex não encontrado' : 'desconectado', 'atencao')
+    ],
+    children: [
+      el('p', { class: 'leitura secundario', text: missing
+        ? health.message ?? 'Instale o Codex para usar a automação completa.'
+        : 'Conecte o ChatGPT/Codex para pesquisar vagas, operar o navegador e preparar candidaturas.' }),
+      el('div', { class: 'linha-acoes' }, [
+        ...(missing ? [] : [loginButton()]),
+        button('Verificar conexão', { variant: 'secundario', onClick: async () => { await loadAiStatus(); rerender(); } })
+      ])
+    ]
+  });
+}
+
+function loginButton() {
+  const control = button('Entrar com ChatGPT', {
+    id: 'entrar-chatgpt',
+    onClick: async () => {
+      control.disabled = true;
+      control.textContent = 'Abrindo o login…';
+      try {
+        const result = await loginCodex();
+        if (result.authUrl) window.open(result.authUrl, '_blank', 'noopener');
+        notice(result.userCode
+          ? `Conclua o login usando o código ${result.userCode}. Nunca cole senha ou código na conversa.`
+          : 'Conclua o login do ChatGPT no navegador e volte ao Fluxo.', 'informacao');
+      } catch (error) {
+        notice(error.message, 'erro');
+      } finally {
+        control.disabled = false;
+        control.textContent = 'Entrar com ChatGPT';
+      }
+    }
+  });
+  return control;
 }
 
 // Modelo e esforço salvos no serviço local; valem para os próximos turnos.

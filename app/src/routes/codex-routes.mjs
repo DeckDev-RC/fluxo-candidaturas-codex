@@ -6,7 +6,7 @@ const CAMINHOS = new Set([
   '/api/v1/codex', '/api/v1/codex/refresh', '/api/v1/codex/settings'
 ]);
 
-export function createCodexRoutes({ sessionAuth, authService, codexHarnessService, codexSettingsService }) {
+export function createCodexRoutes({ sessionAuth, authService, codexHarnessService, codexSettingsService, conversationService = null }) {
   const snapshot = async (refresh = false) => ({
     ...(refresh && codexHarnessService.refresh ? await codexHarnessService.refresh() : await codexHarnessService.snapshot()),
     settings: await codexSettingsService.get()
@@ -19,7 +19,11 @@ export function createCodexRoutes({ sessionAuth, authService, codexHarnessServic
       if (method === 'GET' && path === '/api/v1/auth/session') { sendJson(response, 200, sessionAuth.bootstrap(response)); return true; }
       if (method === 'GET' && path === '/api/v1/auth/openai') return respond(response, 200, () => authService.status());
       if (method === 'POST' && path === '/api/v1/auth/openai/login') return respond(response, 202, async () => authService.startLogin(await readJsonBody(request)));
-      if (method === 'POST' && path === '/api/v1/auth/openai/logout') return respond(response, 200, () => authService.logout());
+      if (method === 'POST' && path === '/api/v1/auth/openai/logout') return respond(response, 200, async () => {
+        const result = await authService.logout();
+        await conversationService?.resetProvider?.('codex');
+        return result;
+      });
       if (method === 'GET' && path === '/api/v1/codex') return respond(response, 200, () => snapshot());
       if (method === 'POST' && path === '/api/v1/codex/refresh') return respond(response, 200, () => snapshot(true));
       if (method === 'GET' && path === '/api/v1/codex/settings') return respond(response, 200, () => codexSettingsService.get());

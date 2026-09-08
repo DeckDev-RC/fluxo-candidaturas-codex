@@ -140,6 +140,36 @@ test('login pendente é observado na aba; resolvido, a IA recebe um turno de sis
   assert.equal(consultas.length, antes, 'a observação para depois de resolver');
 });
 
+test('retomada automática do Codex espera um turno textual híbrido terminar', async () => {
+  const { adapter } = adaptadorFalso((text) => /SISTEMA/.test(text) ? [{ mensagem: 'Continuando.' }] : [
+      { ferramenta: 'fluxo_open_platform', args: { platform: 'LINKEDIN' }, result: { loginPending: true } },
+      { mensagem: 'Entre no LinkedIn.' }
+    ]);
+  let resolved = false;
+  let hybridBusy = false;
+  const service = createConversationService({
+    agentAdapter: adapter,
+    runService: runServiceFalso(),
+    snapshot: async () => ({}),
+    loginState: async () => ({ open: true, loginPending: !resolved }),
+    canAutoContinue: () => !hybridBusy,
+    watchIntervalMs: 10
+  });
+  adapter.ligar(service);
+  const first = ate(service, 'turn.completed');
+  await service.turn('abra o linkedin');
+  await first;
+  resolved = true;
+  hybridBusy = true;
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  assert.equal(service.history().some((event) => event.type === 'waiting_resolved'), false);
+  const continued = ate(service, 'waiting_resolved');
+  const completed = ate(service, 'turn.completed');
+  hybridBusy = false;
+  await continued;
+  await completed;
+});
+
 test('turno de sistema é rotulado, mensagem em curso bloqueia outra e a interrupção encerra', async () => {
   const { adapter, chamadas } = adaptadorFalso(() => [], { concluir: false });
   const service = createConversationService({ agentAdapter: adapter, runService: runServiceFalso(), snapshot: async () => ({}), timeoutMs: 5000 });

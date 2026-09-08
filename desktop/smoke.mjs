@@ -21,6 +21,11 @@ try {
   assert.deepEqual(isolation, { require: 'undefined', desktop: 'function' });
   const workspace = await window.evaluate(() => window.fluxoDesktop.workspace());
   assert.equal(workspace.rootDir, join(userData, 'workspace'));
+  assert.equal(workspace.embutido, true, 'o navegador de vagas permanece embutido com Skynet padrão');
+  await window.evaluate(() => { location.hash = '#configuracoes'; });
+  await window.locator('#painel-provedor-ia').waitFor();
+  await window.locator('#painel-skynet').waitFor();
+  await window.locator('#painel-codex').waitFor();
   const diagnostics = await window.evaluate(() => window.fluxoDesktop.diagnostics());
   assert.equal(diagnostics.capabilities.offline, true);
   if (process.env.FLUXO_VERIFY_BROWSER_INSTALL === '1') assert.equal((await window.evaluate(() => window.fluxoDesktop.installBrowser())).installed, true);

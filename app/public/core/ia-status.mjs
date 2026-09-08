@@ -18,10 +18,12 @@ export function connectAiStatus() {
   fonte.addEventListener('runtime.health', (evento) => {
     const saude = parse(evento.data);
     if (!saude) return;
-    const disponivelAntes = store.ia.disponivel;
+    const skynetAntes = store.ia.provedores?.skynet?.available === true;
+    const codexAntes = store.ia.provedores?.codex?.available === true;
     setAiHealth(saude);
     if (!retratoInicial) {
-      if (saude.available && !disponivelAntes) notice('Automação de IA conectada. A busca automática já pode começar.', 'sucesso');
+      if (saude.providers?.skynet?.available && !skynetAntes) notice('Conversa do SkynetChat conectada.', 'sucesso');
+      if (saude.providers?.codex?.available && !codexAntes) notice('ChatGPT/Codex conectado. As operações no navegador estão disponíveis.', 'sucesso');
       if (saude.loginError && !saude.available) notice(saude.loginError, 'erro');
     }
     retratoInicial = false;

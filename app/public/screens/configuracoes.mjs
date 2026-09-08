@@ -3,6 +3,7 @@
 
 import { badge, button, el, metric, panel, screen, staticListItem } from '../core/dom.mjs';
 import { clearTranscript } from '../core/conversa.mjs';
+import { resetConversation } from '../core/conversa-ia.mjs';
 import { dataHora, duracao, numero } from '../core/format.mjs';
 import { plural } from '../core/rotulos.mjs';
 import { read, send } from '../core/api.mjs';
@@ -13,12 +14,15 @@ import { openDialog } from '../ui/dialog.mjs';
 import { rerender } from '../core/router.mjs';
 import { getTheme, setTheme, TEMAS } from '../core/tema.mjs';
 import { codexPanel } from './partes/conta-codex.mjs';
+import { skynetPanel } from './partes/conta-skynet.mjs';
 import { plataformasPanel } from './partes/plataformas-config.mjs';
 
 export function configuracoesScreen() {
   queueMicrotask(() => { atualizarDados(); });
   return screen({ title: 'Ajustes do Fluxo neste computador', children: [
     iaPanel(),
+    providerPanel(),
+    skynetPanel(),
     codexPanel(),
     plataformasPanel(),
     limitesPanel(),
@@ -31,47 +35,52 @@ export function configuracoesScreen() {
 
 function iaPanel() {
   const ia = store.ia;
-  const semCodex = ia.motivo === 'codex_not_found';
-  const rotulo = ia.disponivel ? 'conectada' : semCodex ? 'Codex não encontrado' : 'indisponível';
+  const skynet = ia.provedor === 'skynet';
+  const rotulo = ia.disponivel ? 'conectada' : 'indisponível';
   return panel({
-    kicker: 'automação',
-    title: 'Automação de IA',
+    kicker: skynet ? 'conversa textual' : 'automação',
+    title: 'Inteligência artificial',
     id: 'painel-ia',
     actions: [badge(rotulo, ia.disponivel ? 'sucesso' : 'atencao')],
     children: [
       el('p', { class: 'leitura secundario', text: ia.mensagem }),
-      el('p', { class: 'apoio', text: `Modo em uso: ${rotuloModo(ia.modo)}. Sem automação, você continua podendo revisar dados, decidir e registrar informações.` }),
+      el('p', { class: 'apoio', text: `Modo em uso: ${rotuloModo(ia.modo)}. ${skynet ? 'Textos usam Skynet; operações usam Codex quando conectado.' : 'Textos e operações usam ChatGPT/Codex.'}` }),
       el('div', { class: 'linha-acoes' }, [
-        // Sem o executável, o login não tem como começar: oferecer o botão só produziria erro.
-        ...(semCodex || ia.disponivel ? [] : [botaoEntrarChatGPT()]),
         button('Verificar novamente', { variant: 'secundario', onClick: async () => { await loadAiStatus(); rerender(); } })
       ])
     ]
   });
 }
 
-function botaoEntrarChatGPT() {
-  const botao = button('Entrar com ChatGPT', {
-    id: 'entrar-chatgpt',
-    onClick: async () => {
-      // Feedback imediato: o login pode levar segundos e um segundo clique confunde.
-      botao.disabled = true;
-      botao.textContent = 'Abrindo o login…';
-      try {
-        const resultado = await send('/api/v1/auth/openai/login', {});
-        if (resultado.authUrl) window.open(resultado.authUrl, '_blank', 'noopener');
-        notice(resultado.userCode
-          ? `Conclua o login no navegador usando o código ${resultado.userCode}. Nunca cole senha ou código aqui na conversa.`
-          : 'Conclua o login do ChatGPT no navegador. Se ele oferecer abrir o aplicativo ChatGPT, cancele e volte para o Fluxo: eu aviso aqui quando a conexão for confirmada.', 'informacao');
-      } catch (error) {
-        notice(error.message, 'erro');
-      } finally {
-        botao.disabled = false;
-        botao.textContent = 'Entrar com ChatGPT';
-      }
-    }
+function providerPanel() {
+  const active = store.ia.provedor;
+  const options = [
+    { id: 'skynet', label: 'SkynetChat', help: 'Conversa textual pelo Skynet; operações encaminhadas ao Codex.' },
+    { id: 'codex', label: 'ChatGPT/Codex', help: 'Toda a conversa e as operações ficam no Codex.' }
+  ];
+  return panel({
+    kicker: 'preferência',
+    title: 'Qual IA responde na conversa?',
+    id: 'painel-provedor-ia',
+    children: [
+      el('p', { class: 'apoio', text: 'As duas contas podem permanecer conectadas. Trocar a IA não encerra nenhuma sessão.' }),
+      el('div', { class: 'linha-acoes', role: 'radiogroup', 'aria-label': 'IA da conversa' }, options.map((option) => button(option.label, {
+        variant: option.id === active ? 'primario' : 'secundario',
+        role: 'radio',
+        'aria-checked': String(option.id === active),
+        title: option.help,
+        onClick: async () => {
+          if (option.id === store.ia.provedor) return;
+          try {
+            await send('/api/v1/ai/provider', { provider: option.id }, { method: 'PUT' });
+            await loadAiStatus();
+            notice(`${option.label} agora responde na conversa.`, 'sucesso');
+            rerender();
+          } catch (error) { notice(error.message, 'erro'); }
+        }
+      })))
+    ]
   });
-  return botao;
 }
 
 
@@ -175,7 +184,15 @@ function privacidadePanel() {
       el('p', { class: 'leitura apoio', text: 'Senhas de plataforma nunca são pedidas nesta tela nem na conversa. Login, verificação em duas etapas e CAPTCHA acontecem na janela do navegador, com você.' }),
       el('p', { class: 'leitura apoio', text: 'A conversa com o Fluxo também fica guardada só neste computador, para você reler o que aconteceu. Você pode apagá-la quando quiser; os dados do perfil e das candidaturas não mudam.' }),
       el('div', { class: 'linha-acoes' }, [
-        button('Limpar conversa', { variant: 'secundario', onClick: () => { clearTranscript(); notice('Conversa apagada deste computador.', 'informacao'); } }),
+        button('Limpar conversa', { variant: 'secundario', onClick: async () => {
+          try {
+            if (!store.demo) await resetConversation();
+            clearTranscript();
+            notice('Conversa apagada deste computador.', 'informacao');
+          } catch (error) {
+            notice(`Não foi possível apagar toda a conversa: ${error.message}`, 'erro');
+          }
+        } }),
         store.atualizadoEm ? el('span', { class: 'apoio', text: `Última leitura local: ${dataHora(store.atualizadoEm)}` }) : null
       ])
     ]
@@ -291,6 +308,6 @@ function limite(valor) {
 }
 
 function rotuloModo(modo) {
-  return { 'codex-app-server': 'automação completa', 'offline-read': 'somente leitura local', demonstracao: 'demonstração local' }[modo] ?? 'não determinado';
+  return { 'codex-app-server': 'ChatGPT/Codex', 'skynet-hybrid': 'Skynet + operações Codex', 'skynet-chat-only': 'SkynetChat somente texto', 'offline-read': 'somente leitura local', demonstracao: 'demonstração local' }[modo] ?? 'não determinado';
 }
 

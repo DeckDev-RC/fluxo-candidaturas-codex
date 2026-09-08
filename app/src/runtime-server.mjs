@@ -1,8 +1,8 @@
 import { createLocalRuntime } from './runtime.mjs';
 import { createServer } from './http-server.mjs';
 
-export async function createRuntimeServer({ rootDir, port = 4173, browserHost = null } = {}) {
-  const runtime = await createLocalRuntime({ rootDir, browserHost });
+export async function createRuntimeServer({ rootDir, port = 4173, browserHost = null, skynetHost = null } = {}) {
+  const runtime = await createLocalRuntime({ rootDir, browserHost, skynetHost });
   const server = createServer({
     rootDir,
     queueService: runtime.queueService,
@@ -28,6 +28,8 @@ export async function createRuntimeServer({ rootDir, port = 4173, browserHost = 
     followUpMonitor: runtime.followUpMonitor,
     auditService: runtime.auditService,
     authService: runtime.authService,
+    skynetAuthService: runtime.skynetAuthService,
+    providerService: runtime.providerService,
     codexHarnessService: runtime.codexHarnessService,
     codexSettingsService: runtime.codexSettingsService,
     resumeImportService: runtime.resumeImportService,

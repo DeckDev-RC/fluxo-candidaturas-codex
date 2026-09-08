@@ -12,6 +12,8 @@ import { createKnowledgeRoutes } from './routes/knowledge-routes.mjs';
 import { createCampaignRoutes } from './routes/campaign-routes.mjs';
 import { createExecutionRoutes } from './routes/execution-routes.mjs';
 import { createCodexRoutes } from './routes/codex-routes.mjs';
+import { createSkynetRoutes } from './routes/skynet-routes.mjs';
+import { createAiProviderRoutes } from './routes/ai-provider-routes.mjs';
 import { createConversationRoutes } from './routes/conversation-routes.mjs';
 import { createBrowserRoutes } from './routes/browser-routes.mjs';
 import { readJsonBody, sendDomainError, sendJson } from './routes/http-helpers.mjs';
@@ -60,7 +62,9 @@ export function createServer(options) {
       consistencyService: s.consistencyService
     }),
     createStateRoutes({ rootDir, checkpointService: s.checkpointService, preflightService: s.preflightService, metricsService: s.metricsService, pendingService: s.pendingService, observability: s.observability, stateStore: s.stateStore }),
-    createCodexRoutes({ sessionAuth: s.sessionAuth, authService: s.authService, codexHarnessService: s.codexHarnessService, codexSettingsService: s.codexSettingsService }),
+    createAiProviderRoutes({ providerService: s.providerService, conversationService: s.conversationService }),
+    createCodexRoutes({ sessionAuth: s.sessionAuth, authService: s.authService, codexHarnessService: s.codexHarnessService, codexSettingsService: s.codexSettingsService, conversationService: s.conversationService }),
+    createSkynetRoutes({ authService: s.skynetAuthService, conversationService: s.conversationService }),
     createConversationRoutes({ conversationService: s.conversationService }),
     createBrowserRoutes({ browserAdapter: options.browserAdapter ?? null, browserHost: options.browserHost ?? null, platformUrls: () => options.platformUrls?.() ?? {} }),
     createKnowledgeRoutes(s),
@@ -74,6 +78,7 @@ export function createServer(options) {
   // A conversa não toca dados do Fluxo e pode levar segundos: não segura a trava.
   // Abrir uma aba do navegador leva segundos e não toca os dados: também fica fora da trava.
   const travaDoServico = (path) => path.startsWith('/api/v1/auth/openai/')
+    || path.startsWith('/api/v1/auth/skynet/')
     || path.startsWith('/api/v1/conversation/')
     || path.startsWith('/api/v1/browser/')
     || (path.startsWith('/api/v1/queue/') && s.queueService.handlesMutationLock)

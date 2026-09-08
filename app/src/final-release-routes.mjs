@@ -58,7 +58,7 @@ function createHandler({
       }
       if (request.method === 'GET' && path === '/api/v1/ai/mode') {
         const health = await runtimeHealth.snapshot();
-        const solicitado = health.available ? 'codex-app-server' : 'offline-read';
+        const solicitado = health.mode ?? (health.available ? 'codex-app-server' : 'offline-read');
         const resolvido = resolveAiMode({ requested: solicitado, runtime: { available: health.available, mode: solicitado } });
         // Trocar de modo é decisão explícita: uma mudança silenciosa entre consultas é recusada.
         assertNoSilentFallback({ from: solicitado, to: resolvido.mode });
@@ -162,5 +162,5 @@ async function transmitirSaude(request, response, runtimeHealth) {
 
 // O modo anunciado acompanha a disponibilidade, como em GET /api/v1/ai/mode.
 function comModo(saude) {
-  return { ...saude, mode: saude.available ? 'codex-app-server' : 'offline-read' };
+  return { ...saude, mode: saude.mode ?? (saude.available ? 'codex-app-server' : 'offline-read') };
 }

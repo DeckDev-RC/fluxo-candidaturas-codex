@@ -22,6 +22,10 @@ export function agentDriving() {
   return store.ia.disponivel && !isDemo();
 }
 
+export function agentOperating() {
+  return agentDriving() && store.ia.capacidades?.tools !== false;
+}
+
 export function nomePlataforma(valor) {
   return NOMES[String(valor ?? '').toUpperCase()] ?? String(valor ?? 'a plataforma');
 }
@@ -54,7 +58,7 @@ async function retomarEstado() {
   if (!status?.busy) return;
   setThinking(true);
   setConversation({ ocupada: true });
-  if (store.jornada.status !== 'trabalhando') setJourney({ runId: status.runId ?? store.jornada.runId, status: 'trabalhando', mensagem: 'Estou conduzindo a próxima etapa.' });
+  if (agentOperating() && status.turnProvider === 'codex' && store.jornada.status !== 'trabalhando') setJourney({ runId: status.runId ?? store.jornada.runId, status: 'trabalhando', mensagem: 'Estou conduzindo a próxima etapa.' });
 }
 
 export function disconnectConversation() {
@@ -95,8 +99,8 @@ const TRATADORES = {
     ultimaFalaDoTurno = null;
     setThinking(true);
     setConversation({ ocupada: true, aguardando: null });
-    if (store.jornada.status && store.jornada.status !== 'encerrada' && !evento.system) setJourney({ status: 'trabalhando', mensagem: 'Estou conduzindo a próxima etapa.' });
-    if (evento.system) setJourney({ status: 'trabalhando', mensagem: 'Continuando de onde parei.' });
+    if (operationalEvent(evento) && store.jornada.status && store.jornada.status !== 'encerrada' && !evento.system) setJourney({ status: 'trabalhando', mensagem: 'Estou conduzindo a próxima etapa.' });
+    if (operationalEvent(evento) && evento.system) setJourney({ status: 'trabalhando', mensagem: 'Continuando de onde parei.' });
   },
   'tool.started': (evento) => {
     // A fala anterior deste turno era narração do que vem agora: entra na atividade.
@@ -125,12 +129,12 @@ const TRATADORES = {
     if (evento.text) ultimaFalaDoTurno = say(evento.text);
     if (evento.actions?.length) tratarAcoes(evento.actions);
   },
-  'turn.completed': () => {
+  'turn.completed': (evento) => {
     ultimaFalaDoTurno = null;
     settleSteps();
     setThinking(false);
     setConversation({ ocupada: false });
-    if (store.jornada.status === 'trabalhando') setJourney({ status: 'aguardando', mensagem: textoDaEspera(esperaDoTurno) });
+    if (operationalEvent(evento) && store.jornada.status === 'trabalhando') setJourney({ status: 'aguardando', mensagem: textoDaEspera(esperaDoTurno) });
     agendarRecarga();
   },
   'turn.failed': (evento) => {
@@ -139,10 +143,14 @@ const TRATADORES = {
     setConversation({ ocupada: false });
     const interrompido = evento.code === 'conversation_interrupted';
     if (!interrompido) { say(evento.message || describeError(evento), { tom: 'erro' }); notificarFora({ titulo: 'O Fluxo parou numa etapa', corpo: evento.message || describeError(evento) }); }
-    if (store.jornada.status === 'trabalhando') setJourney({ status: interrompido ? 'pausada' : 'aguardando', mensagem: interrompido ? 'Você interrompeu a etapa em curso.' : 'A última etapa falhou. Você pode pedir para eu tentar de novo.' });
+    if (operationalEvent(evento) && store.jornada.status === 'trabalhando') setJourney({ status: interrompido ? 'pausada' : 'aguardando', mensagem: interrompido ? 'Você interrompeu a etapa em curso.' : 'A última etapa falhou. Você pode pedir para eu tentar de novo.' });
   },
   'conversation.reset': () => setConversation({ ocupada: false, aguardando: null, abas: [] })
 };
+
+function operationalEvent(event) {
+  return event.provider !== 'skynet' && agentOperating();
+}
 
 function textoDaEspera(espera) {
   if (!espera) return 'Terminei esta etapa e aguardo o seu próximo pedido.';

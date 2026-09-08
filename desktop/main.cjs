@@ -1,27 +1,37 @@
 const { app, BrowserWindow, Menu, Notification, WebContentsView, dialog, ipcMain, nativeTheme, session, shell, utilityProcess } = require('electron');
+const { randomInt } = require('node:crypto');
+const { join, resolve, dirname } = require('node:path');
+const { embeddedBrowserEnabled } = require('./startup-config.cjs');
+
+if (process.env.FLUXO_DESKTOP_USER_DATA) app.setPath('userData', resolve(process.env.FLUXO_DESKTOP_USER_DATA));
+const SKYNET_HELPER = process.env.FLUXO_SKYNET_HELPER === '1';
 
 // As abas das plataformas têm sessão própria (cookies, armazenamento), separada da
 // interface local do Fluxo. O Playwright, conectado por CDP, ainda as enxerga:
 // páginas de contextos que ele não criou entram no contexto padrão dele.
 const PARTICAO_PLATAFORMAS = 'persist:plataformas';
 const { createAbas } = require('./abas.cjs');
+const { createSkynetBridge } = require('./skynet-bridge.cjs');
 
 // A IA opera as plataformas em abas dentro desta janela: o backend liga o
 // Playwright ao Chromium do próprio Electron pela porta de depuração local
-// (aleatória, só loopback, viva enquanto o app roda). Sem a porta, o app segue
-// com o navegador separado.
-if (!process.env.FLUXO_DESKTOP_SEM_NAVEGADOR_EMBUTIDO) app.commandLine.appendSwitch('remote-debugging-port', '0');
+// (aleatória, só loopback, viva enquanto o app roda). O valor especial `0`
+// liga navigator.webdriver no Chromium; uma porta não zero mantém o navegador
+// comum para desafios legítimos como o Turnstile. O helper Skynet roda em outro
+// processo e nunca recebe esta porta; as abas de vagas seguem embutidas sempre.
+const PORTA_DEPURACAO = !SKYNET_HELPER && embeddedBrowserEnabled() ? randomInt(20_000, 60_000) : 0;
+if (PORTA_DEPURACAO) {
+  app.commandLine.appendSwitch('remote-debugging-address', '127.0.0.1');
+  app.commandLine.appendSwitch('remote-debugging-port', String(PORTA_DEPURACAO));
+}
 
 // Mesma cor de fundo dos tokens da interface (--fundo), para a janela não piscar
 // em branco antes de carregar e acompanhar o tema do sistema. A barra de menu
 // nativa fica escondida (Alt mostra): os itens continuam no atalho de teclado.
 const corDeFundo = () => (nativeTheme.shouldUseDarkColors ? '#09090b' : '#fafafa');
 const janelaBase = () => ({ backgroundColor: corDeFundo(), autoHideMenuBar: true, webPreferences: { preload, nodeIntegration: false, contextIsolation: true, sandbox: true } });
-const { join, resolve, dirname } = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { readFile, writeFile, mkdir } = require('node:fs/promises');
-
-if (process.env.FLUXO_DESKTOP_USER_DATA) app.setPath('userData', resolve(process.env.FLUXO_DESKTOP_USER_DATA));
 
 // Erro inesperado no processo principal vai para o log em userData, não para uma
 // caixa nativa que derruba o app. O log é o que a pessoa envia no suporte.
@@ -36,14 +46,19 @@ function registrarErro(origem, erro) {
 process.on('uncaughtException', (erro) => registrarErro('uncaughtException', erro));
 process.on('unhandledRejection', (erro) => registrarErro('unhandledRejection', erro));
 let mainWindow; let diagnosticWindow; let supervisor; let workspaceRoot; let backendUrl; let quitting = false; let changingWorkspace = false;
-let abas; let cdpEndpoint = '';
+let abas; let skynetBridge; let backendWorker; let cdpEndpoint = '';
 // Última parada do serviço local, para a tela de diagnóstico explicar e oferecer reinício.
 let ultimaParada = null;
 const preload = join(__dirname, 'preload.cjs');
 const bundleRoot = app.isPackaged ? join(process.resourcesPath, 'fluxo-runtime') : resolve(__dirname, '..');
 const diagnosticUrl = pathToFileURL(join(__dirname, 'diagnostics.html')).href;
 
-if (!app.requestSingleInstanceLock()) app.quit();
+if (SKYNET_HELPER) {
+  require('./skynet-helper.cjs').startSkynetHelper({ app, BrowserWindow }).catch((error) => {
+    registrarErro('helper Skynet', error);
+    app.quit();
+  });
+} else if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on('second-instance', () => { if (janelaViva(mainWindow)) { mainWindow.show(); mainWindow.focus(); } });
   // No Windows, notificações nativas exigem o mesmo id do atalho instalado.
@@ -61,14 +76,19 @@ async function start() {
   workspaceRoot = process.env.FLUXO_DESKTOP_ROOT || preferences.rootDir || join(app.getPath('userData'), 'workspace');
   await initializeWorkspace({ rootDir: workspaceRoot, bundleRoot });
 
-  cdpEndpoint = await lerEndpointDeDepuracao(app.getPath('userData'));
+  cdpEndpoint = await lerEndpointDeDepuracao(app.getPath('userData'), PORTA_DEPURACAO);
   supervisor = createSupervisor({
     launch: () => {
       // stdout/stderr do serviço vão para userData/logs/servico-saida.log: sem isso, um
       // crash do backend não deixa rastro nenhum para investigar.
       const worker = utilityProcess.fork(join(__dirname, 'backend-worker.mjs'), [workspaceRoot, cdpEndpoint], { cwd: workspaceRoot, stdio: ['ignore', 'pipe', 'pipe'], serviceName: 'Fluxo local' });
+      backendWorker = worker;
       for (const fluxo of [worker.stdout, worker.stderr]) fluxo?.on('data', (pedaco) => registrarSaidaDoServico(pedaco));
-      worker.on('message', (mensagem) => { if (mensagem?.type === 'abas') void atenderWorker(worker, mensagem); });
+      worker.on('message', (mensagem) => {
+        if (mensagem?.type === 'abas') void atenderWorker(worker, mensagem);
+        if (mensagem?.type === 'skynet') void atenderSkynet(worker, mensagem);
+      });
+      worker.once('exit', () => { if (backendWorker === worker) backendWorker = null; });
       worker.on('error', (erro) => registrarErro('serviço local', erro));
       return worker;
     },
@@ -91,6 +111,14 @@ async function start() {
   mainWindow.on('close', () => { abas?.destruir(); });
   mainWindow.on('closed', () => { mainWindow = null; abas = null; });
   protectWindow(mainWindow);
+  skynetBridge = createSkynetBridge({
+    app,
+    onStatus: (status) => {
+      try { backendWorker?.postMessage({ type: 'skynet-event', event: 'status', status }); } catch { /* worker reiniciando */ }
+      if (status?.authenticated && janelaViva(mainWindow)) { mainWindow.show(); mainWindow.focus(); }
+    },
+    onLog: (text) => registrarErro('helper Skynet', text)
+  });
   abas = createAbas({
     window: mainWindow,
     // disableDialogs: alert/confirm/prompt da plataforma não viram janela nativa do
@@ -255,20 +283,34 @@ async function atenderWorker(worker, mensagem) {
   } catch (error) { responder(false, null, error.message); }
 }
 
-// O Chromium grava a porta escolhida em DevToolsActivePort logo após iniciar. Um
-// arquivo antigo (de um processo que caiu) pode sobreviver: a porta só vale se
-// responder ao /json/version deste processo.
-async function lerEndpointDeDepuracao(userData, tentativas = 20) {
-  if (process.env.FLUXO_DESKTOP_SEM_NAVEGADOR_EMBUTIDO) return '';
+async function atenderSkynet(worker, mensagem) {
+  const { id, op } = mensagem;
+  const responder = (ok, result, error) => {
+    try { worker.postMessage({ type: 'skynet-resposta', id, ok, result, error }); } catch { /* worker já encerrou */ }
+  };
+  try {
+    if (!skynetBridge || !janelaViva(mainWindow)) throw Object.assign(new Error('A janela do SkynetChat não está disponível.'), { code: 'skynet_unavailable' });
+    if (op === 'status') return responder(true, await skynetBridge.status());
+    if (op === 'login') return responder(true, await skynetBridge.startLogin());
+    if (op === 'logout') return responder(true, await skynetBridge.logout());
+    if (op === 'chat') return responder(true, await skynetBridge.chat(mensagem.input));
+    if (op === 'interrupt') return responder(true, await skynetBridge.interrupt(mensagem.operationId));
+    throw Object.assign(new Error(`Operação desconhecida do SkynetChat: ${op}`), { code: 'skynet_operation_unknown' });
+  } catch (error) {
+    responder(false, null, { code: error.code ?? 'skynet_failed', message: error.message });
+  }
+}
+
+// A porta aleatória só vale depois que o Chromium deste processo responder no
+// loopback. Colisão ou inicialização tardia apenas desativa a aba embutida.
+async function lerEndpointDeDepuracao(_userData, requestedPort = 0, tentativas = 20) {
+  if (process.env.FLUXO_DESKTOP_SEM_NAVEGADOR_EMBUTIDO || !requestedPort) return '';
   for (let i = 0; i < tentativas; i += 1) {
     try {
-      const [porta] = (await readFile(join(userData, 'DevToolsActivePort'), 'utf8')).split(/\r?\n/);
-      if (Number(porta) > 0) {
-        const endpoint = `http://127.0.0.1:${Number(porta)}`;
-        const resposta = await fetch(`${endpoint}/json/version`, { signal: AbortSignal.timeout(1_000) }).then((r) => r.ok ? r.json() : null).catch(() => null);
-        if (resposta?.webSocketDebuggerUrl) return endpoint;
-      }
-    } catch { /* ainda não escrito */ }
+      const endpoint = `http://127.0.0.1:${requestedPort}`;
+      const resposta = await fetch(`${endpoint}/json/version`, { signal: AbortSignal.timeout(1_000) }).then((r) => r.ok ? r.json() : null).catch(() => null);
+      if (resposta?.webSocketDebuggerUrl) return endpoint;
+    } catch { /* endpoint ainda não disponível */ }
     await new Promise(resolve => setTimeout(resolve, 150));
   }
   registrarErro('navegador embutido', 'porta de depuração indisponível; usando navegador separado');
@@ -307,12 +349,19 @@ function showError(error) {
   const opcoes = { type: 'error', title: 'Fluxo', message: String(error?.message ?? error), buttons: ['OK'] };
   (janelaViva(mainWindow) ? dialog.showMessageBox(mainWindow, opcoes) : dialog.showMessageBox(opcoes)).catch(() => {});
 }
-app.on('window-all-closed', () => app.quit());
-app.on('before-quit', event => {
-  if (quitting) return;
-  event.preventDefault(); quitting = true;
-  abas?.destruir();
-  browserInstaller?.kill();
-  // O serviço tem tempo para fechar o banco; passe o que passar, o app sai.
-  Promise.race([Promise.resolve(supervisor?.stop()).catch((error) => registrarErro('parar serviço', error)), new Promise((resolve) => setTimeout(resolve, 12_000))]).finally(() => app.quit());
-});
+if (!SKYNET_HELPER) {
+  app.on('window-all-closed', () => app.quit());
+  app.on('before-quit', event => {
+    if (quitting) return;
+    event.preventDefault(); quitting = true;
+    abas?.destruir();
+    browserInstaller?.kill();
+    // O backend para primeiro: seu último interrupt ainda pode usar o helper.
+    // Depois o helper fecha; o app sai mesmo se um deles travar.
+    const closing = (async () => {
+      await Promise.resolve(supervisor?.stop()).catch((error) => registrarErro('parar serviço', error));
+      await Promise.resolve(skynetBridge?.stop?.()).catch((error) => registrarErro('parar helper Skynet', error));
+    })();
+    Promise.race([closing, new Promise((resolve) => setTimeout(resolve, 12_000))]).finally(() => app.quit());
+  });
+}

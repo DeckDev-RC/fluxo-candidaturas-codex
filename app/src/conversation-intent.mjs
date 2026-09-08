@@ -17,6 +17,8 @@ const SAUDACAO = /^(oi+|ol[áa]|ola|opa|e a[íi]|bom dia|boa tarde|boa noite|tud
 // "Entrei", "loguei", "pronto": a pessoa avisa que o login acabou. Nos turnos reais, o
 // que vem depois é a campanha (buscar, aplicar), então o contexto inteiro volta.
 const LOGIN_FEITO = /\b(entrei|loguei|logad[oa]|autentiquei|pronto|j[áa] (estou|to|tô) (dentro|logad[oa]|conectad[oa])|pode continuar|pode seguir)\b/i;
+const PERGUNTA_INFORMATIVA = /^(qual|quais|quant[oa]s?|como|o que|onde|por que|porque|me explique|explique|resuma)\b/i;
+const OPERACAO_DIRETA = /\b(envi\w*|mand\w*|salv\w*|atualiz\w*|alter\w*|corrig\w*|mud\w*|troqu\w*|defin\w*|registr\w*|adicion\w*|cadastr\w*|remov\w*|exclu\w*|paus\w*|retom\w*|confirm\w*|aprov\w*|rejeit\w*)\b/i;
 const CONTINUACAO_CURTA = 120;
 
 export function classificarPedido(texto, { ultimoTurnoNavegou = false } = {}) {
@@ -29,6 +31,24 @@ export function classificarPedido(texto, { ultimoTurnoNavegou = false } = {}) {
   // "sim", "pode enviar", "manda", "o segundo": continuação curta de um trabalho no navegador.
   if (ultimoTurnoNavegou && pedido.length <= CONTINUACAO_CURTA) return { navegador: true, motivo: 'continuacao' };
   return { navegador: false, motivo: 'geral' };
+}
+
+// Decide o provedor antes do turno híbrido. A classificação é conservadora:
+// qualquer pedido que possa produzir efeito no app ou numa plataforma vai ao
+// Codex; perguntas e conversa geral ficam no Skynet.
+export function classificarRoteamento(texto, { ultimoTurnoOperacional = false, aguardandoCodex = false, system = false } = {}) {
+  const pedido = String(texto ?? '').trim();
+  if (system) return { route: 'operational', reason: 'system' };
+  if (!pedido) return { route: 'textual', reason: 'empty' };
+  if (SAUDACAO.test(pedido)) return { route: 'textual', reason: 'greeting' };
+  if (LOGIN_FEITO.test(pedido) && (aguardandoCodex || ultimoTurnoOperacional)) return { route: 'operational', reason: 'login-continuation' };
+  if (OPERACAO_DIRETA.test(pedido)) return { route: 'operational', reason: 'direct-operation' };
+  if (PERGUNTA_INFORMATIVA.test(pedido) && !/\b(envie|candidate|aplique|preencha|descarte|abra|clique|continue|comece|inicie)\b/i.test(pedido)) {
+    return { route: 'textual', reason: 'informational' };
+  }
+  if (CAMPANHA.test(pedido) || NAVEGACAO.test(pedido)) return { route: 'operational', reason: 'explicit-operation' };
+  if (ultimoTurnoOperacional && pedido.length <= CONTINUACAO_CURTA) return { route: 'operational', reason: 'continuation' };
+  return { route: 'textual', reason: 'general' };
 }
 
 // Um turno "foi de navegador" quando usou a página e não a campanha. fluxo_state e

@@ -13,6 +13,8 @@ test('runtime config reads safe operational controls and omits credentials', asy
     'MAX_APPLICATIONS_PER_RUN=12',
     'MAX_CONSECUTIVE_FAILURES=3',
     'EVIDENCE_MODE=confirmation',
+    'CONVERSATION_PROVIDER=codex',
+    'CONVERSATION_PROVIDER=skynet',
     'INFOJOBS_URL=https://www.infojobs.com.br/vagas.aspx?palabra={q}',
     'GUPY_PASSWORD=must-not-leak'
   ].join('\n'));
@@ -24,11 +26,12 @@ test('runtime config reads safe operational controls and omits credentials', asy
   assert.equal(config.maxApplicationsPerRun, 12);
   assert.equal(config.maxConsecutiveFailures, 3);
   assert.equal(config.evidenceMode, 'confirmation');
+  assert.equal(config.conversationProvider, 'skynet');
   assert.deepEqual(config.platformUrls, { INFOJOBS: 'https://www.infojobs.com.br/vagas.aspx?palabra={q}' });
   assert.equal(JSON.stringify(config).includes('must-not-leak'), false);
   assert.deepEqual(Object.keys(config).sort(), [
     'allowAutomatedSubmission', 'authMode', 'browserAutomationRequired',
-    'checkpointAfterEachAction', 'cloudEnabled', 'cloudModel', 'codexCommand', 'evidenceMode',
+    'checkpointAfterEachAction', 'cloudEnabled', 'cloudModel', 'codexCommand', 'conversationProvider', 'evidenceMode',
     'followUpMinIntervalMs',
     'localModel', 'maxApplicationsPerRun', 'maxConsecutiveFailures',
     'maxRunDurationMs', 'maxRunTokens', 'maxTaskAttempts',
@@ -44,4 +47,5 @@ test('runtime config returns safe defaults without env file', async () => {
   assert.equal(config.allowAutomatedSubmission, false);
   assert.equal(config.maxApplicationsPerRun, 30);
   assert.equal(config.authMode, 'chatgpt');
+  assert.equal(config.conversationProvider, 'skynet');
 });

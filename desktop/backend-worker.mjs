@@ -25,12 +25,16 @@ process.on('warning', (aviso) => { if (aviso?.code === 'FLUXO_FALHA_SILENCIOSA')
 
 const pendentes = new Map();
 let proximoId = 0;
-function pedirAoPrincipal(op, payload = {}) {
+function pedirAoPrincipal(type, op, payload = {}, timeoutMs = 15_000) {
   return new Promise((resolve, reject) => {
-    const id = `abas-${++proximoId}`;
-    const prazo = setTimeout(() => { pendentes.delete(id); reject(Object.assign(new Error('A janela não respondeu ao pedido de aba.'), { code: 'browser_tab_unavailable', retryable: true })); }, 15_000);
-    pendentes.set(id, { resolve, reject, prazo });
-    try { process.parentPort.postMessage({ type: 'abas', id, op, ...payload }); }
+    const id = `${type}-${++proximoId}`;
+    const prazo = setTimeout(() => {
+      pendentes.delete(id);
+      const code = type === 'skynet' ? 'skynet_bridge_timeout' : 'browser_tab_unavailable';
+      reject(Object.assign(new Error('A janela não respondeu no prazo.'), { code, retryable: true }));
+    }, timeoutMs);
+    pendentes.set(id, { resolve, reject, prazo, type });
+    try { process.parentPort.postMessage({ type, id, op, ...payload }); }
     catch (erro) { clearTimeout(prazo); pendentes.delete(id); reject(erro); }
   });
 }
@@ -39,15 +43,23 @@ const browserHost = cdpEndpoint
   ? {
     cdpEndpoint,
     markerUrl: (platform) => `${backendUrl}/aba/${encodeURIComponent(String(platform).toUpperCase())}`,
-    openTab: (platform, url) => pedirAoPrincipal('abrir', { platform, url }),
-    showTab: (platform) => pedirAoPrincipal('mostrar', { platform }),
-    hideTab: () => pedirAoPrincipal('esconder'),
-    listTabs: () => pedirAoPrincipal('listar')
+    openTab: (platform, url) => pedirAoPrincipal('abas', 'abrir', { platform, url }),
+    showTab: (platform) => pedirAoPrincipal('abas', 'mostrar', { platform }),
+    hideTab: () => pedirAoPrincipal('abas', 'esconder'),
+    listTabs: () => pedirAoPrincipal('abas', 'listar')
   }
   : null;
 
+const skynetHost = {
+  status: () => pedirAoPrincipal('skynet', 'status'),
+  startLogin: () => pedirAoPrincipal('skynet', 'login', {}, 30_000),
+  logout: () => pedirAoPrincipal('skynet', 'logout', {}, 30_000),
+  chat: (input) => pedirAoPrincipal('skynet', 'chat', { input }, 4 * 60_000),
+  interrupt: (operationId = '') => pedirAoPrincipal('skynet', 'interrupt', { operationId })
+};
+
 try {
-  backend = await createRuntimeServer({ rootDir, port: 0, browserHost });
+  backend = await createRuntimeServer({ rootDir, port: 0, browserHost, skynetHost });
   await new Promise((resolve, reject) => { backend.server.once('error', reject); backend.server.listen(0, '127.0.0.1', resolve); });
   backendUrl = `http://127.0.0.1:${backend.server.address().port}`;
   process.parentPort.postMessage({ type: 'ready', url: backendUrl });
@@ -72,12 +84,18 @@ function encerrar() {
 }
 
 process.parentPort.on('message', ({ data }) => {
-  if (data?.type === 'abas-resposta') {
+  if (data?.type === 'abas-resposta' || data?.type === 'skynet-resposta') {
     const pedido = pendentes.get(data.id);
     if (!pedido) return; // resposta atrasada de um pedido que já expirou
     pendentes.delete(data.id);
     clearTimeout(pedido.prazo);
-    if (data.ok) pedido.resolve(data.result); else pedido.reject(Object.assign(new Error(data.error || 'Falha na aba.'), { code: 'browser_tab_unavailable' }));
+    const fallbackCode = pedido.type === 'skynet' ? 'skynet_bridge_failed' : 'browser_tab_unavailable';
+    if (data.ok) pedido.resolve(data.result);
+    else pedido.reject(Object.assign(new Error(data.error?.message || data.error || 'Falha na janela.'), { code: data.error?.code || fallbackCode }));
+    return;
+  }
+  if (data?.type === 'skynet-event' && data.event === 'status') {
+    backend?.runtime?.skynetAuthService?.handleStatus(data.status);
     return;
   }
   if (data?.type === 'shutdown') void encerrar();

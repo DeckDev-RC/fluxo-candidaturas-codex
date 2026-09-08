@@ -21,7 +21,14 @@ export const store = {
   avaliacoes: [],
   agenda: [],
   notificacoes: [],
-  ia: { disponivel: false, mensagem: 'Verificando a automação de IA…', modo: '' },
+  ia: {
+    disponivel: false,
+    mensagem: 'Verificando a automação de IA…',
+    modo: '',
+    provedor: 'skynet',
+    provedores: { skynet: { available: false }, codex: { available: false } },
+    capacidades: { chat: false, tools: false, autopilot: false }
+  },
   codex: null,
   jornada: { runId: '', status: '', mensagem: '', plano: [], perguntas: [], atualizacoes: [] },
   // Conversa conduzida pela IA: se há turno em curso, o que ela espera de você e as abas do navegador.
@@ -64,7 +71,14 @@ async function loadDemo() {
   });
   store.estado.memory = fixture.memory ?? store.estado.memory;
   store.jornada = { ...store.jornada, ...fixture.autopilot, status: 'trabalhando', plano: fixture.autopilot?.plan ?? [], perguntas: [] };
-  store.ia = { disponivel: true, mensagem: 'Demonstração local: a automação não é acionada.', modo: 'demonstracao' };
+  store.ia = {
+    disponivel: true,
+    mensagem: 'Demonstração local: a automação não é acionada.',
+    modo: 'demonstracao',
+    provedor: 'codex',
+    provedores: { codex: { available: true }, skynet: { available: false } },
+    capacidades: { chat: true, tools: false, autopilot: false }
+  };
   store.codex = fixture.codex ?? null;
   return store;
 }
@@ -104,21 +118,24 @@ export async function loadState() {
 export async function loadAiStatus() {
   if (isDemo()) return store.ia;
   const saude = await read('/api/v1/runtime/health', { fallback: null });
-  const modo = await read('/api/v1/ai/mode', { fallback: null });
-  return setAiHealth(saude, modo?.mode ?? '');
+  return setAiHealth(saude, saude?.mode ?? '');
 }
 
 // Um retrato da saúde do runtime, venha de consulta ou de evento, vira o mesmo estado.
 export function setAiHealth(saude, modo = saude?.mode ?? '') {
   // Conta que entra ou sai invalida o retrato de conta, uso e limites.
-  if ((saude?.available === true) !== store.ia.disponivel) store.codex = null;
+  const codexAvailable = saude?.providers?.codex?.available === true;
+  if (codexAvailable !== (store.ia.provedores?.codex?.available === true)) store.codex = null;
   store.ia = {
     disponivel: saude?.available === true,
     estado: saude?.state ?? '',
     motivo: saude?.reason ?? '',
     erroLogin: saude?.loginError ?? '',
+    provedor: saude?.conversationProvider ?? saude?.provider ?? 'skynet',
+    provedores: saude?.providers ?? { skynet: { available: false }, codex: { available: saude?.available === true } },
+    capacidades: saude?.capabilities ?? { chat: saude?.available === true, tools: saude?.available === true, autopilot: saude?.available === true },
     mensagem: saude?.available === true
-      ? 'Automação de IA conectada.'
+      ? saude?.message ?? 'Inteligência artificial conectada.'
       : saude?.loginError ?? saude?.message ?? 'A automação de IA não está conectada. Você continua podendo revisar e decidir.',
     modo: modo ?? ''
   };
