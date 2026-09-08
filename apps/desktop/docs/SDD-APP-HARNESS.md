@@ -1,6 +1,6 @@
 # SDD — App Harness do Fluxo de Candidaturas
 
-**Status:** contrato técnico da versão candidata 1.2  
+**Status:** contrato técnico da versão candidata 1.2
 **PRD:** [`PRD-APP-HARNESS.md`](./PRD-APP-HARNESS.md)
 
 O runtime de produção liga o Autopilot ao orquestrador com especialistas reais (Intake, Discovery, Fit, Application, Follow-up). Fixture existe só no modo `fixture` explícito e nunca é selecionado automaticamente. Ferramentas passam pelo gateway; o agente não aprova, não escreve autoridade paralela e não executa shell genérico. SQLite é a autoridade de campanha/fila/candidaturas em raízes novas. A sessão de navegador tem um dono exclusivo por vez.

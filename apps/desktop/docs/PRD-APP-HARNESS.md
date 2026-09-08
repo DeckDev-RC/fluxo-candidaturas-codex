@@ -1,7 +1,7 @@
 # PRD — App Harness do Fluxo de Candidaturas
 
-**Status:** contrato da versão candidata 1.2  
-**Jornada:** autonomia supervisionada com especialistas reais  
+**Status:** contrato da versão candidata 1.2
+**Jornada:** autonomia supervisionada com especialistas reais
 **Documentos alinhados:** [SDD](SDD-APP-HARNESS.md), [política](POLITICA-AUTONOMIA.md), [limites](LIMITES-CAMPANHA.md), [matriz](MATRIZ-PLATAFORMAS.md), [linha de produto](LINHA-DE-PRODUTO.md)
 
 O Fluxo é um aplicativo Windows local e individual. O candidato informa um objetivo profissional. O Autopilot coordena especialistas reais de Intake, Discovery, Fit, Application e Follow-up, executa as tarefas autorizadas, pede decisões necessárias e retoma até concluir a campanha ou explicar um bloqueio.
@@ -13,9 +13,9 @@ A versão candidata **não certifica autonomia real** nas sete plataformas. O es
 > Histórico 1.1.0: Electron, Playwright direto e SQLite progressivo. Consulte [arquitetura implementada](ARQUITETURA-IMPLEMENTADA.md) e [contrato desktop](DESKTOP.md).
 
 
-**Status:** rascunho para implementação  
-**Versão:** 0.3  
-**Escopo:** exclusivamente o pacote `Fluxo/`  
+**Status:** rascunho para implementação
+**Versão:** 0.3
+**Escopo:** exclusivamente o pacote `Fluxo/`
 **Fonte de requisitos:** [`README.md`](../README.md), arquivo de instruções do agente e documentação operacional em `docs/`
 
 ## 1. Resumo

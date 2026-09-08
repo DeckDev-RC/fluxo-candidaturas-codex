@@ -1,6 +1,6 @@
 # Política inicial de autonomia supervisionada
 
-**Confirmação final:** ligada (`REQUIRE_FINAL_CONFIRMATION=true`).  
+**Confirmação final:** ligada (`REQUIRE_FINAL_CONFIRMATION=true`).
 **Envio automatizado:** não dispensa decisão sensível. `ALLOW_AUTOMATED_SUBMISSION` nunca aprova pelo usuário.
 
 ## Ações externas
