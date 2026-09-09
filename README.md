@@ -7,6 +7,10 @@
 Aplicativo Windows local-first para organizar e conduzir candidaturas de emprego
 com IA, navegador integrado, confirmação humana e rastreabilidade.
 
+O Fluxo é um **cockpit de candidaturas assistidas**, não um bot autônomo. Ele
+organiza o trabalho, encontra oportunidades, explica aderência e prepara ações;
+a pessoa continua no controle de login, CAPTCHA, MFA, consentimento e envio.
+
 O Fluxo combina **SkynetChat para conversa textual** e **ChatGPT/Codex para
 operações**. A pessoa pode manter as duas sessões conectadas e escolher qual IA
 responde. Ações externas sensíveis nunca são aprovadas pelo modelo: dependem de
@@ -15,6 +19,9 @@ uma decisão autenticada e vinculada à ação exata.
 > English summary: Fluxo is an Apache-2.0, local-first Windows application for
 > supervised job applications with hybrid AI, embedded browser automation and
 > human approval gates.
+
+> Quer entender a proposta ou ajudar? Comece por [Como contribuir](CONTRIBUTING.md),
+> [Arquitetura](docs/ARCHITECTURE.md) e [Plano de lançamento open source](docs/LANCAMENTO-OPEN-SOURCE.md).
 
 ![Tela de conversa do Fluxo com dados sintéticos](docs/assets/fluxo-conversa.png)
 
@@ -150,7 +157,9 @@ Issues e pull requests são bem-vindos. Leia [CONTRIBUTING.md](CONTRIBUTING.md),
 assine os commits conforme o [DCO](DCO) e siga o
 [Código de Conduta](CODE_OF_CONDUCT.md).
 
-Veja o [roadmap](ROADMAP.md) e procure issues `good first issue`.
+Veja o [roadmap](ROADMAP.md), procure issues `good first issue` ou `help wanted`
+e confira o [plano de lançamento](docs/LANCAMENTO-OPEN-SOURCE.md) para entender
+como participar da evolução do projeto.
 
 ## Licença e marcas
 

@@ -15,6 +15,7 @@
 - [Como contribuir](../CONTRIBUTING.md)
 - [Arquitetura](ARCHITECTURE.md)
 - [Demonstração](DEMO.md)
+- [Plano de lançamento open source](LANCAMENTO-OPEN-SOURCE.md)
 - [Código de Conduta](../CODE_OF_CONDUCT.md)
 - [DCO](../DCO)
 - [Arquitetura implementada detalhada](../apps/desktop/docs/ARQUITETURA-IMPLEMENTADA.md)

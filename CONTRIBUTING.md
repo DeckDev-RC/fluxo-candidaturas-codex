@@ -24,6 +24,25 @@ docs/                  documentação pública do monorepo
 O código do desktop usa JavaScript ESM e `node:test`; módulos Electron que
 precisam de CommonJS usam `.cjs`. A interface é JavaScript sem bundler.
 
+## Por onde começar
+
+Escolha uma frente pequena e siga o mapa antes de alterar o código:
+
+- **Interface e acessibilidade:** `apps/desktop/app/ui/` e os testes de UI.
+- **Navegador e plataformas:** `apps/desktop/app/src/browser/`, adaptadores e
+  fixtures sintéticas; nunca teste contra uma conta real sem autorização.
+- **Domínio e persistência:** `apps/desktop/app/src/domain/`, serviços locais e
+  SQLite; preserve a autoridade local e a reconciliação.
+- **Segurança:** fronteira local, sessão, aprovação, redaction e políticas;
+  vulnerabilidades devem ser reportadas pelo canal privado.
+- **Qualidade:** testes `node:test`, E2E Playwright e validação PowerShell.
+- **Documentação:** README, arquitetura, matriz de plataformas e guias de uso.
+
+Issues marcadas como `good first issue` são bons pontos de entrada. `help wanted`
+indica uma frente em que uma contribuição externa é especialmente útil. Se a
+ideia ainda não tiver issue, abra uma discussão curta com problema, proposta e
+como validar.
+
 ## Pré-requisitos
 
 - Git;
@@ -59,6 +78,12 @@ npm run test:desktop
 npm run test:e2e
 npm run test:powershell
 npm run test:coverage
+```
+
+Para uma verificação próxima do fluxo completo do desktop, execute também:
+
+```powershell
+npm run test:desktop:e2e
 ```
 
 ## Fluxo de contribuição
@@ -136,3 +161,11 @@ Um provedor deve incluir:
 - portões de aprovação preservados;
 - commits assinados com `Signed-off-by`;
 - pull request explica motivação, risco e validação.
+
+## O que torna uma contribuição adequada
+
+Uma contribuição adequada deixa o Fluxo mais compreensível, verificável e
+seguro. Evite automação silenciosa de ações externas, bypass de CAPTCHA/MFA,
+coleta de credenciais, dependência obrigatória de serviços pagos ou exemplos que
+exponham dados pessoais. O objetivo do projeto é ampliar a capacidade da pessoa,
+não retirar dela a decisão final.
