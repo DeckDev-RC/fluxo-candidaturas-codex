@@ -17,7 +17,15 @@ export function assertTrustedPath(path) {
 }
 
 export function assertLocalOrigin(origin) {
-  if (!['http://127.0.0.1', 'http://localhost'].some((allowed) => String(origin ?? '').startsWith(allowed))) {
+  let parsed;
+  try {
+    parsed = new URL(String(origin ?? ''));
+  } catch {
+    throw createDomainError('local_auth_required', 'Apenas a origem local do aplicativo é aceita.');
+  }
+
+  const isLoopbackHost = parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost';
+  if (parsed.protocol !== 'http:' || !isLoopbackHost) {
     throw createDomainError('local_auth_required', 'Apenas a origem local do aplicativo é aceita.');
   }
 }

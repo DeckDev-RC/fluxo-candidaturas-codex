@@ -11,6 +11,10 @@ test('local auth accepts loopback and same-origin requests only', () => {
   assert.equal(isLocalRequest({ socket: { remoteAddress: '127.0.0.1' }, headers: {} }), true);
   assert.equal(isLocalRequest({ socket: { remoteAddress: '10.0.0.4' }, headers: {} }), false);
   assert.equal(isLocalRequest({ socket: { remoteAddress: '127.0.0.1' }, headers: { origin: 'https://evil.test' } }), false);
+  assert.equal(isLocalRequest({ socket: { remoteAddress: '127.0.0.1' }, headers: { origin: 'http://localhost.evil.test' } }), false);
+  assert.equal(isLocalRequest({ socket: { remoteAddress: '127.0.0.1' }, headers: { origin: 'http://127.0.0.1.evil.test' } }), false);
+  assert.equal(isLocalRequest({ socket: { remoteAddress: '127.0.0.1' }, headers: { origin: 'http://localhost:4173' } }), true);
+  assert.equal(isLocalRequest({ socket: { remoteAddress: '127.0.0.1' }, headers: { origin: 'http://127.0.0.1:4173' } }), true);
 });
 
 test('observability records sanitized request outcomes and counters', () => {
