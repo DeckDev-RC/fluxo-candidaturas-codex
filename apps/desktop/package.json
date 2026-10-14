@@ -35,10 +35,10 @@
     "icon:build": "node app/scripts/build-icon.mjs"
   },
   "dependencies": {
-    "playwright": "1.63.0"
+    "playwright": "1.64.0"
   },
   "devDependencies": {
-    "electron": "44.2.0",
+    "electron": "44.7.0",
     "electron-builder": "26.15.3"
   },
   "build": {
